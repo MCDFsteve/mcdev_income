@@ -338,6 +338,143 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _openDeveloperDetails() async {
+    if (_devLoading) {
+      return;
+    }
+    if (_developerProfile == null) {
+      await _loadDeveloperProfile();
+    }
+    if (!mounted) {
+      return;
+    }
+    final profile = _developerProfile;
+    if (profile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未获取到开发者信息，请稍后重试。')),
+      );
+      return;
+    }
+
+    final detailItems = _buildDeveloperInfoItems(profile)
+        .where((item) => item.label != '昵称' && item.label != '简介')
+        .toList();
+
+    if (detailItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无更多可显示的开发者信息。')),
+      );
+      return;
+    }
+
+    final isWide = MediaQuery.of(context).size.width >= 900;
+    if (isWide) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return Dialog(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520, maxHeight: 520),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '开发者更多信息',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: detailItems.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = detailItems[index];
+                          return ListTile(
+                            dense: true,
+                            title: Text(item.label),
+                            subtitle: Text(item.value),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (context) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '开发者更多信息',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: detailItems.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final item = detailItems[index];
+                        return ListTile(
+                          dense: true,
+                          title: Text(item.label),
+                          subtitle: Text(item.value),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+  }
+
   Future<void> _loadDeveloperProfile() async {
     setState(() {
       _devLoading = true;
@@ -637,11 +774,6 @@ class _SettingsPageState extends State<SettingsPage> {
     final nicknameItem =
         devItems == null ? null : _findItem(devItems, '昵称');
     final bioItem = devItems == null ? null : _findItem(devItems, '简介');
-    final detailItems = devItems == null
-        ? const <_InfoItem>[]
-        : devItems.where((item) {
-            return item.label != '昵称' && item.label != '简介';
-          }).toList();
 
     return SafeArea(
       child: ListView(
@@ -771,15 +903,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ],
                     ),
-                    if (detailItems.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      ...detailItems.map((item) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Text('${item.label}: ${item.value}'),
-                        );
-                      }),
-                    ],
                   ],
                   const SizedBox(height: 12),
                   Wrap(
@@ -789,9 +912,13 @@ class _SettingsPageState extends State<SettingsPage> {
                       OutlinedButton.icon(
                         onPressed: _devLoading ? null : _loadDeveloperProfile,
                         icon: const Icon(Icons.person_search),
-                        label: Text(
-                          _developerProfile == null ? '加载信息' : '刷新信息',
-                        ),
+                        label:
+                            Text(_developerProfile == null ? '加载信息' : '刷新信息'),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: _devLoading ? null : _openDeveloperDetails,
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('查看更多'),
                       ),
                     ],
                   ),
