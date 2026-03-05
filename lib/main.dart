@@ -304,22 +304,28 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _refreshStatus();
+    _refreshStatus().then((loggedIn) {
+      if (loggedIn) {
+        _loadDeveloperProfile();
+      }
+    });
   }
 
-  Future<void> _refreshStatus() async {
+  Future<bool> _refreshStatus() async {
     setState(() => _loading = true);
     final cookies = await LoginCookieHelper.readCookies();
     if (!mounted) {
-      return;
+      return false;
     }
     final count = cookies.length;
+    final loggedIn = count > 0;
     setState(() {
       _cookieCount = count;
-      _statusText = count > 0 ? '已登录' : '未登录';
+      _statusText = loggedIn ? '已登录' : '未登录';
       _checkedAt = DateTime.now();
       _loading = false;
     });
+    return loggedIn;
   }
 
   Future<void> _openLoginWebView() async {
@@ -418,6 +424,19 @@ class _SettingsPageState extends State<SettingsPage> {
         usedKeys.add(userId.key);
       }
 
+      final realName =
+          _pickStringEntry(user, ['real_name', 'realname', 'realName']);
+      if (realName != null) {
+        items.add(_InfoItem('真实姓名', realName.value));
+        usedKeys.add(realName.key);
+      }
+
+      final isRealName = _pickStringEntry(user, ['is_unirealname']);
+      if (isRealName != null) {
+        items.add(_InfoItem('实名认证', _formatBool(isRealName.value)));
+        usedKeys.add(isRealName.key);
+      }
+
       final email = _pickStringEntry(user, ['email']);
       if (email != null) {
         items.add(_InfoItem('邮箱', _maskValue(email.key, email.value)));
@@ -430,33 +449,84 @@ class _SettingsPageState extends State<SettingsPage> {
         usedKeys.add(phone.key);
       }
 
-      for (final entry in user.entries) {
-        final key = entry.key;
-        if (_sensitiveKeyPattern.hasMatch(key)) {
-          continue;
-        }
-        if (usedKeys.contains(key)) {
-          continue;
-        }
-        if (items.length >= 10) {
-          break;
-        }
-        final value = entry.value;
-        if (value == null) {
-          continue;
-        }
-        if (value is Map || value is List) {
-          continue;
-        }
-        final stringValue = value.toString();
-        if (stringValue.isEmpty) {
-          continue;
-        }
-        items.add(_InfoItem(key, stringValue));
+      final qq = _pickStringEntry(user, ['qq']);
+      if (qq != null) {
+        items.add(_InfoItem('QQ', _maskValue(qq.key, qq.value)));
+        usedKeys.add(qq.key);
+      }
+
+      final province = _pickStringEntry(user, ['province']);
+      if (province != null) {
+        items.add(_InfoItem('省份', province.value));
+        usedKeys.add(province.key);
+      }
+
+      final city = _pickStringEntry(user, ['city']);
+      if (city != null) {
+        items.add(_InfoItem('城市', city.value));
+        usedKeys.add(city.key);
+      }
+
+      final provider = _pickStringEntry(user, ['provider_name']);
+      if (provider != null) {
+        items.add(_InfoItem('签约主体', provider.value));
+        usedKeys.add(provider.key);
+      }
+
+      final authority = _pickStringEntry(user, ['official_authority']);
+      if (authority != null) {
+        items.add(_InfoItem('官方资质', authority.value));
+        usedKeys.add(authority.key);
+      }
+
+      final cardNo = _pickStringEntry(user, ['card_no', 'id_card', 'idcard']);
+      if (cardNo != null) {
+        items.add(_InfoItem('证件号', _maskValue(cardNo.key, cardNo.value)));
+        usedKeys.add(cardNo.key);
+      }
+
+      final enterpriseApplying =
+          _pickStringEntry(user, ['is_enterprise_applying']);
+      if (enterpriseApplying != null) {
+        items.add(
+          _InfoItem('企业认证申请中', _formatBool(enterpriseApplying.value)),
+        );
+        usedKeys.add(enterpriseApplying.key);
+      }
+
+      final enterpriseExpired =
+          _pickStringEntry(user, ['is_enterprise_expired']);
+      if (enterpriseExpired != null) {
+        items.add(
+          _InfoItem('企业认证已过期', _formatBool(enterpriseExpired.value)),
+        );
+        usedKeys.add(enterpriseExpired.key);
+      }
+
+      final needEnterprise = _pickStringEntry(user, ['need_enterprise_apply']);
+      if (needEnterprise != null) {
+        items.add(_InfoItem('需要企业认证', _formatBool(needEnterprise.value)));
+        usedKeys.add(needEnterprise.key);
+      }
+
+      final enterpriseDeadline =
+          _pickStringEntry(user, ['enterprise_deadline']);
+      if (enterpriseDeadline != null) {
+        items.add(_InfoItem('企业认证到期', enterpriseDeadline.value));
+        usedKeys.add(enterpriseDeadline.key);
       }
     }
 
     return items;
+  }
+
+  _InfoItem? _findItem(List<_InfoItem> items, String label) {
+    for (final item in items) {
+      if (item.label == label) {
+        return item;
+      }
+    }
+    return null;
   }
 
   String _mapAuthorStatus(String raw) {
@@ -508,13 +578,34 @@ class _SettingsPageState extends State<SettingsPage> {
         return '${name.substring(0, 2)}***@${domain}';
       }
     }
+    if (key.toLowerCase().contains('qq')) {
+      if (value.length >= 4) {
+        return '${value.substring(0, 2)}***${value.substring(value.length - 2)}';
+      }
+    }
     if (key.toLowerCase().contains('phone') ||
         key.toLowerCase().contains('mobile')) {
       if (value.length >= 7) {
         return '${value.substring(0, 3)}****${value.substring(value.length - 2)}';
       }
     }
+    if (key.toLowerCase().contains('card')) {
+      if (value.length >= 8) {
+        return '${value.substring(0, 4)}********${value.substring(value.length - 2)}';
+      }
+    }
     return value;
+  }
+
+  String _formatBool(String raw) {
+    final text = raw.toLowerCase();
+    if (text == '1' || text == 'true' || text == 'yes') {
+      return '是';
+    }
+    if (text == '0' || text == 'false' || text == 'no') {
+      return '否';
+    }
+    return raw;
   }
 
   MapEntry<String, String>? _pickStringEntry(
@@ -543,6 +634,14 @@ class _SettingsPageState extends State<SettingsPage> {
     final devItems = _developerProfile == null
         ? null
         : _buildDeveloperInfoItems(_developerProfile!);
+    final nicknameItem =
+        devItems == null ? null : _findItem(devItems, '昵称');
+    final bioItem = devItems == null ? null : _findItem(devItems, '简介');
+    final detailItems = devItems == null
+        ? const <_InfoItem>[]
+        : devItems.where((item) {
+            return item.label != '昵称' && item.label != '简介';
+          }).toList();
 
     return SafeArea(
       child: ListView(
@@ -583,7 +682,14 @@ class _SettingsPageState extends State<SettingsPage> {
                         label: const Text('WebView 登录'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: _loading ? null : _refreshStatus,
+                        onPressed: _loading
+                            ? null
+                            : () async {
+                                final loggedIn = await _refreshStatus();
+                                if (loggedIn) {
+                                  await _loadDeveloperProfile();
+                                }
+                              },
                         icon: const Icon(Icons.refresh),
                         label: const Text('刷新状态'),
                       ),
@@ -619,7 +725,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 8),
                   if (_developerProfile == null && !_devLoading)
                     Text(
-                      '点击下方按钮加载开发者信息。',
+                      _statusText == '已登录'
+                          ? '未加载到开发者信息，请点击“刷新信息”。'
+                          : '请先登录后获取开发者信息。',
                       style: theme.textTheme.bodySmall,
                     ),
                   if (_devError != null) ...[
@@ -646,24 +754,32 @@ class _SettingsPageState extends State<SettingsPage> {
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: devItems == null || devItems.isEmpty
-                                ? [
-                                    Text(
-                                      '暂无可显示字段。',
-                                      style: theme.textTheme.bodySmall,
-                                    ),
-                                  ]
-                                : devItems.map((item) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 6),
-                                      child:
-                                          Text('${item.label}: ${item.value}'),
-                                    );
-                                  }).toList(),
+                            children: [
+                              Text(
+                                nicknameItem?.value ?? '昵称未获取',
+                                style: theme.textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                bioItem?.value ?? '暂无简介',
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
+                    if (detailItems.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ...detailItems.map((item) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text('${item.label}: ${item.value}'),
+                        );
+                      }),
+                    ],
                   ],
                   const SizedBox(height: 12),
                   Wrap(
@@ -1238,11 +1354,11 @@ class McDevApi {
       final authorPayload = await _getJson(
         Uri.https('mc-launcher.webapp.163.com', '/users/author_info'),
       );
-      if (authorPayload['status']?.toString() == 'ok') {
-        final data = authorPayload['data'];
-        if (data is Map<String, dynamic>) {
-          authorData = data;
-        }
+      final data = authorPayload['data'];
+      if (data is Map<String, dynamic>) {
+        authorData = data;
+      } else if (authorPayload['status']?.toString() == 'ok') {
+        authorData = const {};
       }
     } catch (error) {
       authorError = error;
@@ -1252,11 +1368,11 @@ class McDevApi {
       final userPayload = await _getJson(
         Uri.https('mc-launcher.webapp.163.com', '/users/me'),
       );
-      if (userPayload['status']?.toString() == 'ok') {
-        final data = userPayload['data'];
-        if (data is Map<String, dynamic>) {
-          userData = data;
-        }
+      final data = userPayload['data'];
+      if (data is Map<String, dynamic>) {
+        userData = data;
+      } else if (userPayload['status']?.toString() == 'ok') {
+        userData = const {};
       }
     } catch (error) {
       userError = error;
