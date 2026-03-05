@@ -36,11 +36,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _titles = [
-    '收益汇总',
-    'Mod 列表',
-    '设置',
-  ];
+  static const _titles = ['收益汇总', 'Mod 列表', '设置'];
 
   final _pages = const [
     IncomePage(),
@@ -49,11 +45,7 @@ class _HomeShellState extends State<HomeShell> {
       description: '占位：后续支持 Mod 维度管理与筛选。',
       icon: Icons.view_list,
     ),
-    PlaceholderPage(
-      title: '设置',
-      description: '占位：后续支持导出、缓存与高级选项。',
-      icon: Icons.settings,
-    ),
+    SettingsPage(),
   ];
 
   @override
@@ -63,9 +55,7 @@ class _HomeShellState extends State<HomeShell> {
 
     if (isWide) {
       return Scaffold(
-        appBar: AppBar(
-          title: Text(_titles[_index]),
-        ),
+        appBar: AppBar(title: Text(_titles[_index])),
         body: Row(
           children: [
             NavigationRail(
@@ -89,10 +79,7 @@ class _HomeShellState extends State<HomeShell> {
             ),
             const VerticalDivider(width: 1),
             Expanded(
-              child: IndexedStack(
-                index: _index,
-                children: _pages,
-              ),
+              child: IndexedStack(index: _index, children: _pages),
             ),
           ],
         ),
@@ -100,30 +87,16 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_titles[_index]),
-      ),
-      body: IndexedStack(
-        index: _index,
-        children: _pages,
-      ),
+      appBar: AppBar(title: Text(_titles[_index])),
+      body: IndexedStack(index: _index, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         onTap: (value) => setState(() => _index = value),
         type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.query_stats),
-            label: '收益',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.view_list),
-            label: 'Mod',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: '设置',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.query_stats), label: '收益'),
+          BottomNavigationBarItem(icon: Icon(Icons.view_list), label: 'Mod'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: '设置'),
         ],
       ),
     );
@@ -153,10 +126,7 @@ class PlaceholderPage extends StatelessWidget {
             children: [
               Icon(icon, size: 56),
               const SizedBox(height: 12),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               Text(
                 description,
@@ -171,6 +141,581 @@ class PlaceholderPage extends StatelessWidget {
   }
 }
 
+class _RangePickerPanel extends StatefulWidget {
+  const _RangePickerPanel({
+    required this.initialStart,
+    required this.initialEnd,
+  });
+
+  final DateTime initialStart;
+  final DateTime initialEnd;
+
+  @override
+  State<_RangePickerPanel> createState() => _RangePickerPanelState();
+}
+
+class _RangePickerPanelState extends State<_RangePickerPanel> {
+  DateTime? _rangeStart;
+  DateTime? _rangeEnd;
+  final _format = DateFormat('yyyy-MM-dd');
+
+  @override
+  void initState() {
+    super.initState();
+    _rangeStart = widget.initialStart;
+    _rangeEnd = widget.initialEnd;
+  }
+
+  void _onDateTapped(DateTime date) {
+    if (_rangeStart == null || _rangeEnd != null) {
+      setState(() {
+        _rangeStart = date;
+        _rangeEnd = null;
+      });
+      return;
+    }
+    var start = _rangeStart!;
+    var end = date;
+    if (end.isBefore(start)) {
+      final temp = start;
+      start = end;
+      end = temp;
+    }
+    Navigator.of(context).pop(DateTimeRange(start: start, end: end));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final startLabel = _rangeStart == null
+        ? '未选'
+        : _format.format(_rangeStart!);
+    final endLabel = _rangeEnd == null ? '未选' : _format.format(_rangeEnd!);
+    final initialDate = _rangeEnd ?? _rangeStart ?? DateTime.now();
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    '选择时间范围',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: Text('开始: $startLabel')),
+                Expanded(child: Text('结束: $endLabel')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            CalendarDatePicker(
+              initialDate: initialDate,
+              firstDate: DateTime(2020, 1, 1),
+              lastDate: DateTime(DateTime.now().year + 1, 12, 31),
+              onDateChanged: _onDateTapped,
+            ),
+            const SizedBox(height: 4),
+            Text('点击起止日期后自动查询', style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class LoginCookieHelper {
+  static final _cookieUrls = [
+    WebUri('https://mc-launcher.webapp.163.com/'),
+    WebUri('https://mcdev.webapp.163.com/'),
+  ];
+
+  static Future<Map<String, String>> readCookies() async {
+    final manager = CookieManager.instance();
+    final cookieMap = <String, String>{};
+
+    for (final url in _cookieUrls) {
+      final cookies = await manager.getCookies(url: url);
+      for (final cookie in cookies) {
+        final name = cookie.name;
+        if (name.isEmpty) {
+          continue;
+        }
+        cookieMap[name] = cookie.value;
+      }
+    }
+
+    return cookieMap;
+  }
+
+  static Future<String> buildCookieHeader() async {
+    final cookies = await readCookies();
+    if (cookies.isEmpty) {
+      return '';
+    }
+    return cookies.entries
+        .map((entry) => '${entry.key}=${entry.value}')
+        .join('; ');
+  }
+}
+
+final _sensitiveKeyPattern = RegExp(
+  r'(token|secret|password|passwd|cookie|session|auth|sid|uid|email|phone|mobile)',
+  caseSensitive: false,
+);
+
+class _InfoItem {
+  const _InfoItem(this.label, this.value);
+
+  final String label;
+  final String value;
+}
+
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool _loading = false;
+  String _statusText = '未登录';
+  int _cookieCount = 0;
+  DateTime? _checkedAt;
+
+  bool _devLoading = false;
+  String? _devError;
+  DeveloperProfile? _developerProfile;
+
+  final _timeFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshStatus();
+  }
+
+  Future<void> _refreshStatus() async {
+    setState(() => _loading = true);
+    final cookies = await LoginCookieHelper.readCookies();
+    if (!mounted) {
+      return;
+    }
+    final count = cookies.length;
+    setState(() {
+      _cookieCount = count;
+      _statusText = count > 0 ? '已登录' : '未登录';
+      _checkedAt = DateTime.now();
+      _loading = false;
+    });
+  }
+
+  Future<void> _openLoginWebView() async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (context) => const LoginWebViewPage()),
+    );
+    if (result == true) {
+      await _refreshStatus();
+      await _loadDeveloperProfile();
+    }
+  }
+
+  Future<void> _loadDeveloperProfile() async {
+    setState(() {
+      _devLoading = true;
+      _devError = null;
+    });
+
+    final cookieHeader = await LoginCookieHelper.buildCookieHeader();
+    if (cookieHeader.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _devLoading = false;
+        _devError = '请先登录后再获取开发者信息。';
+      });
+      return;
+    }
+
+    final api = McDevApi(cookie: cookieHeader, category: 'pe');
+    try {
+      final profile = await api.fetchDeveloperProfile();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _developerProfile = profile;
+        _devLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _devLoading = false;
+        _devError = error.toString();
+      });
+    } finally {
+      api.close();
+    }
+  }
+
+  List<_InfoItem> _buildDeveloperInfoItems(DeveloperProfile profile) {
+    final items = <_InfoItem>[];
+    final usedKeys = <String>{};
+
+    final status = profile.status;
+    if (status != null && status.isNotEmpty) {
+      items.add(_InfoItem('作者状态', _mapAuthorStatus(status)));
+    }
+
+    final updatedAt = _formatIso(profile.updatedAt);
+    if (updatedAt != null) {
+      items.add(_InfoItem('资料更新时间', updatedAt));
+    }
+
+    final bio = profile.bio == null ? null : _stripHtml(profile.bio!);
+    if (bio != null && bio.isNotEmpty) {
+      items.add(_InfoItem('简介', bio));
+    }
+
+    final user = profile.userRaw;
+    if (user != null) {
+      final nickname = _pickStringEntry(user, [
+        'nickname',
+        'nick_name',
+        'user_name',
+        'username',
+        'name',
+        'display_name',
+      ]);
+      if (nickname != null) {
+        items.add(_InfoItem('昵称', nickname.value));
+        usedKeys.add(nickname.key);
+      }
+
+      final userId = _pickStringEntry(user, [
+        'uid',
+        'user_id',
+        'id',
+        'account_id',
+      ]);
+      if (userId != null) {
+        items.add(_InfoItem('账号ID', userId.value));
+        usedKeys.add(userId.key);
+      }
+
+      final email = _pickStringEntry(user, ['email']);
+      if (email != null) {
+        items.add(_InfoItem('邮箱', _maskValue(email.key, email.value)));
+        usedKeys.add(email.key);
+      }
+
+      final phone = _pickStringEntry(user, ['mobile', 'phone']);
+      if (phone != null) {
+        items.add(_InfoItem('手机号', _maskValue(phone.key, phone.value)));
+        usedKeys.add(phone.key);
+      }
+
+      for (final entry in user.entries) {
+        final key = entry.key;
+        if (_sensitiveKeyPattern.hasMatch(key)) {
+          continue;
+        }
+        if (usedKeys.contains(key)) {
+          continue;
+        }
+        if (items.length >= 10) {
+          break;
+        }
+        final value = entry.value;
+        if (value == null) {
+          continue;
+        }
+        if (value is Map || value is List) {
+          continue;
+        }
+        final stringValue = value.toString();
+        if (stringValue.isEmpty) {
+          continue;
+        }
+        items.add(_InfoItem(key, stringValue));
+      }
+    }
+
+    return items;
+  }
+
+  String _mapAuthorStatus(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'accept':
+        return '已通过';
+      case 'pending':
+        return '审核中';
+      case 'reject':
+        return '未通过';
+      default:
+        return raw;
+    }
+  }
+
+  String? _formatIso(String? iso) {
+    if (iso == null || iso.isEmpty) {
+      return null;
+    }
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      return DateFormat('yyyy-MM-dd HH:mm').format(dt);
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  String _stripHtml(String text) {
+    return text
+        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .trim();
+  }
+
+  String _maskValue(String key, String value) {
+    if (key.toLowerCase().contains('email')) {
+      final parts = value.split('@');
+      if (parts.length == 2) {
+        final name = parts.first;
+        final domain = parts.last;
+        if (name.length <= 2) {
+          return '${name.substring(0, 1)}***@$domain';
+        }
+        return '${name.substring(0, 2)}***@${domain}';
+      }
+    }
+    if (key.toLowerCase().contains('phone') ||
+        key.toLowerCase().contains('mobile')) {
+      if (value.length >= 7) {
+        return '${value.substring(0, 3)}****${value.substring(value.length - 2)}';
+      }
+    }
+    return value;
+  }
+
+  MapEntry<String, String>? _pickStringEntry(
+    Map<String, dynamic> map,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = map[key];
+      if (value == null) {
+        continue;
+      }
+      final text = value.toString();
+      if (text.isNotEmpty) {
+        return MapEntry(key, text);
+      }
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final checkedAt = _checkedAt == null
+        ? '未检查'
+        : _timeFormat.format(_checkedAt!);
+    final devItems = _developerProfile == null
+        ? null
+        : _buildDeveloperInfoItems(_developerProfile!);
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('登录状态', style: theme.textTheme.titleMedium),
+                      ),
+                      if (_loading)
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('状态: $_statusText'),
+                  Text('Cookie 数量: $_cookieCount'),
+                  const SizedBox(height: 4),
+                  Text('上次检查: $checkedAt', style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _loading ? null : _openLoginWebView,
+                        icon: const Icon(Icons.login),
+                        label: const Text('WebView 登录'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _loading ? null : _refreshStatus,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('刷新状态'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '开发者信息',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                      ),
+                      if (_devLoading)
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (_developerProfile == null && !_devLoading)
+                    Text(
+                      '点击下方按钮加载开发者信息。',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  if (_devError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _devError!,
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  ],
+                  if (_developerProfile != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_developerProfile!.avatarUrl != null)
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundImage: NetworkImage(
+                              _developerProfile!.avatarUrl!,
+                            ),
+                          ),
+                        if (_developerProfile!.avatarUrl != null)
+                          const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: devItems == null || devItems.isEmpty
+                                ? [
+                                    Text(
+                                      '暂无可显示字段。',
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ]
+                                : devItems.map((item) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child:
+                                          Text('${item.label}: ${item.value}'),
+                                    );
+                                  }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _devLoading ? null : _loadDeveloperProfile,
+                        icon: const Icon(Icons.person_search),
+                        label: Text(
+                          _developerProfile == null ? '加载信息' : '刷新信息',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('说明', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Text(
+                    '仅支持 WebView 登录，不会展示或手动输入 Cookie。',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '登录信息保存在 WebView 存储中，正常情况下重启应用仍可使用。',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '如提示未登录，请重新打开 WebView 登录并进入收益页面。',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class IncomePage extends StatefulWidget {
   const IncomePage({super.key});
 
@@ -179,15 +724,12 @@ class IncomePage extends StatefulWidget {
 }
 
 class _IncomePageState extends State<IncomePage> {
-  final _categoryController = TextEditingController(text: 'pe');
   final _dateFormat = DateFormat('yyyy-MM-dd');
 
   DateTimeRange? _range;
-  bool _isThirdParty = false;
+  _Category _category = _Category.pe;
   bool _loading = false;
   String? _error;
-  String _loginStatus = '未登录';
-  int _cookieCount = 0;
 
   int _totalDiamonds = 0;
   int _totalPoints = 0;
@@ -201,12 +743,10 @@ class _IncomePageState extends State<IncomePage> {
   @override
   void initState() {
     super.initState();
-    _refreshLoginStatus();
   }
 
   @override
   void dispose() {
-    _categoryController.dispose();
     super.dispose();
   }
 
@@ -220,51 +760,67 @@ class _IncomePageState extends State<IncomePage> {
 
   Future<void> _pickRange() async {
     final now = DateTime.now();
-    final initialStart = DateTime(now.year, now.month, now.day);
-    final initialEnd = initialStart;
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020, 1, 1),
-      lastDate: DateTime(now.year + 1, 12, 31),
-      initialDateRange: _range ??
-          DateTimeRange(
-            start: initialStart,
-            end: initialEnd,
-          ),
-    );
+    final initialStart =
+        _range?.start ?? DateTime(now.year, now.month, now.day);
+    final initialEnd = _range?.end ?? initialStart;
+    final isWide = MediaQuery.of(context).size.width >= 900;
+
+    DateTimeRange? picked;
+    if (isWide) {
+      picked = await showDialog<DateTimeRange>(
+        context: context,
+        builder: (context) {
+          return Dialog(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: _RangePickerPanel(
+                initialStart: initialStart,
+                initialEnd: initialEnd,
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      picked = await showModalBottomSheet<DateTimeRange>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (context) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: _RangePickerPanel(
+              initialStart: initialStart,
+              initialEnd: initialEnd,
+            ),
+          );
+        },
+      );
+    }
+
     if (picked != null) {
       setState(() {
         _range = picked;
       });
-    }
-  }
-
-  Future<void> _openLoginWebView() async {
-    final updated = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => const LoginWebViewPage(),
-      ),
-    );
-    if (!mounted) {
-      return;
-    }
-    if (updated == true) {
-      await _refreshLoginStatus();
-      setState(() => _error = null);
+      if (!_loading) {
+        final cookieHeader = await LoginCookieHelper.buildCookieHeader();
+        if (cookieHeader.isNotEmpty) {
+          await _runQuery();
+        }
+      }
     }
   }
 
   Future<void> _runQuery() async {
-    final category = _categoryController.text.trim();
     final range = _range;
 
-    final cookieHeader = await _loadCookieHeader();
+    final cookieHeader = await LoginCookieHelper.buildCookieHeader();
     if (cookieHeader.isEmpty) {
-      setState(() => _error = '请先通过 WebView 登录。');
-      return;
-    }
-    if (category.isEmpty) {
-      setState(() => _error = '请填写类别（如 pe / java）。');
+      setState(() => _error = '请先到“设置”里通过 WebView 登录。');
       return;
     }
     if (range == null) {
@@ -287,8 +843,7 @@ class _IncomePageState extends State<IncomePage> {
 
     final api = McDevApi(
       cookie: cookieHeader,
-      category: category,
-      isThirdParty: _isThirdParty,
+      category: _categoryValue(_category),
     );
 
     try {
@@ -304,7 +859,8 @@ class _IncomePageState extends State<IncomePage> {
         return;
       }
 
-      const batchSize = 4;
+      final isWide = MediaQuery.of(context).size.width >= 900;
+      final batchSize = isWide ? 12 : 6;
       setState(() {
         _totalMods = mods.length;
       });
@@ -385,182 +941,110 @@ class _IncomePageState extends State<IncomePage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '登录状态: $_loginStatus',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _loading ? null : _openLoginWebView,
-                    icon: const Icon(Icons.login),
-                    label: const Text('WebView 登录'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '登录信息保存在本机 WebView Cookie 中，不在界面暴露。',
-                style: theme.textTheme.bodySmall,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _categoryController,
-                decoration: const InputDecoration(
-                  labelText: '类别 (pe/java 等)',
-                  hintText: '例如 pe',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('包含第三方 Mod'),
-                value: _isThirdParty,
-                onChanged: (value) => setState(() => _isThirdParty = value),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '时间范围: ${_rangeLabel()}',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _loading ? null : _pickRange,
-                    child: const Text('选择日期'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _runQuery,
-                  icon: const Icon(Icons.search),
-                  label: const Text('开始查询'),
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (_loading) ...[
-                const LinearProgressIndicator(),
-                const SizedBox(height: 8),
-                Text('已处理 $_processed / $_totalMods'),
+          children: [
+            Text('类别', style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 8),
+            SegmentedButton<_Category>(
+              segments: const [
+                ButtonSegment(value: _Category.pe, label: Text('PE')),
+                ButtonSegment(value: _Category.java, label: Text('Java')),
               ],
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _error!,
-                  style: TextStyle(color: theme.colorScheme.error),
+              selected: {_category},
+              showSelectedIcon: false,
+              onSelectionChanged: (value) {
+                if (value.isNotEmpty) {
+                  setState(() => _category = value.first);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '时间范围: ${_rangeLabel()}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+                TextButton(
+                  onPressed: _loading ? null : _pickRange,
+                  child: const Text('选择日期'),
                 ),
               ],
-              const SizedBox(height: 12),
-              if (_summaries.isNotEmpty) ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '汇总',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Text('总钻石: $_totalDiamonds'),
-                        Text('总绿宝石: $_totalPoints'),
-                        const SizedBox(height: 4),
-                        Text('钻石定价 Mod: $_diamondPricedMods'),
-                        Text('绿宝石定价 Mod: $_emeraldPricedMods'),
-                        if (_otherPricedMods > 0)
-                          Text('其他定价 Mod: $_otherPricedMods'),
-                        const SizedBox(height: 8),
-                        Text(
-                          '提示: 查询时间会转换为 UTC 时间提交到接口。',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '按 Mod 明细 (按钻石降序)',
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemBuilder: (context, index) {
-                    final summary = _summaries[index];
-                    return ListTile(
-                      title: Text(summary.itemName),
-                      subtitle: Text(
-                        '钻石 ${summary.totalDiamonds} · 绿宝石 ${summary.totalPoints} · 订单 ${summary.orderCount}',
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _loading ? null : _runQuery,
+                icon: const Icon(Icons.search),
+                label: const Text('开始查询'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_loading) ...[
+              const LinearProgressIndicator(),
+              const SizedBox(height: 8),
+              Text('已处理 $_processed / $_totalMods'),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+            ],
+            const SizedBox(height: 12),
+            if (_summaries.isNotEmpty) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('汇总', style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Text('总钻石: $_totalDiamonds'),
+                      Text('总绿宝石: $_totalPoints'),
+                      const SizedBox(height: 4),
+                      Text('钻石定价 Mod: $_diamondPricedMods'),
+                      Text('绿宝石定价 Mod: $_emeraldPricedMods'),
+                      if (_otherPricedMods > 0)
+                        Text('其他定价 Mod: $_otherPricedMods'),
+                      const SizedBox(height: 8),
+                      Text(
+                        '提示: 查询时间会转换为 UTC 时间提交到接口。',
+                        style: theme.textTheme.bodySmall,
                       ),
-                      trailing: Text('#${index + 1}'),
-                    );
-                  },
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemCount: _summaries.length,
+                    ],
+                  ),
                 ),
-              ],
+              ),
+              const SizedBox(height: 12),
+              Text('按 Mod 明细 (按钻石降序)', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemBuilder: (context, index) {
+                  final summary = _summaries[index];
+                  return ListTile(
+                    title: Text(summary.itemName),
+                    subtitle: Text(
+                      '钻石 ${summary.totalDiamonds} · 绿宝石 ${summary.totalPoints} · 订单 ${summary.orderCount}',
+                    ),
+                    trailing: Text('#${index + 1}'),
+                  );
+                },
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemCount: _summaries.length,
+              ),
+            ],
           ],
         ),
       ),
     );
   }
-
-  Future<void> _refreshLoginStatus() async {
-    final cookieHeader = await _loadCookieHeader();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _cookieCount = cookieHeader.isEmpty ? 0 : cookieHeader.split(';').length;
-      _loginStatus = _cookieCount > 0 ? '已登录 ($_cookieCount)' : '未登录';
-    });
-  }
-
-  Future<String> _loadCookieHeader() async {
-    final manager = CookieManager.instance();
-    final cookieMap = <String, String>{};
-    final urls = [
-      WebUri('https://mc-launcher.webapp.163.com/'),
-      WebUri('https://mcdev.webapp.163.com/'),
-    ];
-
-    for (final url in urls) {
-      final cookies = await manager.getCookies(url: url);
-      for (final cookie in cookies) {
-        final name = cookie.name;
-        if (name.isEmpty) {
-          continue;
-        }
-        cookieMap[name] = cookie.value;
-      }
-    }
-
-    if (cookieMap.isEmpty) {
-      return '';
-    }
-    return cookieMap.entries
-        .map((entry) => '${entry.key}=${entry.value}')
-        .join('; ');
-  }
 }
 
-enum _PriceKind {
-  diamond,
-  emerald,
-  other,
-}
+enum _PriceKind { diamond, emerald, other }
 
 _PriceKind _priceKind(String? raw) {
   if (raw == null || raw.isEmpty) {
@@ -570,10 +1054,23 @@ _PriceKind _priceKind(String? raw) {
   if (value.contains('diamond') || value.contains('钻石')) {
     return _PriceKind.diamond;
   }
-  if (value.contains('emerald') || value.contains('绿宝石') || value.contains('point')) {
+  if (value.contains('emerald') ||
+      value.contains('绿宝石') ||
+      value.contains('point')) {
     return _PriceKind.emerald;
   }
   return _PriceKind.other;
+}
+
+enum _Category { pe, java }
+
+String _categoryValue(_Category category) {
+  switch (category) {
+    case _Category.pe:
+      return 'pe';
+    case _Category.java:
+      return 'java';
+  }
 }
 
 class LoginWebViewPage extends StatefulWidget {
@@ -589,25 +1086,7 @@ class _LoginWebViewPageState extends State<LoginWebViewPage> {
   String _status = '请在此页面登录，并进入收益页面后点击“完成登录”。';
 
   Future<void> _syncCookies() async {
-    final manager = CookieManager.instance();
-    final cookieMap = <String, String>{};
-
-    final urls = [
-      WebUri('https://mc-launcher.webapp.163.com/'),
-      WebUri('https://mcdev.webapp.163.com/'),
-    ];
-
-    for (final url in urls) {
-      final cookies = await manager.getCookies(url: url);
-      for (final cookie in cookies) {
-        final name = cookie.name;
-        if (name.isEmpty) {
-          continue;
-        }
-        cookieMap[name] = cookie.value;
-      }
-    }
-
+    final cookieMap = await LoginCookieHelper.readCookies();
     if (!mounted) {
       return;
     }
@@ -632,10 +1111,7 @@ class _LoginWebViewPageState extends State<LoginWebViewPage> {
             icon: const Icon(Icons.refresh),
             onPressed: () => _controller?.reload(),
           ),
-          TextButton(
-            onPressed: _syncCookies,
-            child: const Text('完成登录'),
-          ),
+          TextButton(onPressed: _syncCookies, child: const Text('完成登录')),
         ],
       ),
       body: Column(
@@ -644,10 +1120,7 @@ class _LoginWebViewPageState extends State<LoginWebViewPage> {
             width: double.infinity,
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             padding: const EdgeInsets.all(8),
-            child: Text(
-              _status,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            child: Text(_status, style: Theme.of(context).textTheme.bodySmall),
           ),
           if (_loading) const LinearProgressIndicator(minHeight: 2),
           Expanded(
@@ -682,16 +1155,11 @@ class _LoginWebViewPageState extends State<LoginWebViewPage> {
 }
 
 class McDevApi {
-  McDevApi({
-    required this.cookie,
-    required this.category,
-    required this.isThirdParty,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  McDevApi({required this.cookie, required this.category, http.Client? client})
+    : _client = client ?? http.Client();
 
   final String cookie;
   final String category;
-  final bool isThirdParty;
   final http.Client _client;
   final Random _random = Random();
 
@@ -710,7 +1178,7 @@ class McDevApi {
         'mc-launcher.webapp.163.com',
         '/items/categories/$category/',
         {
-          'is_third_party': isThirdParty ? 'true' : 'false',
+          'is_third_party': 'false',
           'start': start.toString(),
           'span': span.toString(),
         },
@@ -760,16 +1228,75 @@ class McDevApi {
     return items;
   }
 
+  Future<DeveloperProfile> fetchDeveloperProfile() async {
+    Map<String, dynamic>? authorData;
+    Map<String, dynamic>? userData;
+    Object? authorError;
+    Object? userError;
+
+    try {
+      final authorPayload = await _getJson(
+        Uri.https('mc-launcher.webapp.163.com', '/users/author_info'),
+      );
+      if (authorPayload['status']?.toString() == 'ok') {
+        final data = authorPayload['data'];
+        if (data is Map<String, dynamic>) {
+          authorData = data;
+        }
+      }
+    } catch (error) {
+      authorError = error;
+    }
+
+    try {
+      final userPayload = await _getJson(
+        Uri.https('mc-launcher.webapp.163.com', '/users/me'),
+      );
+      if (userPayload['status']?.toString() == 'ok') {
+        final data = userPayload['data'];
+        if (data is Map<String, dynamic>) {
+          userData = data;
+        }
+      }
+    } catch (error) {
+      userError = error;
+    }
+
+    if (authorData == null && userData == null) {
+      if (authorError != null) {
+        throw authorError;
+      }
+      if (userError != null) {
+        throw userError;
+      }
+      throw McDevException(
+        '未获取到开发者信息',
+        Uri.https('mc-launcher.webapp.163.com', '/users/author_info'),
+      );
+    }
+
+    final avatarUrl = authorData?['head_img']?.toString();
+    final bio = authorData?['content']?.toString();
+    final status = authorData?['status']?.toString();
+    final updatedAt = authorData?['update_time']?.toString();
+
+    return DeveloperProfile(
+      avatarUrl: avatarUrl,
+      bio: bio,
+      status: status,
+      updatedAt: updatedAt,
+      authorRaw: authorData,
+      userRaw: userData,
+    );
+  }
+
   Future<IncomeSummary> fetchIncome(ModItem mod, DateTimeRange range) async {
     final beginUtc = _startOfDay(range.start).toUtc().toIso8601String();
     final endUtc = _endOfDay(range.end).toUtc().toIso8601String();
     final uri = Uri.https(
       'mc-launcher.webapp.163.com',
       '/items/categories/$category/${mod.id}/incomes/',
-      {
-        'begin_time': beginUtc,
-        'end_time': endUtc,
-      },
+      {'begin_time': beginUtc, 'end_time': endUtc},
     );
 
     final payload = await _getJson(uri);
@@ -895,6 +1422,24 @@ class IncomeSummary {
   final int orderCount;
   final String? error;
   final String? priceType;
+}
+
+class DeveloperProfile {
+  DeveloperProfile({
+    this.avatarUrl,
+    this.bio,
+    this.status,
+    this.updatedAt,
+    this.authorRaw,
+    this.userRaw,
+  });
+
+  final String? avatarUrl;
+  final String? bio;
+  final String? status;
+  final String? updatedAt;
+  final Map<String, dynamic>? authorRaw;
+  final Map<String, dynamic>? userRaw;
 }
 
 class McDevException implements Exception {
