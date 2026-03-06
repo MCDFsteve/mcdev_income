@@ -170,7 +170,7 @@ PreferredSizeWidget buildOreAppBar(
   final colors = ore.colors;
   final palette = _fixedBarPalette();
   final textStyle =
-      ore.typography.choiceTitle.copyWith(color: colors.textPrimary);
+      ore.typography.choiceTitle.copyWith(color: Colors.white);
   final borderWidth = ore.borderWidth;
   final depth = borderWidth * 2;
   final actionWidgets = actions ?? const <Widget>[];
@@ -206,7 +206,7 @@ PreferredSizeWidget buildOreAppBar(
               ),
               if (actionWidgets.isNotEmpty)
                 IconTheme(
-                  data: IconThemeData(color: colors.textPrimary),
+                  data: const IconThemeData(color: Colors.white),
                   child: DefaultTextStyle.merge(
                     style: textStyle,
                     child: Row(
@@ -1943,7 +1943,8 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     final horizontalPadding =
         ore.borderWidth * OreTokens.buttonPadMdHUnits * 2;
-    return maxWidth + horizontalPadding;
+    final extraGap = OreTokens.gapSm * 2;
+    return maxWidth + horizontalPadding + extraGap;
   }
 
   @override
