@@ -4019,7 +4019,10 @@ class _IncomePageState extends State<IncomePage> {
                 ),
               ),
             ),
-            Container(width: 1, color: theme.dividerColor),
+            Container(
+              width: OreTheme.of(context).borderWidth,
+              color: OreTheme.of(context).colors.border,
+            ),
             Expanded(
               flex: 6,
               child: Padding(

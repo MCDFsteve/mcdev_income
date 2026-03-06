@@ -3,6 +3,10 @@ library ore_material;
 import 'package:flutter/material.dart'
     hide
         Card,
+        DropdownButton,
+        DropdownButtonFormField,
+        DropdownButtonHideUnderline,
+        DropdownMenuItem,
         ElevatedButton,
         OutlinedButton,
         TextButton,
@@ -15,6 +19,10 @@ import 'package:oreui_flutter/oreui_flutter.dart';
 export 'package:flutter/material.dart'
     hide
         Card,
+        DropdownButton,
+        DropdownButtonFormField,
+        DropdownButtonHideUnderline,
+        DropdownMenuItem,
         ElevatedButton,
         OutlinedButton,
         TextButton,
@@ -32,6 +40,8 @@ export 'package:oreui_flutter/oreui_flutter.dart'
         OreChoiceDescription,
         OreChoiceDock,
         OreColors,
+        OreDropdownButton,
+        OreDropdownItem,
         OrePixelIcon,
         OreScrollbar,
         OreSurface,
@@ -86,6 +96,113 @@ class Scrollbar extends StatelessWidget {
       child: child,
     );
   }
+}
+
+class DropdownMenuItem<T> extends StatelessWidget {
+  const DropdownMenuItem({
+    super.key,
+    required this.value,
+    required this.child,
+  });
+
+  final T value;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => child;
+}
+
+class DropdownButton<T> extends StatelessWidget {
+  const DropdownButton({
+    super.key,
+    required this.items,
+    required this.onChanged,
+    this.value,
+    this.hint,
+    this.isExpanded = false,
+    this.isDense = false,
+  });
+
+  final List<DropdownMenuItem<T>>? items;
+  final ValueChanged<T?>? onChanged;
+  final T? value;
+  final Widget? hint;
+  final bool isExpanded;
+  final bool isDense;
+
+  @override
+  Widget build(BuildContext context) {
+    final oreItems = (items ?? <DropdownMenuItem<T>>[])
+        .map((item) => OreDropdownItem<T>(
+              value: item.value,
+              child: item.child,
+            ))
+        .toList();
+    return OreDropdownButton<T>(
+      items: oreItems,
+      value: value,
+      hint: hint,
+      onChanged: onChanged == null ? null : (value) => onChanged?.call(value),
+      size: isDense ? OreButtonSize.sm : OreButtonSize.md,
+      fullWidth: isExpanded,
+    );
+  }
+}
+
+class DropdownButtonFormField<T> extends StatelessWidget {
+  const DropdownButtonFormField({
+    super.key,
+    required this.items,
+    required this.onChanged,
+    this.value,
+    this.hint,
+    this.decoration,
+    this.isExpanded = false,
+    this.isDense = false,
+  });
+
+  final List<DropdownMenuItem<T>>? items;
+  final ValueChanged<T?>? onChanged;
+  final T? value;
+  final Widget? hint;
+  final InputDecoration? decoration;
+  final bool isExpanded;
+  final bool isDense;
+
+  @override
+  Widget build(BuildContext context) {
+    final labelText = decoration?.labelText;
+    final resolvedHint = hint ?? (labelText == null ? null : Text(labelText));
+    Widget dropdown = DropdownButton<T>(
+      items: items,
+      value: value,
+      hint: resolvedHint,
+      onChanged: onChanged,
+      isExpanded: isExpanded,
+      isDense: isDense,
+    );
+    if (labelText == null) {
+      return dropdown;
+    }
+    final ore = OreTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(labelText, style: ore.typography.caption),
+        const SizedBox(height: OreTokens.gapXs),
+        dropdown,
+      ],
+    );
+  }
+}
+
+class DropdownButtonHideUnderline extends StatelessWidget {
+  const DropdownButtonHideUnderline({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => child;
 }
 
 class ElevatedButton extends StatelessWidget {
