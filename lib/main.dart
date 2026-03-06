@@ -12,23 +12,153 @@ void main() {
   runApp(const McDevIncomeApp());
 }
 
-class McDevIncomeApp extends StatelessWidget {
+class McDevIncomeApp extends StatefulWidget {
   const McDevIncomeApp({super.key});
 
   @override
+  State<McDevIncomeApp> createState() => _McDevIncomeAppState();
+}
+
+class _McDevIncomeAppState extends State<McDevIncomeApp> {
+  final ValueNotifier<ThemeMode> _themeModeNotifier =
+      ValueNotifier<ThemeMode>(ThemeMode.system);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadThemeMode();
+  }
+
+  Future<void> _loadThemeMode() async {
+    final stored = await ThemeModeStore.load();
+    if (!mounted) {
+      return;
+    }
+    _themeModeNotifier.value = stored;
+  }
+
+  @override
+  void dispose() {
+    _themeModeNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'MC开发者收益助手',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-        extensions: <ThemeExtension<dynamic>>[
-          OreThemeData.light(),
-        ],
+    return AppThemeController(
+      notifier: _themeModeNotifier,
+      child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: _themeModeNotifier,
+        builder: (context, themeMode, _) {
+          return MaterialApp(
+            title: 'MC开发者收益助手',
+            themeMode: themeMode,
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+              useMaterial3: true,
+              extensions: <ThemeExtension<dynamic>>[
+                OreThemeData.light(),
+              ],
+            ),
+            darkTheme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.deepPurple,
+                brightness: Brightness.dark,
+              ),
+              brightness: Brightness.dark,
+              useMaterial3: true,
+              extensions: <ThemeExtension<dynamic>>[
+                OreThemeData.dark(),
+              ],
+            ),
+            home: const HomeShell(),
+          );
+        },
       ),
-      home: const HomeShell(),
     );
   }
+}
+
+class AppThemeController extends InheritedNotifier<ValueNotifier<ThemeMode>> {
+  const AppThemeController({
+    super.key,
+    required ValueNotifier<ThemeMode> notifier,
+    required super.child,
+  }) : super(notifier: notifier);
+
+  static ValueNotifier<ThemeMode> of(BuildContext context) {
+    final widget =
+        context.dependOnInheritedWidgetOfExactType<AppThemeController>();
+    assert(widget != null, 'AppThemeController not found in context.');
+    return widget!.notifier!;
+  }
+}
+
+class ThemeModeStore {
+  const ThemeModeStore._();
+
+  static const _key = 'theme_mode';
+
+  static ThemeMode _parse(String? raw) {
+    switch (raw) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      case 'system':
+        return ThemeMode.system;
+    }
+    return ThemeMode.system;
+  }
+
+  static String _serialize(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'light';
+      case ThemeMode.dark:
+        return 'dark';
+      case ThemeMode.system:
+        return 'system';
+    }
+  }
+
+  static Future<ThemeMode> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _parse(prefs.getString(_key));
+  }
+
+  static Future<void> save(ThemeMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, _serialize(mode));
+  }
+}
+
+class _FixedBarPalette {
+  const _FixedBarPalette({
+    required this.background,
+    required this.border,
+    required this.highlight,
+    required this.shadow,
+    required this.shadowStrong,
+  });
+
+  final Color background;
+  final Color border;
+  final Color highlight;
+  final Color shadow;
+  final Color shadowStrong;
+}
+
+_FixedBarPalette _fixedBarPalette() {
+  final light = OreColors.light();
+  final dark = OreColors.dark();
+  return _FixedBarPalette(
+    background: dark.surface,
+    border: light.border,
+    highlight: light.highlight,
+    shadow: light.shadow,
+    shadowStrong: light.shadowStrong,
+  );
 }
 
 PreferredSizeWidget buildOreAppBar(
@@ -38,10 +168,9 @@ PreferredSizeWidget buildOreAppBar(
 }) {
   final ore = OreTheme.of(context);
   final colors = ore.colors;
-  final controlColors = resolveControlColors(context, colors);
-  final appBarColor = controlColors.surface;
+  final palette = _fixedBarPalette();
   final textStyle =
-      ore.typography.label.copyWith(color: colors.textPrimary);
+      ore.typography.choiceTitle.copyWith(color: colors.textPrimary);
   final borderWidth = ore.borderWidth;
   final depth = borderWidth * 2;
   final actionWidgets = actions ?? const <Widget>[];
@@ -49,10 +178,10 @@ PreferredSizeWidget buildOreAppBar(
   return PreferredSize(
     preferredSize: const Size.fromHeight(kToolbarHeight),
     child: OreSurface(
-      color: appBarColor,
-      borderColor: colors.border,
-      highlightColor: colors.highlight,
-      shadowColor: colors.shadowStrong,
+      color: palette.background,
+      borderColor: palette.border,
+      highlightColor: palette.highlight,
+      shadowColor: palette.shadowStrong,
       borderWidth: borderWidth,
       depth: depth,
       highlightDepth: borderWidth,
@@ -189,8 +318,7 @@ class _HomeShellState extends State<HomeShell> {
     final mobileButtonWidth =
         (width + overlap * (navCount - 1)) / navCount;
     final railButtonWidth = OreTokens.controlHeightMd * 3;
-    final navCardColor =
-        resolveControlColors(context, ore.colors).surface;
+    final navPalette = _fixedBarPalette();
     final navItems = _buildNavItems(
       context,
       buttonWidth: isWide ? null : mobileButtonWidth,
@@ -204,8 +332,15 @@ class _HomeShellState extends State<HomeShell> {
           children: [
             SizedBox(
               height: double.infinity,
-              child: OreCard(
-                color: navCardColor,
+              child: OreSurface(
+                color: navPalette.background,
+                borderColor: navPalette.border,
+                highlightColor: navPalette.highlight,
+                shadowColor: navPalette.shadow,
+                borderWidth: ore.borderWidth,
+                depth: ore.borderWidth * 2,
+                highlightDepth: ore.borderWidth,
+                shadowDepth: ore.borderWidth * 2,
                 padding: EdgeInsets.zero,
                 child: OreChoiceButtons(
                   items: navItems,
@@ -459,31 +594,34 @@ class _HomePageState extends State<HomePage> {
     return SafeArea(
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('数据概览', style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 4),
-                      Text(
-                        _updatedAt == null
-                            ? '尚未更新'
-                            : '最近更新 ${_dateTimeFormat.format(_updatedAt!)}',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
+          OreStrip(
+            tone: OreStripTone.dark,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('数据概览', style: theme.textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text(
+                          _updatedAt == null
+                              ? '尚未更新'
+                              : '最近更新 ${_dateTimeFormat.format(_updatedAt!)}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _loading ? null : _loadOverview,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('刷新'),
-                ),
-              ],
+                  OutlinedButton.icon(
+                    onPressed: _loading ? null : _loadOverview,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('刷新'),
+                  ),
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -494,8 +632,7 @@ class _HomePageState extends State<HomePage> {
                     : stats == null
                         ? const Center(child: Text('暂无数据'))
                         : GridView.count(
-                            padding:
-                                const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            padding: EdgeInsets.zero,
                             crossAxisCount: columns,
                             mainAxisSpacing: 0,
                             crossAxisSpacing: 0,
@@ -1768,9 +1905,55 @@ class _SettingsPageState extends State<SettingsPage> {
     return null;
   }
 
+  int _themeModeIndex(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 0;
+      case ThemeMode.dark:
+        return 1;
+      case ThemeMode.system:
+        return 2;
+    }
+  }
+
+  ThemeMode _themeModeFromIndex(int index) {
+    switch (index) {
+      case 0:
+        return ThemeMode.light;
+      case 1:
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  double _choiceButtonWidth(BuildContext context, List<String> labels) {
+    final ore = OreTheme.of(context);
+    final style = ore.typography.label;
+    final painter = TextPainter(
+      textDirection: Directionality.of(context),
+    );
+    var maxWidth = 0.0;
+    for (final label in labels) {
+      painter.text = TextSpan(text: label, style: style);
+      painter.layout();
+      if (painter.width > maxWidth) {
+        maxWidth = painter.width;
+      }
+    }
+    final horizontalPadding =
+        ore.borderWidth * OreTokens.buttonPadMdHUnits * 2;
+    return maxWidth + horizontalPadding;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final themeNotifier = AppThemeController.of(context);
+    final themeMode = themeNotifier.value;
+    final themeLabels = const ['浅色模式', '深色模式', '跟随系统'];
+    final themeIndex = _themeModeIndex(themeMode);
+    final themeButtonWidth = _choiceButtonWidth(context, themeLabels);
     final actionButtonWidth = OreTokens.controlHeightMd * 5;
     final checkedAt = _checkedAt == null
         ? '未检查'
@@ -1784,12 +1967,39 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.zero,
         children: [
           OreStrip(
             tone: OreStripTone.dark,
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('主题模式', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  OreChoiceButtons(
+                    items:
+                        themeLabels.map((label) => Text(label)).toList(),
+                    selectedIndex: themeIndex,
+                    onChanged: (value) {
+                      final next = _themeModeFromIndex(value);
+                      if (next == themeNotifier.value) {
+                        return;
+                      }
+                      themeNotifier.value = next;
+                      ThemeModeStore.save(next);
+                    },
+                    buttonWidth: themeButtonWidth,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          OreStrip(
+            tone: OreStripTone.dark,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1844,7 +2054,7 @@ class _SettingsPageState extends State<SettingsPage> {
           OreStrip(
             tone: OreStripTone.dark,
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1938,8 +2148,6 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          const SizedBox(height: 0),
         ],
       ),
     );
