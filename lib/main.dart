@@ -31,6 +31,67 @@ class McDevIncomeApp extends StatelessWidget {
   }
 }
 
+PreferredSizeWidget buildOreAppBar(
+  BuildContext context, {
+  required String title,
+  List<Widget>? actions,
+}) {
+  final ore = OreTheme.of(context);
+  final colors = ore.colors;
+  final controlColors = resolveControlColors(context, colors);
+  final appBarColor = controlColors.surface;
+  final textStyle =
+      ore.typography.label.copyWith(color: colors.textPrimary);
+  final actionWidgets = actions ?? const <Widget>[];
+
+  return PreferredSize(
+    preferredSize: const Size.fromHeight(kToolbarHeight),
+    child: OreCard(
+      color: appBarColor,
+      padding: EdgeInsets.zero,
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: kToolbarHeight,
+          child: Row(
+            children: [
+              const SizedBox(width: 12),
+              Expanded(
+                child: DefaultTextStyle(
+                  style: textStyle,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              if (actionWidgets.isNotEmpty)
+                IconTheme(
+                  data: IconThemeData(color: colors.textPrimary),
+                  child: DefaultTextStyle.merge(
+                    style: textStyle,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final widget in actionWidgets)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: widget,
+                          ),
+                        const SizedBox(width: 8),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -42,6 +103,12 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
   static const _titles = ['主页', '收益汇总', 'Mod 列表', '设置'];
+  static const _navEntries = [
+    (Icons.home, '主页'),
+    (Icons.query_stats, '收益'),
+    (Icons.view_list, 'Mod'),
+    (Icons.settings, '设置'),
+  ];
 
   final _pages = const [
     HomePage(),
@@ -50,40 +117,97 @@ class _HomeShellState extends State<HomeShell> {
     SettingsPage(),
   ];
 
+  double _navLabelWidth(BuildContext context, String label) {
+    final style = OreTheme.of(context).typography.label;
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: style),
+      textDirection: Directionality.of(context),
+      maxLines: 1,
+    )..layout();
+    return painter.width;
+  }
+
+  bool _canShowNavLabels(
+    BuildContext context,
+    double? buttonWidth,
+  ) {
+    if (buttonWidth == null) {
+      return true;
+    }
+    final ore = OreTheme.of(context);
+    final padding = ore.borderWidth * OreTokens.buttonPadMdHUnits;
+    final iconSize = 16.0;
+    final gap = OreTokens.gapXs;
+    final maxLabelWidth = _navEntries
+        .map((entry) => _navLabelWidth(context, entry.$2))
+        .fold<double>(0, (value, element) => element > value ? element : value);
+    final neededWidth = padding * 2 + iconSize + gap + maxLabelWidth;
+    return buttonWidth >= neededWidth;
+  }
+
+  List<Widget> _buildNavItems(
+    BuildContext context, {
+    double? buttonWidth,
+  }) {
+    final showLabels = _canShowNavLabels(context, buttonWidth);
+    return _navEntries
+        .map(
+          (entry) {
+            final icon = OrePixelIcon(icon: entry.$1, size: 16);
+            if (!showLabels) {
+              return icon;
+            }
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                icon,
+                const SizedBox(width: OreTokens.gapXs),
+                Text(entry.$2),
+              ],
+            );
+          },
+        )
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final isWide = width >= 900;
+    final ore = OreTheme.of(context);
+    final navCount = _navEntries.length;
+    final overlap = ore.borderWidth;
+    final mobileButtonWidth =
+        (width + overlap * (navCount - 1)) / navCount;
+    final railButtonWidth = OreTokens.controlHeightMd * 3;
+    final navCardColor =
+        resolveControlColors(context, ore.colors).surface;
+    final navItems = _buildNavItems(
+      context,
+      buttonWidth: isWide ? null : mobileButtonWidth,
+    );
 
     if (isWide) {
       return Scaffold(
-        appBar: AppBar(title: Text(_titles[_index])),
+        appBar: buildOreAppBar(context, title: _titles[_index]),
         body: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            NavigationRail(
-              selectedIndex: _index,
-              onDestinationSelected: (value) => setState(() => _index = value),
-              labelType: NavigationRailLabelType.all,
-              destinations: const [
-                NavigationRailDestination(
-                  icon: Icon(Icons.home),
-                  label: Text('主页'),
+            SizedBox(
+              height: double.infinity,
+              child: OreCard(
+                color: navCardColor,
+                padding: EdgeInsets.zero,
+                child: OreChoiceButtons(
+                  items: navItems,
+                  selectedIndex: _index,
+                  onChanged: (value) => setState(() => _index = value),
+                  dock: OreChoiceDock.left,
+                  buttonWidth: railButtonWidth,
+                  fullWidth: true,
                 ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.query_stats),
-                  label: Text('收益'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.view_list),
-                  label: Text('Mod'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.settings),
-                  label: Text('设置'),
-                ),
-              ],
+              ),
             ),
-            const VerticalDivider(width: 1),
             Expanded(
               child: IndexedStack(index: _index, children: _pages),
             ),
@@ -93,18 +217,17 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(_titles[_index])),
+      appBar: buildOreAppBar(context, title: _titles[_index]),
       body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: (value) => setState(() => _index = value),
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: '主页'),
-          BottomNavigationBarItem(icon: Icon(Icons.query_stats), label: '收益'),
-          BottomNavigationBarItem(icon: Icon(Icons.view_list), label: 'Mod'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: '设置'),
-        ],
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: OreChoiceButtons(
+          items: navItems,
+          selectedIndex: _index,
+          onChanged: (value) => setState(() => _index = value),
+          dock: OreChoiceDock.bottom,
+          buttonWidth: mobileButtonWidth,
+        ),
       ),
     );
   }
@@ -225,7 +348,8 @@ class _HomePageState extends State<HomePage> {
     String? subtitle,
   }) {
     final theme = Theme.of(context);
-    return Card(
+    return OreStrip(
+      tone: OreStripTone.dark,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -259,7 +383,8 @@ class _HomePageState extends State<HomePage> {
     final isUp = diff >= 0;
     final diffText = '${isUp ? '+' : ''}${_formatInt(diff)}';
     final diffColor = isUp ? Colors.green : Colors.red;
-    return Card(
+    return OreStrip(
+      tone: OreStripTone.dark,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -363,8 +488,8 @@ class _HomePageState extends State<HomePage> {
                             padding:
                                 const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             crossAxisCount: columns,
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 0,
+                            crossAxisSpacing: 0,
                             childAspectRatio: columns >= 3 ? 1.6 : 2.4,
                             children: [
                               _buildPairCard(
@@ -692,51 +817,49 @@ class _ModsPageState extends State<ModsPage> {
     final releaseText =
         mod.releaseAt == null ? '上架时间未知' : _dateFormat.format(mod.releaseAt!);
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    mod.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall,
+    return OreCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  mod.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: statusColor,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    statusLabel,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: statusColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('ID: ${mod.id}', style: theme.textTheme.bodySmall),
-            const SizedBox(height: 4),
-            Text('价格: ${_priceLabel(mod)}', style: theme.textTheme.bodySmall),
-            const SizedBox(height: 4),
-            Text('总销量: ${_salesLabel(mod)}', style: theme.textTheme.bodySmall),
-            const SizedBox(height: 4),
-            Text('上架: $releaseText', style: theme.textTheme.bodySmall),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('ID: ${mod.id}', style: theme.textTheme.bodySmall),
+          const SizedBox(height: 4),
+          Text('价格: ${_priceLabel(mod)}', style: theme.textTheme.bodySmall),
+          const SizedBox(height: 4),
+          Text('总销量: ${_salesLabel(mod)}', style: theme.textTheme.bodySmall),
+          const SizedBox(height: 4),
+          Text('上架: $releaseText', style: theme.textTheme.bodySmall),
+        ],
       ),
     );
   }
@@ -752,75 +875,78 @@ class _ModsPageState extends State<ModsPage> {
     return SafeArea(
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    SegmentedButton<_Category>(
-                      segments: const [
-                        ButtonSegment(
-                          value: _Category.pe,
-                          label: Text('PE'),
-                        ),
-                        ButtonSegment(
-                          value: _Category.java,
-                          label: Text('Java'),
-                        ),
-                      ],
-                      selected: {_category},
-                      buttonWidth: segmentButtonWidth,
-                      onSelectionChanged: _loading
-                          ? null
-                          : (value) {
-                              final next = value.first;
-                              if (next == _category) {
-                                return;
-                              }
-                              setState(() {
-                                _category = next;
-                                _mods = [];
-                              });
-                              _loadMods();
-                            },
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _loading ? null : _loadMods,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('刷新'),
-                      width: segmentButtonWidth,
-                    ),
-                    Text('显示 ${filtered.length} / 共 ${_mods.length}'),
-                    if (_salesLoading) const Text('总销量加载中...'),
-                    if (_salesError != null)
-                      Text(
-                        '总销量加载失败',
-                        style: TextStyle(color: theme.colorScheme.error),
+          OreStrip(
+            tone: OreStripTone.dark,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SegmentedButton<_Category>(
+                    segments: const [
+                      ButtonSegment(
+                        value: _Category.pe,
+                        label: Text('PE'),
                       ),
-                    if (!_salesLoading && _salesError == null)
-                      Text(
-                        _salesUpdatedAt == null
-                            ? '总销量未更新'
-                            : '总销量更新 ${_dateFormat.format(_salesUpdatedAt!)}',
+                      ButtonSegment(
+                        value: _Category.java,
+                        label: Text('Java'),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    labelText: '搜索 Mod 名称或 ID',
-                    border: OutlineInputBorder(),
-                    isDense: true,
+                    ],
+                    selected: {_category},
+                    buttonWidth: segmentButtonWidth,
+                    onSelectionChanged: _loading
+                        ? null
+                        : (value) {
+                            final next = value.first;
+                            if (next == _category) {
+                              return;
+                            }
+                            setState(() {
+                              _category = next;
+                              _mods = [];
+                            });
+                            _loadMods();
+                          },
                   ),
-                  onChanged: (value) => setState(() => _search = value),
+                  OutlinedButton.icon(
+                    onPressed: _loading ? null : _loadMods,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('刷新'),
+                    width: segmentButtonWidth,
+                  ),
+                  Text('显示 ${filtered.length} / 共 ${_mods.length}'),
+                  if (_salesLoading) const Text('总销量加载中...'),
+                  if (_salesError != null)
+                    Text(
+                      '总销量加载失败',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  if (!_salesLoading && _salesError == null)
+                    Text(
+                      _salesUpdatedAt == null
+                          ? '总销量未更新'
+                          : '总销量更新 ${_dateFormat.format(_salesUpdatedAt!)}',
+                    ),
+                ],
+              ),
+            ),
+          ),
+          OreStrip(
+            tone: OreStripTone.dark,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: TextField(
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  labelText: '搜索 Mod 名称或 ID',
+                  border: OutlineInputBorder(),
+                  isDense: true,
                 ),
-              ],
+                onChanged: (value) => setState(() => _search = value),
+              ),
             ),
           ),
           Expanded(
@@ -832,12 +958,12 @@ class _ModsPageState extends State<ModsPage> {
                         ? const Center(child: Text('暂无 Mod'))
                         : Scrollbar(
                             child: GridView.builder(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              padding: EdgeInsets.zero,
                               gridDelegate:
                                   SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: isWide ? 2 : 1,
-                                mainAxisSpacing: 12,
-                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 0,
+                                crossAxisSpacing: 0,
                                 mainAxisExtent: isWide ? 190 : 210,
                               ),
                               itemCount: filtered.length,
@@ -1651,7 +1777,8 @@ class _SettingsPageState extends State<SettingsPage> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
+          OreStrip(
+            tone: OreStripTone.dark,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -1705,8 +1832,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          Card(
+          OreStrip(
+            tone: OreStripTone.dark,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -2838,118 +2965,154 @@ class _IncomePageState extends State<IncomePage> {
         ? _selectedPresetId
         : noPresetValue;
 
+    Widget buildSection(Widget child) {
+      return OreStrip(
+        tone: OreStripTone.dark,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: child,
+        ),
+      );
+    }
+
     final leftWidgets = <Widget>[
-      Text('类别', style: theme.textTheme.bodyMedium),
-      const SizedBox(height: 8),
-      SegmentedButton<_Category>(
-        segments: const [
-          ButtonSegment(value: _Category.pe, label: Text('PE')),
-          ButtonSegment(value: _Category.java, label: Text('Java')),
-        ],
-        selected: {_category},
-        showSelectedIcon: false,
-        buttonWidth: segmentButtonWidth,
-        onSelectionChanged: (value) {
-          if (value.isNotEmpty) {
-            setState(() => _category = value.first);
-            _loadMods();
-          }
-        },
-      ),
-      const SizedBox(height: 12),
-      Text(
-        '时间范围: ${_rangeLabel()}',
-        style: theme.textTheme.bodyMedium,
-      ),
-      const SizedBox(height: 8),
-      OutlinedButton.icon(
-        onPressed: _loading ? null : _pickRange,
-        icon: const Icon(Icons.date_range),
-        label: const Text('选择日期'),
-      ),
-      const SizedBox(height: 12),
-      Text('统计范围', style: theme.textTheme.bodyMedium),
-      const SizedBox(height: 8),
-      SegmentedButton<IncomeScope>(
-        segments: const [
-          ButtonSegment(value: IncomeScope.all, label: Text('全部')),
-          ButtonSegment(value: IncomeScope.multiple, label: Text('多个')),
-          ButtonSegment(value: IncomeScope.single, label: Text('单个')),
-        ],
-        selected: {_scope},
-        showSelectedIcon: false,
-        buttonWidth: segmentButtonWidth,
-        onSelectionChanged: (value) {
-          if (value.isNotEmpty) {
-            _setScope(value.first);
-          }
-        },
-      ),
-      const SizedBox(height: 6),
-      OreChoiceDescription(
-        items: IncomeScope.values
-            .map((scope) => Text(_scopePreviewFor(scope)))
-            .toList(),
-        selectedIndex: IncomeScope.values.indexOf(_scope),
-      ),
-      const SizedBox(height: 12),
-      Text('预设', style: theme.textTheme.bodyMedium),
-      const SizedBox(height: 8),
-      Row(
-        children: [
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              value: selectedPresetValue,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                isDense: true,
-                labelText: '选择预设',
-              ),
-              items: [
-                const DropdownMenuItem<String>(
-                  value: noPresetValue,
-                  child: Text('不选择预设'),
-                ),
-                ..._presets.map(
-                  (preset) => DropdownMenuItem<String>(
-                    value: preset.id,
-                    child: Text(preset.name),
-                  ),
-                ),
+      buildSection(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('类别', style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 8),
+            SegmentedButton<_Category>(
+              segments: const [
+                ButtonSegment(value: _Category.pe, label: Text('PE')),
+                ButtonSegment(value: _Category.java, label: Text('Java')),
               ],
-              onChanged: (value) {
-                if (value == null || value == noPresetValue) {
-                  setState(() {
-                    _selectedPresetId = null;
-                  });
-                  return;
+              selected: {_category},
+              showSelectedIcon: false,
+              buttonWidth: segmentButtonWidth,
+              onSelectionChanged: (value) {
+                if (value.isNotEmpty) {
+                  setState(() => _category = value.first);
+                  _loadMods();
                 }
-                _applyPresetById(value);
               },
             ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: '保存为新预设',
-            onPressed: _saveNewPreset,
-            icon: const Icon(Icons.bookmark_add_outlined),
-          ),
-          IconButton(
-            tooltip: '更新当前预设',
-            onPressed: _selectedPresetId == null ? null : _updateSelectedPreset,
-            icon: const Icon(Icons.save_outlined),
-          ),
-          IconButton(
-            tooltip: '管理预设',
-            onPressed: _showPresetManager,
-            icon: const Icon(Icons.manage_accounts_outlined),
-          ),
-        ],
+          ],
+        ),
       ),
-      const SizedBox(height: 12),
+      buildSection(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '时间范围: ${_rangeLabel()}',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _pickRange,
+              icon: const Icon(Icons.date_range),
+              label: const Text('选择日期'),
+            ),
+          ],
+        ),
+      ),
+      buildSection(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('统计范围', style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 8),
+            SegmentedButton<IncomeScope>(
+              segments: const [
+                ButtonSegment(value: IncomeScope.all, label: Text('全部')),
+                ButtonSegment(value: IncomeScope.multiple, label: Text('多个')),
+                ButtonSegment(value: IncomeScope.single, label: Text('单个')),
+              ],
+              selected: {_scope},
+              showSelectedIcon: false,
+              buttonWidth: segmentButtonWidth,
+              onSelectionChanged: (value) {
+                if (value.isNotEmpty) {
+                  _setScope(value.first);
+                }
+              },
+            ),
+            const SizedBox(height: 6),
+            OreChoiceDescription(
+              items: IncomeScope.values
+                  .map((scope) => Text(_scopePreviewFor(scope)))
+                  .toList(),
+              selectedIndex: IncomeScope.values.indexOf(_scope),
+            ),
+          ],
+        ),
+      ),
+      buildSection(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('预设', style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: selectedPresetValue,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                      labelText: '选择预设',
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: noPresetValue,
+                        child: Text('不选择预设'),
+                      ),
+                      ..._presets.map(
+                        (preset) => DropdownMenuItem<String>(
+                          value: preset.id,
+                          child: Text(preset.name),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null || value == noPresetValue) {
+                        setState(() {
+                          _selectedPresetId = null;
+                        });
+                        return;
+                      }
+                      _applyPresetById(value);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: '保存为新预设',
+                  onPressed: _saveNewPreset,
+                  icon: const Icon(Icons.bookmark_add_outlined),
+                ),
+                IconButton(
+                  tooltip: '更新当前预设',
+                  onPressed:
+                      _selectedPresetId == null ? null : _updateSelectedPreset,
+                  icon: const Icon(Icons.save_outlined),
+                ),
+                IconButton(
+                  tooltip: '管理预设',
+                  onPressed: _showPresetManager,
+                  icon: const Icon(Icons.manage_accounts_outlined),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
       if (_scope != IncomeScope.all)
-        Card(
+        OreStrip(
+          tone: OreStripTone.dark,
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -3077,8 +3240,8 @@ class _IncomePageState extends State<IncomePage> {
             ),
           ),
         ),
-      const SizedBox(height: 12),
-      Card(
+      OreStrip(
+        tone: OreStripTone.dark,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -3153,13 +3316,14 @@ class _IncomePageState extends State<IncomePage> {
           ),
         ),
       ),
-      const SizedBox(height: 12),
-      SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: _loading ? null : _runQuery,
-          icon: const Icon(Icons.search),
-          label: Text('开始查询 (${_scopeLabel()})'),
+      buildSection(
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _loading ? null : _runQuery,
+            icon: const Icon(Icons.search),
+            label: Text('开始查询 (${_scopeLabel()})'),
+          ),
         ),
       ),
       const SizedBox(height: 12),
@@ -3186,7 +3350,7 @@ class _IncomePageState extends State<IncomePage> {
             ? const AlwaysScrollableScrollPhysics()
             : const NeverScrollableScrollPhysics(),
         itemCount: summaries.length,
-        separatorBuilder: (_, __) => const Divider(height: 8),
+        separatorBuilder: (_, __) => const SizedBox.shrink(),
         itemBuilder: (context, index) {
           final summary = summaries[index];
           final internalText = _internalRatioTextByModId[summary.itemId] ?? '';
@@ -3227,7 +3391,8 @@ class _IncomePageState extends State<IncomePage> {
           final refundInfo =
               ' · 退款中 ${summary.refundPendingCount} · 已退款 ${summary.refundedCount}'
               '${summary.refundOtherCount > 0 ? ' · 其他退款 ${summary.refundOtherCount}' : ''}';
-          return Card(
+          return OreStrip(
+            tone: OreStripTone.dark,
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -3348,7 +3513,8 @@ class _IncomePageState extends State<IncomePage> {
 
     final rightWidgets = <Widget>[
       if (_summaries.isNotEmpty) ...[
-        Card(
+        OreStrip(
+          tone: OreStripTone.dark,
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -3388,49 +3554,49 @@ class _IncomePageState extends State<IncomePage> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: Text('按 Mod 明细', style: theme.textTheme.titleMedium),
-            ),
-            DropdownButtonHideUnderline(
-              child: DropdownButton<_SummarySortKey>(
-                value: _summarySortKey,
-                isDense: true,
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _summarySortKey = value);
-                  }
+        buildSection(
+          Row(
+            children: [
+              Expanded(
+                child: Text('按 Mod 明细', style: theme.textTheme.titleMedium),
+              ),
+              DropdownButtonHideUnderline(
+                child: DropdownButton<_SummarySortKey>(
+                  value: _summarySortKey,
+                  isDense: true,
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _summarySortKey = value);
+                    }
+                  },
+                  items: const [
+                    DropdownMenuItem(
+                      value: _SummarySortKey.diamonds,
+                      child: Text('钻石'),
+                    ),
+                    DropdownMenuItem(
+                      value: _SummarySortKey.releaseTime,
+                      child: Text('上架时间'),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: _summarySortAscending ? '升序' : '降序',
+                icon: Icon(
+                  _summarySortAscending
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _summarySortAscending = !_summarySortAscending;
+                  });
                 },
-                items: const [
-                  DropdownMenuItem(
-                    value: _SummarySortKey.diamonds,
-                    child: Text('钻石'),
-                  ),
-                  DropdownMenuItem(
-                    value: _SummarySortKey.releaseTime,
-                    child: Text('上架时间'),
-                  ),
-                ],
               ),
-            ),
-            IconButton(
-              tooltip: _summarySortAscending ? '升序' : '降序',
-              icon: Icon(
-                _summarySortAscending
-                    ? Icons.arrow_upward
-                    : Icons.arrow_downward,
-              ),
-              onPressed: () {
-                setState(() {
-                  _summarySortAscending = !_summarySortAscending;
-                });
-              },
-            ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
         buildDetailList(scrollable: false, summaries: displaySummaries),
       ],
     ];
@@ -3442,7 +3608,7 @@ class _IncomePageState extends State<IncomePage> {
             Expanded(
               flex: 4,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+                padding: EdgeInsets.zero,
                 child: Scrollbar(
                   controller: _leftScrollController,
                   thumbVisibility: true,
@@ -3457,7 +3623,7 @@ class _IncomePageState extends State<IncomePage> {
             Expanded(
               flex: 6,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 16, 16, 16),
+                padding: EdgeInsets.zero,
                 child: _summaries.isEmpty
                     ? Center(
                         child: Text(
@@ -3468,7 +3634,8 @@ class _IncomePageState extends State<IncomePage> {
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Card(
+                          OreStrip(
+                            tone: OreStripTone.dark,
                             child: Padding(
                               padding: const EdgeInsets.all(12),
                               child: Column(
@@ -3517,53 +3684,56 @@ class _IncomePageState extends State<IncomePage> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  '按 Mod 明细',
-                                  style: theme.textTheme.titleMedium,
+                          buildSection(
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '按 Mod 明细',
+                                    style: theme.textTheme.titleMedium,
+                                  ),
                                 ),
-                              ),
-                              DropdownButtonHideUnderline(
-                                child: DropdownButton<_SummarySortKey>(
-                                  value: _summarySortKey,
-                                  isDense: true,
-                                  onChanged: (value) {
-                                    if (value != null) {
-                                      setState(() => _summarySortKey = value);
-                                    }
+                                DropdownButtonHideUnderline(
+                                  child: DropdownButton<_SummarySortKey>(
+                                    value: _summarySortKey,
+                                    isDense: true,
+                                    onChanged: (value) {
+                                      if (value != null) {
+                                        setState(
+                                          () => _summarySortKey = value,
+                                        );
+                                      }
+                                    },
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: _SummarySortKey.diamonds,
+                                        child: Text('钻石'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: _SummarySortKey.releaseTime,
+                                        child: Text('上架时间'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip:
+                                      _summarySortAscending ? '升序' : '降序',
+                                  icon: Icon(
+                                    _summarySortAscending
+                                        ? Icons.arrow_upward
+                                        : Icons.arrow_downward,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _summarySortAscending =
+                                          !_summarySortAscending;
+                                    });
                                   },
-                                  items: const [
-                                    DropdownMenuItem(
-                                      value: _SummarySortKey.diamonds,
-                                      child: Text('钻石'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: _SummarySortKey.releaseTime,
-                                      child: Text('上架时间'),
-                                    ),
-                                  ],
                                 ),
-                              ),
-                              IconButton(
-                                tooltip: _summarySortAscending ? '升序' : '降序',
-                                icon: Icon(
-                                  _summarySortAscending
-                                      ? Icons.arrow_upward
-                                      : Icons.arrow_downward,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _summarySortAscending =
-                                        !_summarySortAscending;
-                                  });
-                                },
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 8),
                           Expanded(
                             child: Scrollbar(
                               controller: _rightScrollController,
@@ -3585,12 +3755,11 @@ class _IncomePageState extends State<IncomePage> {
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ...leftWidgets,
-            const SizedBox(height: 12),
             ...rightWidgets,
           ],
         ),
@@ -3670,8 +3839,9 @@ class _LoginWebViewPageState extends State<LoginWebViewPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('WebView 登录'),
+      appBar: buildOreAppBar(
+        context,
+        title: 'WebView 登录',
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

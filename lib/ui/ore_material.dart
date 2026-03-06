@@ -2,6 +2,7 @@ library ore_material;
 
 import 'package:flutter/material.dart'
     hide
+        Card,
         ElevatedButton,
         OutlinedButton,
         TextButton,
@@ -12,6 +13,7 @@ import 'package:oreui_flutter/oreui_flutter.dart';
 
 export 'package:flutter/material.dart'
     hide
+        Card,
         ElevatedButton,
         OutlinedButton,
         TextButton,
@@ -23,9 +25,16 @@ export 'package:oreui_flutter/oreui_flutter.dart'
         OreButton,
         OreButtonSize,
         OreButtonVariant,
+        OreCard,
         OreChoiceButtons,
         OreChoiceDescription,
+        OreChoiceDock,
         OreColors,
+        OrePixelIcon,
+        OreSurface,
+        resolveControlColors,
+        OreStrip,
+        OreStripTone,
         OreTheme,
         OreThemeBuilder,
         OreThemeController,
@@ -289,30 +298,9 @@ class _OreButtonAdapter extends StatelessWidget {
       autofocus: autofocus,
       variant: variant,
       size: size,
-      leading: _wrapIcon(context, leading),
+      leading: leading,
       width: width,
       child: child,
-    );
-  }
-
-  Widget? _wrapIcon(BuildContext context, Widget? icon) {
-    if (icon == null) {
-      return null;
-    }
-    final colors = OreTheme.of(context).colors;
-    final enabled = onPressed != null;
-    final color = enabled
-        ? switch (variant) {
-            OreButtonVariant.primary ||
-            OreButtonVariant.danger =>
-              colors.textInverse,
-            OreButtonVariant.secondary || OreButtonVariant.ghost =>
-              colors.textPrimary,
-          }
-        : colors.textDisabled;
-    return IconTheme.merge(
-      data: IconThemeData(color: color),
-      child: icon,
     );
   }
 }
