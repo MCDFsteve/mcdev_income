@@ -55,6 +55,8 @@ class _McDevIncomeAppState extends State<McDevIncomeApp> {
             themeMode: themeMode,
             theme: ThemeData(
               colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+              scaffoldBackgroundColor: OreColors.light().background,
+              canvasColor: OreColors.light().background,
               useMaterial3: true,
               extensions: <ThemeExtension<dynamic>>[
                 OreThemeData.light(),
@@ -66,6 +68,8 @@ class _McDevIncomeAppState extends State<McDevIncomeApp> {
                 brightness: Brightness.dark,
               ),
               brightness: Brightness.dark,
+              scaffoldBackgroundColor: OreColors.dark().background,
+              canvasColor: OreColors.dark().background,
               useMaterial3: true,
               extensions: <ThemeExtension<dynamic>>[
                 OreThemeData.dark(),
@@ -492,10 +496,10 @@ class _HomePageState extends State<HomePage> {
     String? subtitle,
   }) {
     final theme = Theme.of(context);
-    return OreStrip(
-      tone: OreStripTone.dark,
+    return OreCard(
+      padding: const EdgeInsets.all(12),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -524,13 +528,17 @@ class _HomePageState extends State<HomePage> {
     required int diff,
   }) {
     final theme = Theme.of(context);
-    final isUp = diff >= 0;
-    final diffText = '${isUp ? '+' : ''}${_formatInt(diff)}';
-    final diffColor = isUp ? Colors.green : Colors.red;
-    return OreStrip(
-      tone: OreStripTone.dark,
+    final isUp = diff > 0;
+    final diffText =
+        diff == 0 ? '0' : '${isUp ? '+' : ''}${_formatInt(diff)}';
+    final diffColor = diff == 0
+        ? (theme.textTheme.bodySmall?.color ??
+            theme.colorScheme.onSurface)
+        : (isUp ? Colors.red : Colors.green);
+    return OreCard(
+      padding: const EdgeInsets.all(12),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -642,11 +650,11 @@ class _HomePageState extends State<HomePage> {
                                 context,
                                 title: '本月钻石收益',
                                 mainValue: _formatInt(stats.thisMonthDiamond),
-                                subtitleLabel: '14天日均',
+                                subtitleLabel: '上月整月',
                                 subtitleValue:
-                                    _formatInt(stats.days14AverageDiamond),
+                                    _formatInt(stats.lastMonthDiamond),
                                 diff: stats.thisMonthDiamond -
-                                    stats.days14AverageDiamond,
+                                    stats.lastMonthDiamond,
                               ),
                               _buildPairCard(
                                 context,
@@ -662,11 +670,11 @@ class _HomePageState extends State<HomePage> {
                                 context,
                                 title: '本月资源下载数',
                                 mainValue: _formatInt(stats.thisMonthDownload),
-                                subtitleLabel: '14天日均',
+                                subtitleLabel: '上月整月',
                                 subtitleValue:
-                                    _formatInt(stats.days14AverageDownload),
+                                    _formatInt(stats.lastMonthDownload),
                                 diff: stats.thisMonthDownload -
-                                    stats.days14AverageDownload,
+                                    stats.lastMonthDownload,
                               ),
                               _buildPairCard(
                                 context,
@@ -697,6 +705,7 @@ class ModsPage extends StatefulWidget {
 class _ModsPageState extends State<ModsPage> {
   final _dateFormat = DateFormat('yyyy-MM-dd');
   final _numberFormat = NumberFormat.decimalPattern();
+  final ScrollController _modsScrollController = ScrollController();
   _Category _category = _Category.pe;
   bool _loading = false;
   String? _error;
@@ -726,6 +735,12 @@ class _ModsPageState extends State<ModsPage> {
   void initState() {
     super.initState();
     _loadMods();
+  }
+
+  @override
+  void dispose() {
+    _modsScrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadMods() async {
@@ -1121,7 +1136,9 @@ class _ModsPageState extends State<ModsPage> {
                     : filtered.isEmpty
                         ? const Center(child: Text('暂无 Mod'))
                         : Scrollbar(
+                            controller: _modsScrollController,
                             child: GridView.builder(
+                              controller: _modsScrollController,
                               padding: EdgeInsets.zero,
                               gridDelegate:
                                   SliverGridDelegateWithFixedCrossAxisCount(
@@ -1968,6 +1985,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final ore = OreTheme.of(context);
     final themeNotifier = AppThemeController.of(context);
     final themeMode = themeNotifier.value;
     final themeLabels = const ['浅色模式', '深色模式', '跟随系统'];
@@ -2114,10 +2132,21 @@ class _SettingsPageState extends State<SettingsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (_developerProfile!.avatarUrl != null)
-                          CircleAvatar(
-                            radius: 24,
-                            backgroundImage: NetworkImage(
-                              _developerProfile!.avatarUrl!,
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: ore.colors.border,
+                                width: ore.borderWidth,
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.zero,
+                              child: Image.network(
+                                _developerProfile!.avatarUrl!,
+                                fit: BoxFit.cover,
+                              ),
                             ),
                           ),
                         if (_developerProfile!.avatarUrl != null)
