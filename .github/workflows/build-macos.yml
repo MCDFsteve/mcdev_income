@@ -31,8 +31,17 @@ jobs:
 
       - name: Package macOS app
         run: |
-          cd build/macos/Build/Products/Release
-          zip -r macos-app.zip Runner.app
+          set -euo pipefail
+          RELEASE_DIR="build/macos/Build/Products/Release"
+          APP_DIR=$(find "$RELEASE_DIR" -maxdepth 1 -type d -name "*.app" | head -n 1)
+          if [ -z "$APP_DIR" ]; then
+            echo "No .app bundle found in $RELEASE_DIR"
+            ls -la "$RELEASE_DIR"
+            exit 1
+          fi
+          APP_NAME=$(basename "$APP_DIR")
+          cd "$RELEASE_DIR"
+          zip -r macos-app.zip "$APP_NAME"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
