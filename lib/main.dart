@@ -707,6 +707,21 @@ class _ModsPageState extends State<ModsPage> {
   Map<String, int> _salesById = {};
   DateTime? _salesUpdatedAt;
 
+  double _buttonWidthWithIcon(BuildContext context, String label) {
+    final ore = OreTheme.of(context);
+    final style = ore.typography.label;
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: style),
+      textDirection: Directionality.of(context),
+      maxLines: 1,
+    )..layout();
+    final padding = ore.borderWidth * OreTokens.buttonPadMdHUnits;
+    final iconSize = 16.0;
+    final gap = OreTokens.gapXs;
+    final extra = OreTokens.gapSm * 2;
+    return padding * 2 + iconSize + gap + painter.width + extra;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1014,6 +1029,9 @@ class _ModsPageState extends State<ModsPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final segmentButtonWidth = OreTokens.controlHeightMd * 2.5;
+    final refreshButtonWidth = _buttonWidthWithIcon(context, '刷新');
+    final actionButtonWidth =
+        max(segmentButtonWidth, refreshButtonWidth);
     final width = MediaQuery.of(context).size.width;
     final isWide = width >= 900;
     final filtered = _filteredMods();
@@ -1061,7 +1079,7 @@ class _ModsPageState extends State<ModsPage> {
                     onPressed: _loading ? null : _loadMods,
                     icon: const Icon(Icons.refresh),
                     label: const Text('刷新'),
-                    width: segmentButtonWidth,
+                    width: actionButtonWidth,
                   ),
                   Text('显示 ${filtered.length} / 共 ${_mods.length}'),
                   if (_salesLoading) const Text('总销量加载中...'),
