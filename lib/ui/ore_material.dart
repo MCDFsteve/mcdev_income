@@ -6,6 +6,7 @@ import 'package:flutter/material.dart'
         ElevatedButton,
         OutlinedButton,
         TextButton,
+        Scrollbar,
         TextField,
         SegmentedButton,
         ButtonSegment;
@@ -17,6 +18,7 @@ export 'package:flutter/material.dart'
         ElevatedButton,
         OutlinedButton,
         TextButton,
+        Scrollbar,
         TextField,
         SegmentedButton,
         ButtonSegment;
@@ -31,6 +33,7 @@ export 'package:oreui_flutter/oreui_flutter.dart'
         OreChoiceDock,
         OreColors,
         OrePixelIcon,
+        OreScrollbar,
         OreSurface,
         resolveControlColors,
         OreStrip,
@@ -43,6 +46,47 @@ export 'package:oreui_flutter/oreui_flutter.dart'
         OreTextField,
         OreTokens,
         OreTypography;
+
+class Scrollbar extends StatelessWidget {
+  const Scrollbar({
+    super.key,
+    required this.child,
+    this.controller,
+    this.thumbVisibility,
+    this.trackVisibility,
+    this.thickness,
+    this.trackThickness,
+    this.radius,
+    this.interactive,
+    this.notificationPredicate,
+    this.scrollbarOrientation,
+    this.showTrackOnHover,
+  });
+
+  final Widget child;
+  final ScrollController? controller;
+  final bool? thumbVisibility;
+  final bool? trackVisibility;
+  final double? thickness;
+  final double? trackThickness;
+  final Radius? radius;
+  final bool? interactive;
+  final ScrollNotificationPredicate? notificationPredicate;
+  final ScrollbarOrientation? scrollbarOrientation;
+  final bool? showTrackOnHover;
+
+  @override
+  Widget build(BuildContext context) {
+    return OreScrollbar(
+      controller: controller,
+      thumbVisibility: thumbVisibility ?? true,
+      trackVisibility: trackVisibility ?? true,
+      thickness: thickness,
+      trackThickness: trackThickness,
+      child: child,
+    );
+  }
+}
 
 class ElevatedButton extends StatelessWidget {
   const ElevatedButton({

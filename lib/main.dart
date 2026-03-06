@@ -427,6 +427,11 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  static const _numberFontFamily = 'Minecraft Seven v4';
+  static const _numberFontPackage = 'oreui_flutter';
+  static const _diamondAsset = 'assets/diamond.png';
+  static const _downloadAsset = 'assets/free_download.png';
+
   final _dateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
   final _numberFormat = NumberFormat.decimalPattern();
   bool _loading = false;
@@ -489,6 +494,61 @@ class _HomePageState extends State<HomePage> {
 
   String _formatInt(int value) => _numberFormat.format(value);
 
+  TextStyle _numberStyle(TextStyle? base) {
+    final resolved = base ?? const TextStyle();
+    return resolved.copyWith(
+      fontFamily: _numberFontFamily,
+      package: _numberFontPackage,
+    );
+  }
+
+  Size _assetBaseSize(String asset) {
+    switch (asset) {
+      case _diamondAsset:
+        return const Size(16, 16);
+      case _downloadAsset:
+        return const Size(8, 10);
+    }
+    return const Size(16, 16);
+  }
+
+  Widget _pixelAsset(String asset, {required double targetHeight}) {
+    final base = _assetBaseSize(asset);
+    final baseScale = max(1.0, targetHeight / base.height);
+    final multiplier = asset == _diamondAsset ? 1.25 : 1.0;
+    final scale = baseScale * multiplier;
+    final width = (base.width * scale).roundToDouble();
+    final height = (base.height * scale).roundToDouble();
+    return Image.asset(
+      asset,
+      width: width,
+      height: height,
+      filterQuality: FilterQuality.none,
+      isAntiAlias: false,
+      fit: BoxFit.fill,
+    );
+  }
+
+  Widget _buildStatValue({
+    required String value,
+    required TextStyle? style,
+    String? iconAsset,
+  }) {
+    final text = Text(value, style: _numberStyle(style));
+    if (iconAsset == null) {
+      return text;
+    }
+    final targetHeight = style?.fontSize ?? 18;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _pixelAsset(iconAsset, targetHeight: targetHeight),
+        const SizedBox(width: 6),
+        text,
+      ],
+    );
+  }
+
   Widget _buildSimpleCard(
     BuildContext context, {
     required String title,
@@ -505,10 +565,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             Text(title, style: theme.textTheme.bodySmall),
             const SizedBox(height: 6),
-            Text(
-              value,
-              style: theme.textTheme.titleLarge,
-            ),
+            Text(value, style: _numberStyle(theme.textTheme.titleLarge)),
             if (subtitle != null) ...[
               const SizedBox(height: 4),
               Text(subtitle, style: theme.textTheme.bodySmall),
@@ -526,6 +583,7 @@ class _HomePageState extends State<HomePage> {
     required String subtitleLabel,
     required String subtitleValue,
     required int diff,
+    String? iconAsset,
   }) {
     final theme = Theme.of(context);
     final isUp = diff > 0;
@@ -544,21 +602,29 @@ class _HomePageState extends State<HomePage> {
           children: [
             Text(title, style: theme.textTheme.bodySmall),
             const SizedBox(height: 6),
-            Text(
-              mainValue,
+            _buildStatValue(
+              value: mainValue,
               style: theme.textTheme.titleLarge,
+              iconAsset: iconAsset,
             ),
             const SizedBox(height: 4),
             Text.rich(
               TextSpan(
-                text: '$subtitleLabel $subtitleValue',
                 style: theme.textTheme.bodySmall,
                 children: [
+                  TextSpan(text: '$subtitleLabel '),
                   TextSpan(
-                    text: '  较$subtitleLabel $diffText',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: diffColor,
-                      fontWeight: FontWeight.w600,
+                    text: subtitleValue,
+                    style: _numberStyle(theme.textTheme.bodySmall),
+                  ),
+                  TextSpan(text: '  较$subtitleLabel '),
+                  TextSpan(
+                    text: diffText,
+                    style: _numberStyle(
+                      theme.textTheme.bodySmall?.copyWith(
+                        color: diffColor,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -655,6 +721,7 @@ class _HomePageState extends State<HomePage> {
                                     _formatInt(stats.lastMonthDiamond),
                                 diff: stats.thisMonthDiamond -
                                     stats.lastMonthDiamond,
+                                iconAsset: _diamondAsset,
                               ),
                               _buildPairCard(
                                 context,
@@ -665,6 +732,7 @@ class _HomePageState extends State<HomePage> {
                                     _formatInt(stats.days14AverageDiamond),
                                 diff: stats.yesterdayDiamond -
                                     stats.days14AverageDiamond,
+                                iconAsset: _diamondAsset,
                               ),
                               _buildPairCard(
                                 context,
@@ -675,6 +743,7 @@ class _HomePageState extends State<HomePage> {
                                     _formatInt(stats.lastMonthDownload),
                                 diff: stats.thisMonthDownload -
                                     stats.lastMonthDownload,
+                                iconAsset: _downloadAsset,
                               ),
                               _buildPairCard(
                                 context,
@@ -685,6 +754,7 @@ class _HomePageState extends State<HomePage> {
                                     _formatInt(stats.days14AverageDownload),
                                 diff: stats.yesterdayDownload -
                                     stats.days14AverageDownload,
+                                iconAsset: _downloadAsset,
                               ),
                             ],
                           ),
@@ -1418,8 +1488,11 @@ class LoginCookieHelper {
     WebUri('https://mc-launcher.webapp.163.com/'),
     WebUri('https://mcdev.webapp.163.com/'),
   ];
+  static const _cookieStorageKey = 'login_cookie_cache_v1';
 
-  static Future<Map<String, String>> readCookies() async {
+  static Future<Map<String, String>> readCookies({
+    bool allowCache = true,
+  }) async {
     final manager = CookieManager.instance();
     final cookieMap = <String, String>{};
 
@@ -1434,17 +1507,62 @@ class LoginCookieHelper {
       }
     }
 
-    return cookieMap;
+    if (cookieMap.isNotEmpty) {
+      await _persistCookies(cookieMap);
+      return cookieMap;
+    }
+
+    if (!allowCache) {
+      return {};
+    }
+    return _readCachedCookies();
   }
 
-  static Future<String> buildCookieHeader() async {
-    final cookies = await readCookies();
+  static Future<String> buildCookieHeader({bool allowCache = true}) async {
+    final cookies = await readCookies(allowCache: allowCache);
     if (cookies.isEmpty) {
       return '';
     }
     return cookies.entries
         .map((entry) => '${entry.key}=${entry.value}')
         .join('; ');
+  }
+
+  static Future<void> _persistCookies(Map<String, String> cookies) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cookieStorageKey, jsonEncode(cookies));
+    } catch (_) {
+      // 忽略持久化失败
+    }
+  }
+
+  static Future<Map<String, String>> _readCachedCookies() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cookieStorageKey);
+      if (raw == null || raw.isEmpty) {
+        return {};
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        return {};
+      }
+      final result = <String, String>{};
+      decoded.forEach((key, value) {
+        if (key == null || value == null) {
+          return;
+        }
+        final name = key.toString().trim();
+        if (name.isEmpty) {
+          return;
+        }
+        result[name] = value.toString();
+      });
+      return result;
+    } catch (_) {
+      return {};
+    }
   }
 }
 
@@ -3149,8 +3267,12 @@ class _IncomePageState extends State<IncomePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final ore = OreTheme.of(context);
     final segmentButtonWidth = OreTokens.controlHeightMd * 2.5;
     final modSelectButtonWidth = OreTokens.controlHeightMd * 3;
+    final shareFieldRightPadding =
+        ore.borderWidth * OreTokens.scrollbarWidthUnits +
+            OreTokens.gapSm;
     final defaultInternalParse = _parseRate(
       _defaultInternalRatioController.text,
       fieldName: '默认内部分成',
@@ -3514,58 +3636,67 @@ class _IncomePageState extends State<IncomePage> {
             children: [
               Text('分成参数', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _defaultInternalRatioController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText: '默认内部分成',
-                        hintText: '默认 1.0',
-                        border: const OutlineInputBorder(),
-                        isDense: true,
-                        errorText: defaultInternalParse.isValid
-                            ? null
-                            : defaultInternalParse.error,
+              Padding(
+                padding: EdgeInsets.only(right: shareFieldRightPadding),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _defaultInternalRatioController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: '默认内部分成',
+                          hintText: '默认 1.0',
+                          border: const OutlineInputBorder(),
+                          isDense: true,
+                          errorText: defaultInternalParse.isValid
+                              ? null
+                              : defaultInternalParse.error,
+                        ),
+                        onChanged: (_) => setState(() {}),
                       ),
-                      onChanged: (_) => setState(() {}),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _defaultNeteaseRatioController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText: '默认网易分成',
-                        hintText: '默认 1.0',
-                        border: const OutlineInputBorder(),
-                        isDense: true,
-                        errorText: defaultNeteaseParse.isValid
-                            ? null
-                            : defaultNeteaseParse.error,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _defaultNeteaseRatioController,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: '默认网易分成',
+                          hintText: '默认 1.0',
+                          border: const OutlineInputBorder(),
+                          isDense: true,
+                          errorText: defaultNeteaseParse.isValid
+                              ? null
+                              : defaultNeteaseParse.error,
+                        ),
+                        onChanged: (_) => setState(() {}),
                       ),
-                      onChanged: (_) => setState(() {}),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _taxRateController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: '税收比例',
-                  hintText: '默认 0.2',
-                  border: const OutlineInputBorder(),
-                  isDense: true,
-                  errorText: taxParse.isValid ? null : taxParse.error,
+              Padding(
+                padding: EdgeInsets.only(right: shareFieldRightPadding),
+                child: TextField(
+                  controller: _taxRateController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: '税收比例',
+                    hintText: '默认 0.2',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    errorText: taxParse.isValid ? null : taxParse.error,
+                  ),
+                  onChanged: (_) => setState(() {}),
                 ),
-                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 8),
               Text(
@@ -3717,34 +3848,38 @@ class _IncomePageState extends State<IncomePage> {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: TextField(
-                          controller: neteaseController,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
-                          decoration: InputDecoration(
-                            labelText: '网易分成比例',
-                            hintText:
-                                '默认 ${_formatNumber(defaultNeteaseParse.value)}',
-                            border: const OutlineInputBorder(),
-                            isDense: true,
-                            errorText: neteaseParse.isValid
-                                ? null
-                                : neteaseParse.error,
+                        child: Padding(
+                          padding:
+                              EdgeInsets.only(right: shareFieldRightPadding),
+                          child: TextField(
+                            controller: neteaseController,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                            decoration: InputDecoration(
+                              labelText: '网易分成比例',
+                              hintText:
+                                  '默认 ${_formatNumber(defaultNeteaseParse.value)}',
+                              border: const OutlineInputBorder(),
+                              isDense: true,
+                              errorText: neteaseParse.isValid
+                                  ? null
+                                  : neteaseParse.error,
+                            ),
+                            onChanged: (value) {
+                              setState(() {
+                                final trimmed = value.trim();
+                                if (trimmed.isEmpty) {
+                                  _neteaseRatioTextByModId
+                                      .remove(summary.itemId);
+                                } else {
+                                  _neteaseRatioTextByModId[summary.itemId] =
+                                      value;
+                                }
+                              });
+                            },
                           ),
-                          onChanged: (value) {
-                            setState(() {
-                              final trimmed = value.trim();
-                              if (trimmed.isEmpty) {
-                                _neteaseRatioTextByModId
-                                    .remove(summary.itemId);
-                              } else {
-                                _neteaseRatioTextByModId[summary.itemId] =
-                                    value;
-                              }
-                            });
-                          },
                         ),
                       ),
                     ],
@@ -4086,7 +4221,7 @@ class _LoginWebViewPageState extends State<LoginWebViewPage> {
   String _status = '请在此页面登录，并进入收益页面后点击“完成登录”。';
 
   Future<void> _syncCookies() async {
-    final cookieMap = await LoginCookieHelper.readCookies();
+    final cookieMap = await LoginCookieHelper.readCookies(allowCache: false);
     if (!mounted) {
       return;
     }
