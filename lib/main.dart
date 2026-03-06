@@ -744,6 +744,7 @@ class _ModsPageState extends State<ModsPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final segmentButtonWidth = OreTokens.controlHeightMd * 2.5;
     final width = MediaQuery.of(context).size.width;
     final isWide = width >= 900;
     final filtered = _filteredMods();
@@ -773,6 +774,7 @@ class _ModsPageState extends State<ModsPage> {
                         ),
                       ],
                       selected: {_category},
+                      buttonWidth: segmentButtonWidth,
                       onSelectionChanged: _loading
                           ? null
                           : (value) {
@@ -791,6 +793,7 @@ class _ModsPageState extends State<ModsPage> {
                       onPressed: _loading ? null : _loadMods,
                       icon: const Icon(Icons.refresh),
                       label: const Text('刷新'),
+                      width: segmentButtonWidth,
                     ),
                     Text('显示 ${filtered.length} / 共 ${_mods.length}'),
                     if (_salesLoading) const Text('总销量加载中...'),
@@ -1633,6 +1636,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final actionButtonWidth = OreTokens.controlHeightMd * 5;
     final checkedAt = _checkedAt == null
         ? '未检查'
         : _timeFormat.format(_checkedAt!);
@@ -1680,6 +1684,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onPressed: _loading ? null : _openLoginWebView,
                         icon: const Icon(Icons.login),
                         label: const Text('WebView 登录'),
+                        width: actionButtonWidth,
                       ),
                       OutlinedButton.icon(
                         onPressed: _loading
@@ -1692,6 +1697,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               },
                         icon: const Icon(Icons.refresh),
                         label: const Text('刷新状态'),
+                        width: actionButtonWidth,
                       ),
                     ],
                   ),
@@ -1782,11 +1788,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         icon: const Icon(Icons.person_search),
                         label:
                             Text(_developerProfile == null ? '加载信息' : '刷新信息'),
+                        width: actionButtonWidth,
                       ),
                       ElevatedButton.icon(
                         onPressed: _devLoading ? null : _openDeveloperDetails,
                         icon: const Icon(Icons.open_in_new),
                         label: const Text('查看更多'),
+                        width: actionButtonWidth,
                       ),
                     ],
                   ),
@@ -2105,6 +2113,7 @@ class _IncomePageState extends State<IncomePage> {
     final result = await showDialog<String>(
       context: context,
       builder: (context) {
+        final dialogButtonWidth = OreTokens.controlHeightMd * 3;
         return AlertDialog(
           title: Text(title),
           content: TextField(
@@ -2119,11 +2128,13 @@ class _IncomePageState extends State<IncomePage> {
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('取消'),
+              width: dialogButtonWidth,
             ),
             ElevatedButton(
               onPressed: () =>
                   Navigator.of(context).pop(controller.text.trim()),
               child: const Text('确定'),
+              width: dialogButtonWidth,
             ),
           ],
         );
@@ -2746,6 +2757,8 @@ class _IncomePageState extends State<IncomePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final segmentButtonWidth = OreTokens.controlHeightMd * 2.5;
+    final modSelectButtonWidth = OreTokens.controlHeightMd * 3;
     final defaultInternalParse = _parseRate(
       _defaultInternalRatioController.text,
       fieldName: '默认内部分成',
@@ -2835,6 +2848,7 @@ class _IncomePageState extends State<IncomePage> {
         ],
         selected: {_category},
         showSelectedIcon: false,
+        buttonWidth: segmentButtonWidth,
         onSelectionChanged: (value) {
           if (value.isNotEmpty) {
             setState(() => _category = value.first);
@@ -2864,6 +2878,7 @@ class _IncomePageState extends State<IncomePage> {
         ],
         selected: {_scope},
         showSelectedIcon: false,
+        buttonWidth: segmentButtonWidth,
         onSelectionChanged: (value) {
           if (value.isNotEmpty) {
             _setScope(value.first);
@@ -2985,20 +3000,23 @@ class _IncomePageState extends State<IncomePage> {
                   Wrap(
                     spacing: 8,
                     children: [
-                      OutlinedButton(
-                        onPressed: _mods.isEmpty ? null : _selectAllMods,
-                        child: const Text('全选'),
-                      ),
-                      OutlinedButton(
-                        onPressed: _selectedModIds.isEmpty
-                            ? null
-                            : _clearModSelection,
-                        child: const Text('全不选'),
-                      ),
-                      OutlinedButton(
-                        onPressed: _mods.isEmpty ? null : _invertModSelection,
-                        child: const Text('反选'),
-                      ),
+                    OutlinedButton(
+                      onPressed: _mods.isEmpty ? null : _selectAllMods,
+                      child: const Text('全选'),
+                      width: modSelectButtonWidth,
+                    ),
+                    OutlinedButton(
+                      onPressed: _selectedModIds.isEmpty
+                          ? null
+                          : _clearModSelection,
+                      child: const Text('全不选'),
+                      width: modSelectButtonWidth,
+                    ),
+                    OutlinedButton(
+                      onPressed: _mods.isEmpty ? null : _invertModSelection,
+                      child: const Text('反选'),
+                      width: modSelectButtonWidth,
+                    ),
                     ],
                   ),
                 ],

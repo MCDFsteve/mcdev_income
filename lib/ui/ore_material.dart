@@ -37,14 +37,15 @@ class ElevatedButton extends StatelessWidget {
     super.key,
     required this.onPressed,
     this.onLongPress,
-    ValueChanged<bool>? onHover,
-    ValueChanged<bool>? onFocusChange,
-    ButtonStyle? style,
+    this.onHover,
+    this.onFocusChange,
+    this.style,
     this.focusNode,
     this.autofocus = false,
-    Clip clipBehavior = Clip.none,
+    this.clipBehavior = Clip.none,
     required this.child,
     this.icon,
+    this.width,
   });
 
   factory ElevatedButton.icon({
@@ -59,6 +60,7 @@ class ElevatedButton extends StatelessWidget {
     Clip clipBehavior = Clip.none,
     required Widget icon,
     required Widget label,
+    double? width,
   }) {
     return ElevatedButton(
       key: key,
@@ -72,15 +74,21 @@ class ElevatedButton extends StatelessWidget {
       clipBehavior: clipBehavior,
       child: label,
       icon: icon,
+      width: width,
     );
   }
 
   final VoidCallback? onPressed;
   final VoidCallback? onLongPress;
+  final ValueChanged<bool>? onHover;
+  final ValueChanged<bool>? onFocusChange;
+  final ButtonStyle? style;
   final FocusNode? focusNode;
   final bool autofocus;
+  final Clip clipBehavior;
   final Widget child;
   final Widget? icon;
+  final double? width;
 
   @override
   Widget build(BuildContext context) {
@@ -92,6 +100,7 @@ class ElevatedButton extends StatelessWidget {
       variant: OreButtonVariant.primary,
       size: OreButtonSize.md,
       leading: icon,
+      width: width,
       child: child,
     );
   }
@@ -102,14 +111,15 @@ class OutlinedButton extends StatelessWidget {
     super.key,
     required this.onPressed,
     this.onLongPress,
-    ValueChanged<bool>? onHover,
-    ValueChanged<bool>? onFocusChange,
-    ButtonStyle? style,
+    this.onHover,
+    this.onFocusChange,
+    this.style,
     this.focusNode,
     this.autofocus = false,
-    Clip clipBehavior = Clip.none,
+    this.clipBehavior = Clip.none,
     required this.child,
     this.icon,
+    this.width,
   });
 
   factory OutlinedButton.icon({
@@ -124,6 +134,7 @@ class OutlinedButton extends StatelessWidget {
     Clip clipBehavior = Clip.none,
     required Widget icon,
     required Widget label,
+    double? width,
   }) {
     return OutlinedButton(
       key: key,
@@ -137,15 +148,21 @@ class OutlinedButton extends StatelessWidget {
       clipBehavior: clipBehavior,
       child: label,
       icon: icon,
+      width: width,
     );
   }
 
   final VoidCallback? onPressed;
   final VoidCallback? onLongPress;
+  final ValueChanged<bool>? onHover;
+  final ValueChanged<bool>? onFocusChange;
+  final ButtonStyle? style;
   final FocusNode? focusNode;
   final bool autofocus;
+  final Clip clipBehavior;
   final Widget child;
   final Widget? icon;
+  final double? width;
 
   @override
   Widget build(BuildContext context) {
@@ -157,6 +174,7 @@ class OutlinedButton extends StatelessWidget {
       variant: OreButtonVariant.secondary,
       size: OreButtonSize.md,
       leading: icon,
+      width: width,
       child: child,
     );
   }
@@ -167,14 +185,15 @@ class TextButton extends StatelessWidget {
     super.key,
     required this.onPressed,
     this.onLongPress,
-    ValueChanged<bool>? onHover,
-    ValueChanged<bool>? onFocusChange,
-    ButtonStyle? style,
+    this.onHover,
+    this.onFocusChange,
+    this.style,
     this.focusNode,
     this.autofocus = false,
-    Clip clipBehavior = Clip.none,
+    this.clipBehavior = Clip.none,
     required this.child,
     this.icon,
+    this.width,
   });
 
   factory TextButton.icon({
@@ -189,6 +208,7 @@ class TextButton extends StatelessWidget {
     Clip clipBehavior = Clip.none,
     required Widget icon,
     required Widget label,
+    double? width,
   }) {
     return TextButton(
       key: key,
@@ -202,15 +222,21 @@ class TextButton extends StatelessWidget {
       clipBehavior: clipBehavior,
       child: label,
       icon: icon,
+      width: width,
     );
   }
 
   final VoidCallback? onPressed;
   final VoidCallback? onLongPress;
+  final ValueChanged<bool>? onHover;
+  final ValueChanged<bool>? onFocusChange;
+  final ButtonStyle? style;
   final FocusNode? focusNode;
   final bool autofocus;
+  final Clip clipBehavior;
   final Widget child;
   final Widget? icon;
+  final double? width;
 
   @override
   Widget build(BuildContext context) {
@@ -222,6 +248,7 @@ class TextButton extends StatelessWidget {
       variant: OreButtonVariant.ghost,
       size: OreButtonSize.sm,
       leading: icon,
+      width: width,
       child: child,
     );
   }
@@ -236,6 +263,7 @@ class _OreButtonAdapter extends StatelessWidget {
     required this.variant,
     required this.size,
     required this.leading,
+    required this.width,
     required this.child,
   });
 
@@ -246,6 +274,7 @@ class _OreButtonAdapter extends StatelessWidget {
   final OreButtonVariant variant;
   final OreButtonSize size;
   final Widget? leading;
+  final double? width;
   final Widget child;
 
   @override
@@ -258,6 +287,7 @@ class _OreButtonAdapter extends StatelessWidget {
       variant: variant,
       size: size,
       leading: _wrapIcon(context, leading),
+      width: width,
       child: child,
     );
   }
@@ -308,6 +338,7 @@ class SegmentedButton<T> extends StatelessWidget {
     this.emptySelectionAllowed,
     this.style,
     this.selectedIcon,
+    this.buttonWidth,
   });
 
   final List<ButtonSegment<T>> segments;
@@ -318,6 +349,7 @@ class SegmentedButton<T> extends StatelessWidget {
   final bool? emptySelectionAllowed;
   final ButtonStyle? style;
   final Widget? selectedIcon;
+  final double? buttonWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -339,6 +371,7 @@ class SegmentedButton<T> extends StatelessWidget {
               }
               onSelectionChanged?.call({segments[index].value});
             },
+      buttonWidth: buttonWidth,
     );
   }
 
