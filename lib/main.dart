@@ -3,7 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:flutter/material.dart';
+import 'package:mcdev_income/ui/ore_material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +22,9 @@ class McDevIncomeApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        extensions: <ThemeExtension<dynamic>>[
+          OreThemeData.light(),
+        ],
       ),
       home: const HomeShell(),
     );
@@ -1907,9 +1910,9 @@ class _IncomePageState extends State<IncomePage> {
     }
   }
 
-  String _scopePreview() {
+  String _scopePreviewFor(IncomeScope scope) {
     final total = _mods.length;
-    switch (_scope) {
+    switch (scope) {
       case IncomeScope.all:
         return '当前：全部（${total > 0 ? total : '未加载'}）';
       case IncomeScope.multiple:
@@ -2868,7 +2871,12 @@ class _IncomePageState extends State<IncomePage> {
         },
       ),
       const SizedBox(height: 6),
-      Text(_scopePreview(), style: theme.textTheme.bodySmall),
+      OreChoiceDescription(
+        items: IncomeScope.values
+            .map((scope) => Text(_scopePreviewFor(scope)))
+            .toList(),
+        selectedIndex: IncomeScope.values.indexOf(_scope),
+      ),
       const SizedBox(height: 12),
       Text('预设', style: theme.textTheme.bodyMedium),
       const SizedBox(height: 8),
