@@ -42,12 +42,21 @@ PreferredSizeWidget buildOreAppBar(
   final appBarColor = controlColors.surface;
   final textStyle =
       ore.typography.label.copyWith(color: colors.textPrimary);
+  final borderWidth = ore.borderWidth;
+  final depth = borderWidth * 2;
   final actionWidgets = actions ?? const <Widget>[];
 
   return PreferredSize(
     preferredSize: const Size.fromHeight(kToolbarHeight),
-    child: OreCard(
+    child: OreSurface(
       color: appBarColor,
+      borderColor: colors.border,
+      highlightColor: colors.highlight,
+      shadowColor: colors.shadowStrong,
+      borderWidth: borderWidth,
+      depth: depth,
+      highlightDepth: borderWidth,
+      shadowDepth: depth,
       padding: EdgeInsets.zero,
       child: SafeArea(
         bottom: false,
