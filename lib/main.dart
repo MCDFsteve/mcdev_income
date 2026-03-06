@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const McDevIncomeApp());
@@ -40,11 +42,7 @@ class _HomeShellState extends State<HomeShell> {
 
   final _pages = const [
     IncomePage(),
-    PlaceholderPage(
-      title: 'Mod 列表',
-      description: '占位：后续支持 Mod 维度管理与筛选。',
-      icon: Icons.view_list,
-    ),
+    ModsPage(),
     SettingsPage(),
   ];
 
@@ -139,6 +137,463 @@ class PlaceholderPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class ModsPage extends StatefulWidget {
+  const ModsPage({super.key});
+
+  @override
+  State<ModsPage> createState() => _ModsPageState();
+}
+
+class _ModsPageState extends State<ModsPage> {
+  final _dateFormat = DateFormat('yyyy-MM-dd');
+  _Category _category = _Category.pe;
+  bool _loading = false;
+  String? _error;
+  List<ModItem> _mods = [];
+  String _search = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMods();
+  }
+
+  Future<void> _loadMods() async {
+    final cookieHeader = await LoginCookieHelper.buildCookieHeader();
+    if (cookieHeader.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _mods = [];
+        _loading = false;
+        _error = '请先到“设置”里通过 WebView 登录。';
+      });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    final api = McDevApi(
+      cookie: cookieHeader,
+      category: _categoryValue(_category),
+    );
+    try {
+      final mods =
+          await api.fetchMods(onlyPriced: false, onlyPublished: true);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _mods = mods;
+        _loading = false;
+        _error = mods.isEmpty ? '未获取到已发布的 Mod。' : null;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = error.toString();
+        });
+      }
+    } finally {
+      api.close();
+    }
+  }
+
+  List<ModItem> _filteredMods() {
+    final query = _search.trim().toLowerCase();
+    if (query.isEmpty) {
+      return _mods;
+    }
+    return _mods
+        .where(
+          (mod) =>
+              mod.name.toLowerCase().contains(query) ||
+              mod.id.toLowerCase().contains(query),
+        )
+        .toList();
+  }
+
+  String _statusLabel(ModItem mod) {
+    final status = mod.status?.toLowerCase().trim();
+    if (status == null || status.isEmpty) {
+      return mod.weakOffline == true ? '弱下架' : '未知';
+    }
+    if (status.contains('online')) {
+      return mod.weakOffline == true ? '弱下架' : '已上架';
+    }
+    if (status.contains('offline')) {
+      return '已下架';
+    }
+    return mod.status ?? '未知';
+  }
+
+  Color _statusColor(ThemeData theme, String label) {
+    if (label.contains('已上架')) {
+      return Colors.green;
+    }
+    if (label.contains('下架')) {
+      return theme.colorScheme.error;
+    }
+    return theme.colorScheme.primary;
+  }
+
+  String _priceLabel(ModItem mod) {
+    final price = mod.price;
+    if (price == null) {
+      return '价格未知';
+    }
+    if (price <= 0) {
+      return '免费';
+    }
+    final kind = _priceKind(mod.priceType);
+    switch (kind) {
+      case _PriceKind.diamond:
+        return '$price 钻石';
+      case _PriceKind.emerald:
+        return '$price 绿宝石';
+      case _PriceKind.other:
+        return '$price';
+    }
+  }
+
+  Widget _buildError(ThemeData theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, color: theme.colorScheme.error, size: 40),
+            const SizedBox(height: 12),
+            Text(_error ?? '加载失败'),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _loadMods,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModCard(ModItem mod, ThemeData theme) {
+    final statusLabel = _statusLabel(mod);
+    final statusColor = _statusColor(theme, statusLabel);
+    final releaseText =
+        mod.releaseAt == null ? '上架时间未知' : _dateFormat.format(mod.releaseAt!);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    mod.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: statusColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('ID: ${mod.id}', style: theme.textTheme.bodySmall),
+            const SizedBox(height: 4),
+            Text('价格: ${_priceLabel(mod)}', style: theme.textTheme.bodySmall),
+            const SizedBox(height: 4),
+            Text('上架: $releaseText', style: theme.textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final width = MediaQuery.of(context).size.width;
+    final isWide = width >= 900;
+    final filtered = _filteredMods();
+
+    return SafeArea(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SegmentedButton<_Category>(
+                      segments: const [
+                        ButtonSegment(
+                          value: _Category.pe,
+                          label: Text('PE'),
+                        ),
+                        ButtonSegment(
+                          value: _Category.java,
+                          label: Text('Java'),
+                        ),
+                      ],
+                      selected: {_category},
+                      onSelectionChanged: _loading
+                          ? null
+                          : (value) {
+                              final next = value.first;
+                              if (next == _category) {
+                                return;
+                              }
+                              setState(() {
+                                _category = next;
+                                _mods = [];
+                              });
+                              _loadMods();
+                            },
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _loading ? null : _loadMods,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('刷新'),
+                    ),
+                    Text('已发布 ${filtered.length} / 共 ${_mods.length}'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    labelText: '搜索 Mod 名称或 ID',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onChanged: (value) => setState(() => _search = value),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? _buildError(theme)
+                    : filtered.isEmpty
+                        ? const Center(child: Text('暂无已发布 Mod'))
+                        : Scrollbar(
+                            child: GridView.builder(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: isWide ? 2 : 1,
+                                mainAxisSpacing: 12,
+                                crossAxisSpacing: 12,
+                                mainAxisExtent: isWide ? 170 : 190,
+                              ),
+                              itemCount: filtered.length,
+                              itemBuilder: (context, index) =>
+                                  _buildModCard(filtered[index], theme),
+                            ),
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum IncomeScope { all, multiple, single }
+enum _SummarySortKey { diamonds, releaseTime }
+
+class IncomePreset {
+  IncomePreset({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.scope,
+    required this.modIds,
+    required this.internalRatios,
+    required this.neteaseRatios,
+    required this.defaultInternalRatio,
+    required this.defaultNeteaseRatio,
+    required this.taxRate,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String name;
+  final _Category category;
+  final IncomeScope scope;
+  final List<String> modIds;
+  final Map<String, double> internalRatios;
+  final Map<String, double> neteaseRatios;
+  final double defaultInternalRatio;
+  final double defaultNeteaseRatio;
+  final double taxRate;
+  final DateTime updatedAt;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'category': _categoryValue(category),
+      'scope': scope.name,
+      'modIds': modIds,
+      'internalRatios': internalRatios,
+      'neteaseRatios': neteaseRatios,
+      'defaultInternalRatio': defaultInternalRatio,
+      'defaultNeteaseRatio': defaultNeteaseRatio,
+      'taxRate': taxRate,
+      'updatedAt': updatedAt.toIso8601String(),
+    };
+  }
+
+  static IncomePreset fromJson(Map<String, dynamic> json) {
+    final rawCategory = json['category']?.toString();
+    final rawScope = json['scope']?.toString();
+    final modIds = (json['modIds'] as List?)
+            ?.map((entry) => entry.toString())
+            .toList() ??
+        <String>[];
+    final internalRatios = _parseDoubleMap(json['internalRatios']);
+    final neteaseRatios = _parseDoubleMap(json['neteaseRatios']);
+    final defaultInternalRatio =
+        _tryParseDouble(json['defaultInternalRatio']) ?? 1.0;
+    final defaultNeteaseRatio =
+        _tryParseDouble(json['defaultNeteaseRatio']) ?? 1.0;
+    final taxRate = _tryParseDouble(json['taxRate']) ?? 0.2;
+    final updatedAt =
+        DateTime.tryParse(json['updatedAt']?.toString() ?? '');
+
+    return IncomePreset(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '未命名预设',
+      category: _categoryFromValue(rawCategory),
+      scope: IncomeScope.values.firstWhere(
+        (scope) => scope.name == rawScope,
+        orElse: () => IncomeScope.all,
+      ),
+      modIds: modIds,
+      internalRatios: internalRatios,
+      neteaseRatios: neteaseRatios,
+      defaultInternalRatio: defaultInternalRatio,
+      defaultNeteaseRatio: defaultNeteaseRatio,
+      taxRate: taxRate,
+      updatedAt: updatedAt ?? DateTime.now(),
+    );
+  }
+}
+
+double? _tryParseDouble(Object? value) {
+  if (value is num) {
+    return value.toDouble();
+  }
+  if (value is String) {
+    return double.tryParse(value);
+  }
+  return null;
+}
+
+Map<String, double> _parseDoubleMap(Object? raw) {
+  final result = <String, double>{};
+  if (raw is Map) {
+    for (final entry in raw.entries) {
+      final key = entry.key.toString();
+      final value = _tryParseDouble(entry.value);
+      if (value != null) {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
+DateTime? _parseModReleaseAt(Object? raw) {
+  if (raw == null) {
+    return null;
+  }
+  if (raw is num) {
+    return _epochToDateTime(raw.toInt());
+  }
+  if (raw is String) {
+    final text = raw.trim();
+    if (text.isEmpty) {
+      return null;
+    }
+    final numeric = num.tryParse(text);
+    if (numeric != null) {
+      return _epochToDateTime(numeric.toInt());
+    }
+    final parsed = DateTime.tryParse(text);
+    if (parsed != null) {
+      return parsed.toLocal();
+    }
+  }
+  return null;
+}
+
+DateTime? _epochToDateTime(int value) {
+  if (value <= 0) {
+    return null;
+  }
+  if (value < 1000000000000) {
+    return DateTime.fromMillisecondsSinceEpoch(value * 1000, isUtc: true)
+        .toLocal();
+  }
+  return DateTime.fromMillisecondsSinceEpoch(value, isUtc: true).toLocal();
+}
+
+class _ParsedRate {
+  const _ParsedRate(this.value, {this.error, this.isDefault = false});
+
+  final double value;
+  final String? error;
+  final bool isDefault;
+
+  bool get isValid => error == null;
+}
+
+class _ShareResult {
+  const _ShareResult(this.netValue, {this.error});
+
+  final double netValue;
+  final String? error;
+
+  bool get isValid => error == null;
 }
 
 class _RangePickerPanel extends StatefulWidget {
@@ -968,29 +1423,84 @@ class IncomePage extends StatefulWidget {
 
 class _IncomePageState extends State<IncomePage> {
   final _dateFormat = DateFormat('yyyy-MM-dd');
+  static const _presetStorageKey = 'income_presets_v1';
 
   DateTimeRange? _range;
   _Category _category = _Category.pe;
+  _Category? _modsCategory;
+  IncomeScope _scope = IncomeScope.all;
   bool _loading = false;
   String? _error;
 
   int _totalDiamonds = 0;
   int _totalPoints = 0;
+  int _refundPendingOrders = 0;
+  int _refundedOrders = 0;
+  int _refundOtherOrders = 0;
   int _processed = 0;
   int _totalMods = 0;
   int _diamondPricedMods = 0;
   int _emeraldPricedMods = 0;
   int _otherPricedMods = 0;
   List<IncomeSummary> _summaries = [];
+  List<ModItem> _mods = [];
+  bool _modsLoading = false;
+  String? _modsError;
+  String _modSearch = '';
+  Set<String> _selectedModIds = {};
+  String? _singleModId;
+  String? _lastSelectedModId;
+  _SummarySortKey _summarySortKey = _SummarySortKey.diamonds;
+  bool _summarySortAscending = false;
+  Map<String, String> _internalRatioTextByModId = {};
+  Map<String, String> _neteaseRatioTextByModId = {};
+  final Map<String, TextEditingController> _internalRatioControllers = {};
+  final Map<String, TextEditingController> _neteaseRatioControllers = {};
+  final TextEditingController _defaultInternalRatioController =
+      TextEditingController(text: '1.0');
+  final TextEditingController _defaultNeteaseRatioController =
+      TextEditingController(text: '1.0');
+  final TextEditingController _taxRateController =
+      TextEditingController(text: '0.2');
+  final ScrollController _leftScrollController = ScrollController();
+  final ScrollController _rightScrollController = ScrollController();
+  List<IncomePreset> _presets = [];
+  String? _selectedPresetId;
 
   @override
   void initState() {
     super.initState();
+    _loadPresets();
+    _loadMods(silent: true);
+    _defaultInternalRatioController.addListener(_onShareParamChanged);
+    _defaultNeteaseRatioController.addListener(_onShareParamChanged);
+    _taxRateController.addListener(_onShareParamChanged);
   }
 
   @override
   void dispose() {
+    for (final controller in _internalRatioControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _neteaseRatioControllers.values) {
+      controller.dispose();
+    }
+    _defaultInternalRatioController.removeListener(_onShareParamChanged);
+    _defaultNeteaseRatioController.removeListener(_onShareParamChanged);
+    _taxRateController.removeListener(_onShareParamChanged);
+    _defaultInternalRatioController.dispose();
+    _defaultNeteaseRatioController.dispose();
+    _taxRateController.dispose();
+    _leftScrollController.dispose();
+    _rightScrollController.dispose();
     super.dispose();
+  }
+
+  void _onShareParamChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
   }
 
   String _rangeLabel() {
@@ -999,6 +1509,632 @@ class _IncomePageState extends State<IncomePage> {
       return '未选择';
     }
     return '${_dateFormat.format(range.start)} ~ ${_dateFormat.format(range.end)}';
+  }
+
+  String _scopeLabel() {
+    switch (_scope) {
+      case IncomeScope.all:
+        return '全部';
+      case IncomeScope.multiple:
+        return '多个';
+      case IncomeScope.single:
+        return '单个';
+    }
+  }
+
+  String _scopePreview() {
+    final total = _mods.length;
+    switch (_scope) {
+      case IncomeScope.all:
+        return '当前：全部（${total > 0 ? total : '未加载'}）';
+      case IncomeScope.multiple:
+        return '当前：多选（已选 ${_selectedModIds.length}/$total）';
+      case IncomeScope.single:
+        final name = _modNameById(_singleModId);
+        return '当前：单选（${name.isEmpty ? '未选择' : name}）';
+    }
+  }
+
+  String _modNameById(String? id) {
+    if (id == null || id.isEmpty) {
+      return '';
+    }
+    for (final mod in _mods) {
+      if (mod.id == id) {
+        return mod.name;
+      }
+    }
+    return id;
+  }
+
+  Future<void> _loadPresets() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_presetStorageKey);
+      if (raw == null || raw.isEmpty) {
+        return;
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        return;
+      }
+      final presets = <IncomePreset>[];
+      for (final entry in decoded) {
+        if (entry is Map<String, dynamic>) {
+          presets.add(IncomePreset.fromJson(entry));
+        } else if (entry is Map) {
+          presets.add(IncomePreset.fromJson(
+            entry.map((key, value) => MapEntry(key.toString(), value)),
+          ));
+        }
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _presets = presets;
+      });
+    } catch (_) {
+      // 忽略损坏数据
+    }
+  }
+
+  Future<void> _persistPresets() async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload = _presets.map((preset) => preset.toJson()).toList();
+    await prefs.setString(_presetStorageKey, jsonEncode(payload));
+  }
+
+  Future<void> _saveNewPreset() async {
+    final name = await _promptPresetName(title: '新建预设');
+    if (name == null || name.trim().isEmpty) {
+      return;
+    }
+    final preset = _buildPreset(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name.trim(),
+    );
+    setState(() {
+      _presets = [preset, ..._presets];
+      _selectedPresetId = preset.id;
+    });
+    await _persistPresets();
+  }
+
+  Future<void> _updateSelectedPreset() async {
+    final presetId = _selectedPresetId;
+    if (presetId == null) {
+      return;
+    }
+    final index = _presets.indexWhere((preset) => preset.id == presetId);
+    if (index < 0) {
+      return;
+    }
+    final existing = _presets[index];
+    final updated = _buildPreset(id: existing.id, name: existing.name);
+    setState(() {
+      final next = List<IncomePreset>.from(_presets);
+      next[index] = updated;
+      _presets = next;
+    });
+    await _persistPresets();
+  }
+
+  Future<void> _showPresetManager() async {
+    if (_presets.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无预设')),
+      );
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, sheetSetState) {
+            return ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: _presets.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final preset = _presets[index];
+                return ListTile(
+                  title: Text(preset.name),
+                  subtitle: Text(
+                    '${_categoryLabel(preset.category)} · ${_scopeLabelForPreset(preset.scope)}',
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        tooltip: '重命名',
+                        onPressed: () async {
+                          final name = await _promptPresetName(
+                            title: '重命名预设',
+                            initial: preset.name,
+                          );
+                          if (name == null || name.trim().isEmpty) {
+                            return;
+                          }
+                          final updated = IncomePreset(
+                            id: preset.id,
+                            name: name.trim(),
+                            category: preset.category,
+                            scope: preset.scope,
+                            modIds: preset.modIds,
+                            internalRatios: preset.internalRatios,
+                            neteaseRatios: preset.neteaseRatios,
+                            defaultInternalRatio: preset.defaultInternalRatio,
+                            defaultNeteaseRatio: preset.defaultNeteaseRatio,
+                            taxRate: preset.taxRate,
+                            updatedAt: preset.updatedAt,
+                          );
+                          setState(() {
+                            final next = List<IncomePreset>.from(_presets);
+                            next[index] = updated;
+                            _presets = next;
+                          });
+                          sheetSetState(() {});
+                          await _persistPresets();
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: '删除',
+                        onPressed: () async {
+                          setState(() {
+                            _presets =
+                                _presets.where((p) => p.id != preset.id).toList();
+                            if (_selectedPresetId == preset.id) {
+                              _selectedPresetId = null;
+                            }
+                          });
+                          sheetSetState(() {});
+                          await _persistPresets();
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<String?> _promptPresetName({
+    required String title,
+    String? initial,
+  }) async {
+    final controller = TextEditingController(text: initial ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: '预设名称',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+    return result;
+  }
+
+  IncomePreset _buildPreset({required String id, required String name}) {
+    final modIds = _currentSelectedModIds();
+    final internalRatios = _collectRatioValues(
+      _internalRatioTextByModId,
+      limitIds: _scope == IncomeScope.all ? null : modIds,
+    );
+    final neteaseRatios = _collectRatioValues(
+      _neteaseRatioTextByModId,
+      limitIds: _scope == IncomeScope.all ? null : modIds,
+    );
+    final defaultInternalRatio = _parseRate(
+      _defaultInternalRatioController.text,
+      fieldName: '默认内部分成',
+      defaultValue: 1.0,
+      invalidValue: 1.0,
+    ).value;
+    final defaultNeteaseRatio = _parseRate(
+      _defaultNeteaseRatioController.text,
+      fieldName: '默认网易分成',
+      defaultValue: 1.0,
+      invalidValue: 1.0,
+    ).value;
+    final taxRate = _parseRate(
+      _taxRateController.text,
+      fieldName: '税收比例',
+      defaultValue: 0.2,
+      invalidValue: 0.2,
+    ).value;
+    return IncomePreset(
+      id: id,
+      name: name,
+      category: _category,
+      scope: _scope,
+      modIds: modIds,
+      internalRatios: internalRatios,
+      neteaseRatios: neteaseRatios,
+      defaultInternalRatio: defaultInternalRatio,
+      defaultNeteaseRatio: defaultNeteaseRatio,
+      taxRate: taxRate,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  List<String> _currentSelectedModIds() {
+    switch (_scope) {
+      case IncomeScope.all:
+        return [];
+      case IncomeScope.multiple:
+        if (_mods.isEmpty) {
+          return _selectedModIds.toList();
+        }
+        return _mods
+            .where((mod) => _selectedModIds.contains(mod.id))
+            .map((mod) => mod.id)
+            .toList();
+      case IncomeScope.single:
+        return _singleModId == null ? [] : [_singleModId!];
+    }
+  }
+
+  Map<String, double> _collectRatioValues(
+    Map<String, String> source, {
+    List<String>? limitIds,
+  }) {
+    final ratios = <String, double>{};
+    final keys = limitIds ?? source.keys;
+    for (final id in keys) {
+      final raw = source[id];
+      if (raw == null) {
+        continue;
+      }
+      final value = double.tryParse(raw.trim());
+      if (value != null) {
+        ratios[id] = value;
+      }
+    }
+    return ratios;
+  }
+
+  Future<void> _applyPresetById(String? presetId) async {
+    if (presetId == null) {
+      return;
+    }
+    IncomePreset? preset;
+    for (final entry in _presets) {
+      if (entry.id == presetId) {
+        preset = entry;
+        break;
+      }
+    }
+    if (preset == null) {
+      return;
+    }
+    setState(() {
+      _selectedPresetId = presetId;
+    });
+    await _applyPreset(preset);
+  }
+
+  Future<void> _applyPreset(IncomePreset preset) async {
+    if (_category != preset.category) {
+      setState(() {
+        _category = preset.category;
+      });
+    }
+    await _loadMods(silent: true);
+    if (!mounted) {
+      return;
+    }
+
+    final availableIds = _mods.map((mod) => mod.id).toSet();
+    final missing = <String>[];
+    final selectedIds = <String>[];
+    String? singleId;
+
+    switch (preset.scope) {
+      case IncomeScope.all:
+        break;
+      case IncomeScope.multiple:
+        for (final id in preset.modIds) {
+          if (availableIds.contains(id)) {
+            selectedIds.add(id);
+          } else {
+            missing.add(id);
+          }
+        }
+        break;
+      case IncomeScope.single:
+        final id = preset.modIds.isNotEmpty ? preset.modIds.first : null;
+        if (id != null) {
+          if (availableIds.contains(id)) {
+            singleId = id;
+          } else {
+            missing.add(id);
+          }
+        }
+        break;
+    }
+
+    setState(() {
+      _scope = preset.scope;
+      _selectedModIds = selectedIds.toSet();
+      _singleModId = singleId;
+      _lastSelectedModId =
+          singleId ?? (selectedIds.isNotEmpty ? selectedIds.last : null);
+      _internalRatioTextByModId = preset.internalRatios.map(
+        (key, value) => MapEntry(key, _formatRatio(value)),
+      );
+      _neteaseRatioTextByModId = preset.neteaseRatios.map(
+        (key, value) => MapEntry(key, _formatRatio(value)),
+      );
+      _defaultInternalRatioController.text =
+          _formatRatio(preset.defaultInternalRatio);
+      _defaultNeteaseRatioController.text =
+          _formatRatio(preset.defaultNeteaseRatio);
+      _taxRateController.text = _formatRatio(preset.taxRate);
+      _modSearch = '';
+    });
+    _syncRatioControllers();
+
+    if (missing.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已忽略 ${missing.length} 个不存在的 Mod')),
+      );
+    }
+  }
+
+  Future<List<ModItem>> _loadMods({bool silent = false}) async {
+    final cookieHeader = await LoginCookieHelper.buildCookieHeader();
+    if (cookieHeader.isEmpty) {
+      if (!silent && mounted) {
+        setState(() {
+          _mods = [];
+          _modsLoading = false;
+          _modsError = '请先到“设置”里通过 WebView 登录。';
+        });
+      }
+      return [];
+    }
+
+    if (mounted) {
+      setState(() {
+        _modsLoading = true;
+        if (!silent) {
+          _modsError = null;
+        }
+      });
+    }
+
+    final api = McDevApi(
+      cookie: cookieHeader,
+      category: _categoryValue(_category),
+    );
+    try {
+      final mods = await api.fetchMods();
+      if (!mounted) {
+        return mods;
+      }
+      final availableIds = mods.map((mod) => mod.id).toSet();
+      setState(() {
+        _mods = mods;
+        _modsCategory = _category;
+        _modsLoading = false;
+        _modsError =
+            mods.isEmpty ? '未获取到任何 Mod，请确认账号权限与类别。' : null;
+        _selectedModIds =
+            _selectedModIds.where(availableIds.contains).toSet();
+        if (_singleModId != null && !availableIds.contains(_singleModId)) {
+          _singleModId = null;
+        }
+        if (_lastSelectedModId != null &&
+            !availableIds.contains(_lastSelectedModId)) {
+          _lastSelectedModId = null;
+        }
+      });
+      return mods;
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _modsLoading = false;
+          _modsError = error.toString();
+        });
+      }
+      return [];
+    } finally {
+      api.close();
+    }
+  }
+
+  Future<List<ModItem>> _ensureModsLoaded() async {
+    if (_mods.isNotEmpty && _modsCategory == _category) {
+      return _mods;
+    }
+    return _loadMods();
+  }
+
+  void _setScope(IncomeScope value) {
+    if (_scope == value) {
+      return;
+    }
+    setState(() {
+      if (value == IncomeScope.multiple) {
+        if (_singleModId != null) {
+          _selectedModIds.add(_singleModId!);
+          _lastSelectedModId = _singleModId;
+        }
+      } else if (value == IncomeScope.single) {
+        if (_singleModId == null) {
+          if (_lastSelectedModId != null) {
+            _singleModId = _lastSelectedModId;
+          } else if (_selectedModIds.isNotEmpty) {
+            _singleModId = _selectedModIds.first;
+          }
+        }
+      }
+      _scope = value;
+    });
+  }
+
+  void _toggleMultiSelection(String id, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedModIds.add(id);
+      } else {
+        _selectedModIds.remove(id);
+      }
+      _lastSelectedModId = id;
+    });
+  }
+
+  void _selectSingle(String id) {
+    setState(() {
+      _singleModId = id;
+      _lastSelectedModId = id;
+    });
+  }
+
+  void _selectAllMods() {
+    setState(() {
+      _selectedModIds = _mods.map((mod) => mod.id).toSet();
+      if (_selectedModIds.isNotEmpty) {
+        _lastSelectedModId = _selectedModIds.last;
+      }
+    });
+  }
+
+  void _clearModSelection() {
+    setState(() {
+      _selectedModIds.clear();
+    });
+  }
+
+  void _invertModSelection() {
+    final all = _mods.map((mod) => mod.id).toSet();
+    setState(() {
+      _selectedModIds = all.difference(_selectedModIds);
+      if (_selectedModIds.isNotEmpty) {
+        _lastSelectedModId = _selectedModIds.last;
+      }
+    });
+  }
+
+  String _formatNumber(num value) {
+    final doubleValue = value.toDouble();
+    if (doubleValue == doubleValue.roundToDouble()) {
+      return doubleValue.toInt().toString();
+    }
+    return doubleValue.toStringAsFixed(2);
+  }
+
+  List<IncomeSummary> _sortedSummaries(List<IncomeSummary> input) {
+    final list = List<IncomeSummary>.from(input);
+    list.sort((a, b) {
+      switch (_summarySortKey) {
+        case _SummarySortKey.diamonds:
+          final cmp = a.totalDiamonds.compareTo(b.totalDiamonds);
+          return _summarySortAscending ? cmp : -cmp;
+        case _SummarySortKey.releaseTime:
+          return _compareReleaseTime(a.releaseAt, b.releaseAt);
+      }
+    });
+    return list;
+  }
+
+  int _compareReleaseTime(DateTime? a, DateTime? b) {
+    if (a == null && b == null) {
+      return 0;
+    }
+    if (a == null) {
+      return 1;
+    }
+    if (b == null) {
+      return -1;
+    }
+    final cmp = a.compareTo(b);
+    return _summarySortAscending ? cmp : -cmp;
+  }
+
+  String _formatRatio(double value) {
+    final text = value.toString();
+    if (!text.contains('.')) {
+      return text;
+    }
+    return text.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+  }
+
+  _ParsedRate _parseRate(
+    String? raw, {
+    required String fieldName,
+    required double defaultValue,
+    double invalidValue = 0,
+  }) {
+    final text = raw?.trim() ?? '';
+    if (text.isEmpty) {
+      return _ParsedRate(defaultValue, isDefault: true);
+    }
+    final value = double.tryParse(text);
+    if (value == null) {
+      return _ParsedRate(invalidValue, error: '$fieldName格式错误');
+    }
+    return _ParsedRate(value);
+  }
+
+  void _syncRatioControllers() {
+    for (final entry in _internalRatioControllers.entries) {
+      final text = _internalRatioTextByModId[entry.key] ?? '';
+      if (entry.value.text != text) {
+        entry.value.text = text;
+      }
+    }
+    for (final entry in _neteaseRatioControllers.entries) {
+      final text = _neteaseRatioTextByModId[entry.key] ?? '';
+      if (entry.value.text != text) {
+        entry.value.text = text;
+      }
+    }
+  }
+
+  String _categoryLabel(_Category category) {
+    return category == _Category.pe ? 'PE' : 'Java';
+  }
+
+  String _scopeLabelForPreset(IncomeScope scope) {
+    switch (scope) {
+      case IncomeScope.all:
+        return '全部';
+      case IncomeScope.multiple:
+        return '多个';
+      case IncomeScope.single:
+        return '单个';
+    }
   }
 
   Future<void> _pickRange() async {
@@ -1071,12 +2207,58 @@ class _IncomePageState extends State<IncomePage> {
       return;
     }
 
+    final mods = await _ensureModsLoaded();
+    if (!mounted) {
+      return;
+    }
+    if (mods.isEmpty) {
+      setState(() {
+        _error = '未获取到任何 Mod，请确认账号权限与类别。';
+      });
+      return;
+    }
+
+    List<ModItem> targetMods = [];
+    switch (_scope) {
+      case IncomeScope.all:
+        targetMods = mods;
+        break;
+      case IncomeScope.multiple:
+        if (_selectedModIds.isEmpty) {
+          setState(() {
+            _error = '请选择要统计的 Mod。';
+          });
+          return;
+        }
+        targetMods =
+            mods.where((mod) => _selectedModIds.contains(mod.id)).toList();
+        break;
+      case IncomeScope.single:
+        if (_singleModId == null) {
+          setState(() {
+            _error = '请选择一个 Mod。';
+          });
+          return;
+        }
+        targetMods = mods.where((mod) => mod.id == _singleModId).toList();
+        break;
+    }
+    if (targetMods.isEmpty) {
+      setState(() {
+        _error = '当前选择的 Mod 不存在或不可用。';
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
       _summaries = [];
       _totalDiamonds = 0;
       _totalPoints = 0;
+      _refundPendingOrders = 0;
+      _refundedOrders = 0;
+      _refundOtherOrders = 0;
       _processed = 0;
       _totalMods = 0;
       _diamondPricedMods = 0;
@@ -1090,22 +2272,10 @@ class _IncomePageState extends State<IncomePage> {
     );
 
     try {
-      final mods = await api.fetchMods();
-      if (!mounted) {
-        return;
-      }
-      if (mods.isEmpty) {
-        setState(() {
-          _loading = false;
-          _error = '未获取到任何 Mod，请确认账号权限与类别。';
-        });
-        return;
-      }
-
       final isWide = MediaQuery.of(context).size.width >= 900;
       final batchSize = isWide ? 12 : 6;
       setState(() {
-        _totalMods = mods.length;
+        _totalMods = targetMods.length;
       });
 
       final summaries = <IncomeSummary>[];
@@ -1114,10 +2284,14 @@ class _IncomePageState extends State<IncomePage> {
       int diamondPriced = 0;
       int emeraldPriced = 0;
       int otherPriced = 0;
+      int refundPending = 0;
+      int refunded = 0;
+      int refundOther = 0;
       int processed = 0;
 
-      for (var i = 0; i < mods.length; i += batchSize) {
-        final batch = mods.sublist(i, min(i + batchSize, mods.length));
+      for (var i = 0; i < targetMods.length; i += batchSize) {
+        final batch =
+            targetMods.sublist(i, min(i + batchSize, targetMods.length));
         final results = await Future.wait(
           batch.map((mod) => api.fetchIncomeWithRetry(mod, range)),
         );
@@ -1130,6 +2304,9 @@ class _IncomePageState extends State<IncomePage> {
             summaries.add(summary);
             diamonds += summary.totalDiamonds;
             points += summary.totalPoints;
+            refundPending += summary.refundPendingCount;
+            refunded += summary.refundedCount;
+            refundOther += summary.refundOtherCount;
             final kind = _priceKind(summary.priceType);
             switch (kind) {
               case _PriceKind.diamond:
@@ -1150,6 +2327,9 @@ class _IncomePageState extends State<IncomePage> {
           _summaries = List.of(summaries);
           _totalDiamonds = diamonds;
           _totalPoints = points;
+          _refundPendingOrders = refundPending;
+          _refundedOrders = refunded;
+          _refundOtherOrders = refundOther;
           _diamondPricedMods = diamondPriced;
           _emeraldPricedMods = emeraldPriced;
           _otherPricedMods = otherPriced;
@@ -1178,6 +2358,819 @@ class _IncomePageState extends State<IncomePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final defaultInternalParse = _parseRate(
+      _defaultInternalRatioController.text,
+      fieldName: '默认内部分成',
+      defaultValue: 1.0,
+      invalidValue: 1.0,
+    );
+    final defaultNeteaseParse = _parseRate(
+      _defaultNeteaseRatioController.text,
+      fieldName: '默认网易分成',
+      defaultValue: 1.0,
+      invalidValue: 1.0,
+    );
+    final taxParse = _parseRate(
+      _taxRateController.text,
+      fieldName: '税收比例',
+      defaultValue: 0.2,
+      invalidValue: 0.2,
+    );
+    final hasGlobalError =
+        !defaultInternalParse.isValid ||
+        !defaultNeteaseParse.isValid ||
+        !taxParse.isValid;
+    final shareResults = <String, _ShareResult>{};
+    double shareTotal = 0;
+    int ratioErrors = 0;
+    if (_summaries.isNotEmpty) {
+      for (final summary in _summaries) {
+        final internalParse = _parseRate(
+          _internalRatioTextByModId[summary.itemId],
+          fieldName: '内部分成',
+          defaultValue: defaultInternalParse.value,
+          invalidValue: 0,
+        );
+        final neteaseParse = _parseRate(
+          _neteaseRatioTextByModId[summary.itemId],
+          fieldName: '网易分成',
+          defaultValue: defaultNeteaseParse.value,
+          invalidValue: 0,
+        );
+        final errorFields = <String>[];
+        if (!internalParse.isValid) {
+          errorFields.add('内部分成');
+        }
+        if (!neteaseParse.isValid) {
+          errorFields.add('网易分成');
+        }
+        final gross = summary.totalDiamonds.toDouble() /
+            100 *
+            internalParse.value *
+            neteaseParse.value;
+        final net = gross * (1 - taxParse.value);
+        final error =
+            errorFields.isEmpty ? null : '参数错误: ${errorFields.join('、')}';
+        shareResults[summary.itemId] = _ShareResult(net, error: error);
+        shareTotal += net;
+        if (error != null) {
+          ratioErrors += 1;
+        }
+      }
+    }
+
+    final displaySummaries = _sortedSummaries(_summaries);
+    final searchText = _modSearch.trim().toLowerCase();
+    final filteredMods = searchText.isEmpty
+        ? _mods
+        : _mods
+            .where((mod) =>
+                mod.name.toLowerCase().contains(searchText) ||
+                mod.id.toLowerCase().contains(searchText))
+            .toList();
+    final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    final isWide = !isMobile && MediaQuery.of(context).size.width >= 1000;
+
+    const noPresetValue = '__none__';
+    final selectedPresetValue = _presets.any((preset) => preset.id == _selectedPresetId)
+        ? _selectedPresetId
+        : noPresetValue;
+
+    final leftWidgets = <Widget>[
+      Text('类别', style: theme.textTheme.bodyMedium),
+      const SizedBox(height: 8),
+      SegmentedButton<_Category>(
+        segments: const [
+          ButtonSegment(value: _Category.pe, label: Text('PE')),
+          ButtonSegment(value: _Category.java, label: Text('Java')),
+        ],
+        selected: {_category},
+        showSelectedIcon: false,
+        onSelectionChanged: (value) {
+          if (value.isNotEmpty) {
+            setState(() => _category = value.first);
+            _loadMods();
+          }
+        },
+      ),
+      const SizedBox(height: 12),
+      Text(
+        '时间范围: ${_rangeLabel()}',
+        style: theme.textTheme.bodyMedium,
+      ),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        onPressed: _loading ? null : _pickRange,
+        icon: const Icon(Icons.date_range),
+        label: const Text('选择日期'),
+      ),
+      const SizedBox(height: 12),
+      Text('统计范围', style: theme.textTheme.bodyMedium),
+      const SizedBox(height: 8),
+      SegmentedButton<IncomeScope>(
+        segments: const [
+          ButtonSegment(value: IncomeScope.all, label: Text('全部')),
+          ButtonSegment(value: IncomeScope.multiple, label: Text('多个')),
+          ButtonSegment(value: IncomeScope.single, label: Text('单个')),
+        ],
+        selected: {_scope},
+        showSelectedIcon: false,
+        onSelectionChanged: (value) {
+          if (value.isNotEmpty) {
+            _setScope(value.first);
+          }
+        },
+      ),
+      const SizedBox(height: 6),
+      Text(_scopePreview(), style: theme.textTheme.bodySmall),
+      const SizedBox(height: 12),
+      Text('预设', style: theme.textTheme.bodyMedium),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              value: selectedPresetValue,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
+                labelText: '选择预设',
+              ),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: noPresetValue,
+                  child: Text('不选择预设'),
+                ),
+                ..._presets.map(
+                  (preset) => DropdownMenuItem<String>(
+                    value: preset.id,
+                    child: Text(preset.name),
+                  ),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null || value == noPresetValue) {
+                  setState(() {
+                    _selectedPresetId = null;
+                  });
+                  return;
+                }
+                _applyPresetById(value);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: '保存为新预设',
+            onPressed: _saveNewPreset,
+            icon: const Icon(Icons.bookmark_add_outlined),
+          ),
+          IconButton(
+            tooltip: '更新当前预设',
+            onPressed: _selectedPresetId == null ? null : _updateSelectedPreset,
+            icon: const Icon(Icons.save_outlined),
+          ),
+          IconButton(
+            tooltip: '管理预设',
+            onPressed: _showPresetManager,
+            icon: const Icon(Icons.manage_accounts_outlined),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      if (_scope != IncomeScope.all)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '选择 Mod',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _modsLoading ? null : () => _loadMods(),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('刷新'),
+                    ),
+                  ],
+                ),
+                if (_modsLoading) ...[
+                  const SizedBox(height: 8),
+                  const LinearProgressIndicator(),
+                ],
+                if (_modsError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _modsError!,
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: '搜索 Mod',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _modSearch = value;
+                    });
+                  },
+                ),
+                if (_scope == IncomeScope.multiple) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      OutlinedButton(
+                        onPressed: _mods.isEmpty ? null : _selectAllMods,
+                        child: const Text('全选'),
+                      ),
+                      OutlinedButton(
+                        onPressed: _selectedModIds.isEmpty
+                            ? null
+                            : _clearModSelection,
+                        child: const Text('全不选'),
+                      ),
+                      OutlinedButton(
+                        onPressed: _mods.isEmpty ? null : _invertModSelection,
+                        child: const Text('反选'),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 280,
+                  child: filteredMods.isEmpty
+                      ? Center(
+                          child: Text(
+                            _mods.isEmpty
+                                ? '暂无 Mod，请先登录并刷新列表'
+                                : '未找到匹配的 Mod',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: filteredMods.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final mod = filteredMods[index];
+                            if (_scope == IncomeScope.multiple) {
+                              final selected =
+                                  _selectedModIds.contains(mod.id);
+                              return CheckboxListTile(
+                                value: selected,
+                                dense: true,
+                                title: Text(mod.name),
+                                subtitle: Text(mod.id),
+                                onChanged: (value) =>
+                                    _toggleMultiSelection(
+                                        mod.id, value ?? false),
+                              );
+                            }
+                            return RadioListTile<String>(
+                              value: mod.id,
+                              groupValue: _singleModId,
+                              dense: true,
+                              title: Text(mod.name),
+                              subtitle: Text(mod.id),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  _selectSingle(value);
+                                }
+                              },
+                            );
+                          },
+                        ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _scope == IncomeScope.multiple
+                      ? '已选 ${_selectedModIds.length} / ${_mods.length}'
+                      : '当前单选: ${_modNameById(_singleModId).isEmpty ? '未选择' : _modNameById(_singleModId)}',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
+      const SizedBox(height: 12),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('分成参数', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _defaultInternalRatioController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: '默认内部分成',
+                        hintText: '默认 1.0',
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                        errorText: defaultInternalParse.isValid
+                            ? null
+                            : defaultInternalParse.error,
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _defaultNeteaseRatioController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: '默认网易分成',
+                        hintText: '默认 1.0',
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                        errorText: defaultNeteaseParse.isValid
+                            ? null
+                            : defaultNeteaseParse.error,
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _taxRateController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: '税收比例',
+                  hintText: '默认 0.2',
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                  errorText: taxParse.isValid ? null : taxParse.error,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '分成=钻石/100×网易分成比例×内部分成比例×(1-税收比例)',
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '未填写的 Mod 比例将使用上述默认值。',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: _loading ? null : _runQuery,
+          icon: const Icon(Icons.search),
+          label: Text('开始查询 (${_scopeLabel()})'),
+        ),
+      ),
+      const SizedBox(height: 12),
+      if (_loading) ...[
+        const LinearProgressIndicator(),
+        const SizedBox(height: 8),
+        Text('已处理 $_processed / $_totalMods'),
+      ],
+      if (_error != null) ...[
+        const SizedBox(height: 8),
+        Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+      ],
+    ];
+
+    Widget buildDetailList({
+      required bool scrollable,
+      required List<IncomeSummary> summaries,
+    }) {
+      return ListView.separated(
+        controller: scrollable ? _rightScrollController : null,
+        primary: false,
+        shrinkWrap: !scrollable,
+        physics: scrollable
+            ? const AlwaysScrollableScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
+        itemCount: summaries.length,
+        separatorBuilder: (_, __) => const Divider(height: 8),
+        itemBuilder: (context, index) {
+          final summary = summaries[index];
+          final internalText = _internalRatioTextByModId[summary.itemId] ?? '';
+          final neteaseText = _neteaseRatioTextByModId[summary.itemId] ?? '';
+          final internalParse = _parseRate(
+            internalText,
+            fieldName: '内部分成',
+            defaultValue: defaultInternalParse.value,
+            invalidValue: 0,
+          );
+          final neteaseParse = _parseRate(
+            neteaseText,
+            fieldName: '网易分成',
+            defaultValue: defaultNeteaseParse.value,
+            invalidValue: 0,
+          );
+          final share = shareResults[summary.itemId] ?? const _ShareResult(0);
+          final internalController = _internalRatioControllers.putIfAbsent(
+            summary.itemId,
+            () => TextEditingController(text: internalText),
+          );
+          if (internalController.text != internalText) {
+            internalController.text = internalText;
+            internalController.selection = TextSelection.fromPosition(
+              TextPosition(offset: internalController.text.length),
+            );
+          }
+          final neteaseController = _neteaseRatioControllers.putIfAbsent(
+            summary.itemId,
+            () => TextEditingController(text: neteaseText),
+          );
+          if (neteaseController.text != neteaseText) {
+            neteaseController.text = neteaseText;
+            neteaseController.selection = TextSelection.fromPosition(
+              TextPosition(offset: neteaseController.text.length),
+            );
+          }
+          final refundInfo =
+              ' · 退款中 ${summary.refundPendingCount} · 已退款 ${summary.refundedCount}'
+              '${summary.refundOtherCount > 0 ? ' · 其他退款 ${summary.refundOtherCount}' : ''}';
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          summary.itemName,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                      ),
+                      Text('#${index + 1}'),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '钻石 ${summary.totalDiamonds} · 绿宝石 ${summary.totalPoints} · 订单 ${summary.orderCount}'
+                    '$refundInfo'
+                    '${summary.releaseAt == null ? '' : ' · 上架 ${_dateFormat.format(summary.releaseAt!)}'}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: internalController,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                          decoration: InputDecoration(
+                            labelText: '内部分成比例',
+                            hintText:
+                                '默认 ${_formatNumber(defaultInternalParse.value)}',
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                            errorText: internalParse.isValid
+                                ? null
+                                : internalParse.error,
+                          ),
+                          onChanged: (value) {
+                            setState(() {
+                              final trimmed = value.trim();
+                              if (trimmed.isEmpty) {
+                                _internalRatioTextByModId
+                                    .remove(summary.itemId);
+                              } else {
+                                _internalRatioTextByModId[summary.itemId] =
+                                    value;
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: neteaseController,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                          decoration: InputDecoration(
+                            labelText: '网易分成比例',
+                            hintText:
+                                '默认 ${_formatNumber(defaultNeteaseParse.value)}',
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                            errorText: neteaseParse.isValid
+                                ? null
+                                : neteaseParse.error,
+                          ),
+                          onChanged: (value) {
+                            setState(() {
+                              final trimmed = value.trim();
+                              if (trimmed.isEmpty) {
+                                _neteaseRatioTextByModId
+                                    .remove(summary.itemId);
+                              } else {
+                                _neteaseRatioTextByModId[summary.itemId] =
+                                    value;
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(
+                        '分成(税后): ${_formatNumber(share.netValue)}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      if (share.error != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          share.error!,
+                          style: TextStyle(
+                            color: theme.colorScheme.error,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    final rightWidgets = <Widget>[
+      if (_summaries.isNotEmpty) ...[
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('汇总', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Text('总钻石: $_totalDiamonds'),
+                Text('分成总计(税后): ${_formatNumber(shareTotal)}'),
+                Text('退款中订单: $_refundPendingOrders'),
+                Text('已退款订单: $_refundedOrders'),
+                if (_refundOtherOrders > 0)
+                  Text('其他退款状态: $_refundOtherOrders'),
+                if (hasGlobalError)
+                  Text(
+                    '全局比例存在错误',
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                if (ratioErrors > 0)
+                  Text(
+                    '比例错误: $ratioErrors',
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                const SizedBox(height: 4),
+                Text('总绿宝石: $_totalPoints'),
+                const SizedBox(height: 4),
+                Text('钻石定价 Mod: $_diamondPricedMods'),
+                Text('绿宝石定价 Mod: $_emeraldPricedMods'),
+                if (_otherPricedMods > 0)
+                  Text('其他定价 Mod: $_otherPricedMods'),
+                const SizedBox(height: 8),
+                Text(
+                  '提示: 查询时间会转换为 UTC 时间提交到接口。',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Text('按 Mod 明细', style: theme.textTheme.titleMedium),
+            ),
+            DropdownButtonHideUnderline(
+              child: DropdownButton<_SummarySortKey>(
+                value: _summarySortKey,
+                isDense: true,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _summarySortKey = value);
+                  }
+                },
+                items: const [
+                  DropdownMenuItem(
+                    value: _SummarySortKey.diamonds,
+                    child: Text('钻石'),
+                  ),
+                  DropdownMenuItem(
+                    value: _SummarySortKey.releaseTime,
+                    child: Text('上架时间'),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: _summarySortAscending ? '升序' : '降序',
+              icon: Icon(
+                _summarySortAscending
+                    ? Icons.arrow_upward
+                    : Icons.arrow_downward,
+              ),
+              onPressed: () {
+                setState(() {
+                  _summarySortAscending = !_summarySortAscending;
+                });
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        buildDetailList(scrollable: false, summaries: displaySummaries),
+      ],
+    ];
+
+    if (isWide) {
+      return SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              flex: 4,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+                child: Scrollbar(
+                  controller: _leftScrollController,
+                  thumbVisibility: true,
+                  child: ListView(
+                    controller: _leftScrollController,
+                    children: leftWidgets,
+                  ),
+                ),
+              ),
+            ),
+            Container(width: 1, color: theme.dividerColor),
+            Expanded(
+              flex: 6,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 16, 16, 16),
+                child: _summaries.isEmpty
+                    ? Center(
+                        child: Text(
+                          '暂无明细，请先查询',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '汇总',
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text('总钻石: $_totalDiamonds'),
+                                  Text(
+                                    '分成总计(税后): ${_formatNumber(shareTotal)}',
+                                  ),
+                                  Text('退款中订单: $_refundPendingOrders'),
+                                  Text('已退款订单: $_refundedOrders'),
+                                  if (_refundOtherOrders > 0)
+                                    Text('其他退款状态: $_refundOtherOrders'),
+                                  if (hasGlobalError)
+                                    Text(
+                                      '全局比例存在错误',
+                                      style: TextStyle(
+                                        color: theme.colorScheme.error,
+                                      ),
+                                    ),
+                                  if (ratioErrors > 0)
+                                    Text(
+                                      '比例错误: $ratioErrors',
+                                      style: TextStyle(
+                                        color: theme.colorScheme.error,
+                                      ),
+                                    ),
+                                  const SizedBox(height: 4),
+                                  Text('总绿宝石: $_totalPoints'),
+                                  const SizedBox(height: 4),
+                                  Text('钻石定价 Mod: $_diamondPricedMods'),
+                                  Text('绿宝石定价 Mod: $_emeraldPricedMods'),
+                                  if (_otherPricedMods > 0)
+                                    Text('其他定价 Mod: $_otherPricedMods'),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '提示: 查询时间会转换为 UTC 时间提交到接口。',
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '按 Mod 明细',
+                                  style: theme.textTheme.titleMedium,
+                                ),
+                              ),
+                              DropdownButtonHideUnderline(
+                                child: DropdownButton<_SummarySortKey>(
+                                  value: _summarySortKey,
+                                  isDense: true,
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      setState(() => _summarySortKey = value);
+                                    }
+                                  },
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: _SummarySortKey.diamonds,
+                                      child: Text('钻石'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: _SummarySortKey.releaseTime,
+                                      child: Text('上架时间'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: _summarySortAscending ? '升序' : '降序',
+                                icon: Icon(
+                                  _summarySortAscending
+                                      ? Icons.arrow_upward
+                                      : Icons.arrow_downward,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _summarySortAscending =
+                                        !_summarySortAscending;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: Scrollbar(
+                              controller: _rightScrollController,
+                              thumbVisibility: true,
+                              child: buildDetailList(
+                                scrollable: true,
+                                summaries: displaySummaries,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -1185,101 +3178,9 @@ class _IncomePageState extends State<IncomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('类别', style: theme.textTheme.bodyMedium),
-            const SizedBox(height: 8),
-            SegmentedButton<_Category>(
-              segments: const [
-                ButtonSegment(value: _Category.pe, label: Text('PE')),
-                ButtonSegment(value: _Category.java, label: Text('Java')),
-              ],
-              selected: {_category},
-              showSelectedIcon: false,
-              onSelectionChanged: (value) {
-                if (value.isNotEmpty) {
-                  setState(() => _category = value.first);
-                }
-              },
-            ),
+            ...leftWidgets,
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '时间范围: ${_rangeLabel()}',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ),
-                TextButton(
-                  onPressed: _loading ? null : _pickRange,
-                  child: const Text('选择日期'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _loading ? null : _runQuery,
-                icon: const Icon(Icons.search),
-                label: const Text('开始查询'),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_loading) ...[
-              const LinearProgressIndicator(),
-              const SizedBox(height: 8),
-              Text('已处理 $_processed / $_totalMods'),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            ],
-            const SizedBox(height: 12),
-            if (_summaries.isNotEmpty) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('汇总', style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      Text('总钻石: $_totalDiamonds'),
-                      Text('总绿宝石: $_totalPoints'),
-                      const SizedBox(height: 4),
-                      Text('钻石定价 Mod: $_diamondPricedMods'),
-                      Text('绿宝石定价 Mod: $_emeraldPricedMods'),
-                      if (_otherPricedMods > 0)
-                        Text('其他定价 Mod: $_otherPricedMods'),
-                      const SizedBox(height: 8),
-                      Text(
-                        '提示: 查询时间会转换为 UTC 时间提交到接口。',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text('按 Mod 明细 (按钻石降序)', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 8),
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemBuilder: (context, index) {
-                  final summary = _summaries[index];
-                  return ListTile(
-                    title: Text(summary.itemName),
-                    subtitle: Text(
-                      '钻石 ${summary.totalDiamonds} · 绿宝石 ${summary.totalPoints} · 订单 ${summary.orderCount}',
-                    ),
-                    trailing: Text('#${index + 1}'),
-                  );
-                },
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemCount: _summaries.length,
-              ),
-            ],
+            ...rightWidgets,
           ],
         ),
       ),
@@ -1314,6 +3215,17 @@ String _categoryValue(_Category category) {
     case _Category.java:
       return 'java';
   }
+}
+
+_Category _categoryFromValue(String? raw) {
+  if (raw == null) {
+    return _Category.pe;
+  }
+  final value = raw.toLowerCase();
+  if (value == 'java') {
+    return _Category.java;
+  }
+  return _Category.pe;
 }
 
 class LoginWebViewPage extends StatefulWidget {
@@ -1405,12 +3317,42 @@ class McDevApi {
   final String category;
   final http.Client _client;
   final Random _random = Random();
+  static const int _refundStatusPending = 309;
+  static const int _refundStatusDone = 310;
+
+  void _logRefund(String message) {
+    if (kDebugMode) {
+      debugPrint('[refund] $message');
+    }
+  }
 
   void close() {
     _client.close();
   }
 
-  Future<List<ModItem>> fetchMods() async {
+  bool _isPublishedStatus(String? status, dynamic weakOffline) {
+    final value = status?.toLowerCase().trim() ?? '';
+    if (value.contains('online') ||
+        value.contains('publish') ||
+        value.contains('on_shelf') ||
+        value.contains('onshelf') ||
+        value.contains('上架') ||
+        value.contains('上线')) {
+      return true;
+    }
+    if (weakOffline is bool && weakOffline) {
+      return true;
+    }
+    if (weakOffline is String && weakOffline.toLowerCase() == 'true') {
+      return true;
+    }
+    return false;
+  }
+
+  Future<List<ModItem>> fetchMods({
+    bool onlyPriced = true,
+    bool onlyPublished = false,
+  }) async {
     const span = 50;
     var start = 0;
     int? count;
@@ -1450,12 +3392,37 @@ class McDevApi {
           } else if (priceValue != null) {
             price = int.tryParse(priceValue.toString());
           }
-          if (price != null && price <= 0) {
+          final status = entry['status']?.toString();
+          final weakOffline = entry['weak_offline'];
+          final isPublished = _isPublishedStatus(status, weakOffline);
+          if (onlyPublished && !isPublished) {
+            continue;
+          }
+          if (onlyPriced && price != null && price <= 0) {
             continue;
           }
           final name = entry['item_name']?.toString() ?? id;
           final priceType = entry['price_type']?.toString();
-          items.add(ModItem(id: id, name: name, priceType: priceType));
+          final releaseAt = _parseModReleaseAt(
+            entry['online_time'] ??
+                entry['shelf_time'] ??
+                entry['publish_time'] ??
+                entry['on_shelf_time'] ??
+                entry['create_time'] ??
+                entry['update_time'],
+          );
+          items.add(
+            ModItem(
+              id: id,
+              name: name,
+              price: price,
+              priceType: priceType,
+              status: status,
+              weakOffline:
+                  weakOffline is bool ? weakOffline : weakOffline == 'true',
+              releaseAt: releaseAt,
+            ),
+          );
         }
       }
 
@@ -1558,6 +3525,70 @@ class McDevApi {
     final totalDiamonds = (data['total_diamonds'] as num?)?.toInt() ?? 0;
     final totalPoints = (data['total_points'] as num?)?.toInt() ?? 0;
     final count = (data['count'] as num?)?.toInt() ?? 0;
+    int refundPending = 0;
+    int refunded = 0;
+    int refundOther = 0;
+    final orders = data['orders'];
+    final ordersLength = orders is List ? orders.length : 0;
+    if (orders is List) {
+      for (final order in orders) {
+        if (order is! Map<String, dynamic>) {
+          continue;
+        }
+        final rawStatus = order['refund_status'];
+        if (rawStatus == null) {
+          continue;
+        }
+        final status = rawStatus.toString().trim();
+        if (status.isEmpty) {
+          continue;
+        }
+        if (status.contains('退款中')) {
+          refundPending += 1;
+        } else if (status.contains('已退款') || status.contains('退款成功')) {
+          refunded += 1;
+        } else {
+          refundOther += 1;
+        }
+      }
+    }
+    _logRefund(
+      'mod=${mod.id} name=${mod.name} count=$count orders=$ordersLength '
+      'pendingByOrders=$refundPending refundedByOrders=$refunded otherByOrders=$refundOther',
+    );
+    final needsServerCounts = count > 0 &&
+        (ordersLength < count ||
+            (ordersLength > 0 && refundPending == 0 && refunded == 0));
+    if (needsServerCounts) {
+      try {
+        final pendingCount = await _fetchRefundCount(
+          mod,
+          range,
+          _refundStatusPending,
+        );
+        final refundedCount = await _fetchRefundCount(
+          mod,
+          range,
+          _refundStatusDone,
+        );
+        _logRefund(
+          'mod=${mod.id} serverCounts pending=$pendingCount refunded=$refundedCount',
+        );
+        if (pendingCount + refundedCount <= count) {
+          refundPending = pendingCount;
+          refunded = refundedCount;
+          refundOther = 0;
+          _logRefund('mod=${mod.id} useServerCounts');
+        } else {
+          _logRefund(
+            'mod=${mod.id} ignoreServerCounts sum=${pendingCount + refundedCount} count=$count',
+          );
+        }
+      } catch (error) {
+        _logRefund('mod=${mod.id} serverCounts failed: $error');
+        // Fall back to partial counts from orders list.
+      }
+    }
 
     return IncomeSummary(
       itemId: mod.id,
@@ -1565,8 +3596,48 @@ class McDevApi {
       totalDiamonds: totalDiamonds,
       totalPoints: totalPoints,
       orderCount: count,
+      refundPendingCount: refundPending,
+      refundedCount: refunded,
+      refundOtherCount: refundOther,
       priceType: mod.priceType,
+      releaseAt: mod.releaseAt,
     );
+  }
+
+  Future<int> _fetchRefundCount(
+    ModItem mod,
+    DateTimeRange range,
+    int refundStatus,
+  ) async {
+    final beginUtc = _startOfDay(range.start).toUtc().toIso8601String();
+    final endUtc = _endOfDay(range.end).toUtc().toIso8601String();
+    final uri = Uri.https(
+      'mc-launcher.webapp.163.com',
+      '/items/categories/$category/${mod.id}/incomes/',
+      {
+        'begin_time': beginUtc,
+        'end_time': endUtc,
+        'refund_status': refundStatus.toString(),
+      },
+    );
+    final payload = await _getJson(uri);
+    final status = payload['status']?.toString();
+    if (status != null && status != 'ok') {
+      final message =
+          payload['message']?.toString() ?? payload['msg']?.toString() ?? '';
+      throw McDevException('收益接口状态异常: $status $message', uri);
+    }
+    final data = payload['data'];
+    if (data is! Map<String, dynamic>) {
+      throw McDevException('收益接口返回异常: data 非对象', uri);
+    }
+    final count = (data['count'] as num?)?.toInt() ?? 0;
+    final orders = data['orders'];
+    final ordersLength = orders is List ? orders.length : 0;
+    _logRefund(
+      'mod=${mod.id} refundStatus=$refundStatus count=$count orders=$ordersLength',
+    );
+    return count;
   }
 
   Future<IncomeSummary> fetchIncomeWithRetry(
@@ -1597,6 +3668,7 @@ class McDevApi {
       orderCount: 0,
       error: '重试失败: ${lastError.toString()}',
       priceType: mod.priceType,
+      releaseAt: mod.releaseAt,
     );
   }
 
@@ -1640,11 +3712,23 @@ class McDevApi {
 }
 
 class ModItem {
-  ModItem({required this.id, required this.name, this.priceType});
+  ModItem({
+    required this.id,
+    required this.name,
+    this.price,
+    this.priceType,
+    this.status,
+    this.weakOffline,
+    this.releaseAt,
+  });
 
   final String id;
   final String name;
+  final int? price;
   final String? priceType;
+  final String? status;
+  final bool? weakOffline;
+  final DateTime? releaseAt;
 }
 
 class IncomeSummary {
@@ -1654,8 +3738,12 @@ class IncomeSummary {
     required this.totalDiamonds,
     required this.totalPoints,
     required this.orderCount,
+    this.refundPendingCount = 0,
+    this.refundedCount = 0,
+    this.refundOtherCount = 0,
     this.error,
     this.priceType,
+    this.releaseAt,
   });
 
   final String itemId;
@@ -1663,8 +3751,12 @@ class IncomeSummary {
   final int totalDiamonds;
   final int totalPoints;
   final int orderCount;
+  final int refundPendingCount;
+  final int refundedCount;
+  final int refundOtherCount;
   final String? error;
   final String? priceType;
+  final DateTime? releaseAt;
 }
 
 class DeveloperProfile {
