@@ -5,6 +5,7 @@ import 'package:flutter/material.dart'
         ElevatedButton,
         OutlinedButton,
         TextButton,
+        TextField,
         SegmentedButton,
         ButtonSegment;
 import 'package:oreui_flutter/oreui_flutter.dart';
@@ -14,6 +15,7 @@ export 'package:flutter/material.dart'
         ElevatedButton,
         OutlinedButton,
         TextButton,
+        TextField,
         SegmentedButton,
         ButtonSegment;
 export 'package:oreui_flutter/oreui_flutter.dart'
@@ -29,6 +31,7 @@ export 'package:oreui_flutter/oreui_flutter.dart'
         OreThemeController,
         OreThemeData,
         OreThemeProvider,
+        OreTextField,
         OreTokens,
         OreTypography;
 
@@ -396,6 +399,152 @@ class SegmentedButton<T> extends StatelessWidget {
         SizedBox(width: OreTokens.gapXs),
         segment.label,
       ],
+    );
+  }
+}
+
+class TextField extends StatefulWidget {
+  const TextField({
+    super.key,
+    this.controller,
+    this.focusNode,
+    this.decoration,
+    this.keyboardType,
+    this.textInputAction,
+    this.textCapitalization = TextCapitalization.none,
+    this.onChanged,
+    this.onEditingComplete,
+    this.onSubmitted,
+    this.enabled = true,
+    this.obscureText = false,
+    this.maxLines = 1,
+    this.minLines,
+    this.autofocus = false,
+  });
+
+  final TextEditingController? controller;
+  final FocusNode? focusNode;
+  final InputDecoration? decoration;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final TextCapitalization textCapitalization;
+  final ValueChanged<String>? onChanged;
+  final VoidCallback? onEditingComplete;
+  final ValueChanged<String>? onSubmitted;
+  final bool enabled;
+  final bool obscureText;
+  final int? maxLines;
+  final int? minLines;
+  final bool autofocus;
+
+  @override
+  State<TextField> createState() => _TextFieldState();
+}
+
+class _TextFieldState extends State<TextField> {
+  FocusNode? _ownedFocusNode;
+  bool _requestedFocus = false;
+
+  FocusNode get _focusNode => widget.focusNode ?? _ownedFocusNode!;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.focusNode == null) {
+      _ownedFocusNode = FocusNode();
+    }
+  }
+
+  @override
+  void didUpdateWidget(TextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      if (oldWidget.focusNode == null && widget.focusNode != null) {
+        _ownedFocusNode?.dispose();
+        _ownedFocusNode = null;
+      } else if (oldWidget.focusNode != null && widget.focusNode == null) {
+        _ownedFocusNode = FocusNode();
+        _requestedFocus = false;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _ownedFocusNode?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.autofocus && !_requestedFocus) {
+      _requestedFocus = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        FocusScope.of(context).requestFocus(_focusNode);
+      });
+    }
+
+    final decoration = widget.decoration ?? const InputDecoration();
+    final labelText = decoration.labelText;
+    final errorText = decoration.errorText;
+    final hintText = decoration.hintText;
+    final contentPadding =
+        decoration.contentPadding ?? _densePadding(decoration.isDense);
+
+    final field = OreTextField(
+      controller: widget.controller,
+      focusNode: _focusNode,
+      hintText: hintText,
+      enabled: widget.enabled,
+      obscureText: widget.obscureText,
+      maxLines: widget.maxLines,
+      minLines: widget.minLines,
+      onChanged: widget.onChanged,
+      keyboardType: widget.keyboardType,
+      textInputAction: widget.textInputAction,
+      textCapitalization: widget.textCapitalization,
+      onEditingComplete: widget.onEditingComplete,
+      onSubmitted: widget.onSubmitted,
+      prefix: decoration.prefixIcon,
+      suffix: decoration.suffixIcon,
+      contentPadding: contentPadding,
+    );
+
+    final colors = OreTheme.of(context).colors;
+    final typography = OreTheme.of(context).typography;
+    final children = <Widget>[];
+
+    if (labelText != null && labelText.isNotEmpty) {
+      children.add(Text(labelText, style: typography.label));
+      children.add(const SizedBox(height: OreTokens.gapXs));
+    }
+
+    children.add(field);
+
+    if (errorText != null && errorText.isNotEmpty) {
+      children.add(const SizedBox(height: OreTokens.gapXs));
+      children.add(
+        Text(
+          errorText,
+          style: typography.caption.copyWith(color: colors.danger),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  EdgeInsetsGeometry? _densePadding(bool? isDense) {
+    if (isDense != true) {
+      return null;
+    }
+    return const EdgeInsets.symmetric(
+      horizontal: OreTokens.gapMd,
+      vertical: OreTokens.gapXs,
     );
   }
 }
