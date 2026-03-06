@@ -11,6 +11,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   gatekeeper:
     name: Build Trigger Check
@@ -70,3 +73,51 @@ jobs:
     needs: gatekeeper
     if: needs.gatekeeper.outputs.build == 'true'
     uses: ./.github/workflows/build-linux.yml
+
+  release:
+    name: Publish Release
+    needs:
+      - gatekeeper
+      - build-android
+      - build-ios
+      - build-macos
+      - build-windows
+      - build-linux
+    if: needs.gatekeeper.outputs.build == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          if [ -z "$VERSION" ]; then
+            echo "version is empty"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist
+
+      - name: Publish GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          allowUpdates: true
+          replacesArtifacts: true
+          artifacts: dist/*
+          token: ${{ secrets.GITHUB_TOKEN }}
