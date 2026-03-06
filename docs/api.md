@@ -1,6 +1,6 @@
 # MC开发者平台接口汇总
 
-生成时间: 2026-03-05 22:41:53
+生成时间: 2026-03-06 09:44:04
 
 说明:
 - 由 HAR 自动提取，敏感字段已脱敏。
@@ -9,7 +9,7 @@
 生成命令示例:
 - `python3 tools/har_extract.py --har tools/har/session.har --out docs/api.md --json docs/api_endpoints.json`
 
-## GET blob://https://dl.reg.163.com/3f3f0742-d418-4f2b-a830-a18cadfd860d
+## GET blob://https://dl.reg.163.com/0a2d13a8-e54e-488a-9697-a3a9c5ea5f1e
 
 - 查询参数: 无
 - 请求头(字段): Accept
@@ -19,11 +19,11 @@
 - 响应JSON字段: 无
 - 示例curl:
 ```
-curl -sS -X GET 'blob://https://dl.reg.163.com/3f3f0742-d418-4f2b-a830-a18cadfd860d' \
+curl -sS -X GET 'blob://https://dl.reg.163.com/0a2d13a8-e54e-488a-9697-a3a9c5ea5f1e' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
-## GET blob://https://dl.reg.163.com/dcb34ec3-265c-40dd-ab3b-5951ecd082cf
+## GET blob://https://dl.reg.163.com/29505a5b-0907-40bf-aa51-566931aa8bed
 
 - 查询参数: 无
 - 请求头(字段): Accept
@@ -33,7 +33,7 @@ curl -sS -X GET 'blob://https://dl.reg.163.com/3f3f0742-d418-4f2b-a830-a18cadfd8
 - 响应JSON字段: 无
 - 示例curl:
 ```
-curl -sS -X GET 'blob://https://dl.reg.163.com/dcb34ec3-265c-40dd-ab3b-5951ecd082cf' \
+curl -sS -X GET 'blob://https://dl.reg.163.com/29505a5b-0907-40bf-aa51-566931aa8bed' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
@@ -135,6 +135,48 @@ curl -sS -X GET 'https://mc-launcher.webapp.163.com//items/global_developer_conf
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
+## GET https://mc-launcher.webapp.163.com/data_analysis/day_detail/
+
+- 查询参数: category, end_date, is_need_us_rank_data, item_list_str, order, platform, sort, span, start, start_date
+- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, origin, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
+- 请求体类型: 无
+- 请求体JSON字段: 无
+- 响应类型: application/json
+- 响应JSON字段: data, status
+- 示例curl:
+```
+curl -sS -X GET 'https://mc-launcher.webapp.163.com/data_analysis/day_detail/' \
+  -H 'Cookie: ${MCDEV_COOKIE}' \
+```
+
+## GET https://mc-launcher.webapp.163.com/data_analysis/day_summary/
+
+- 查询参数: category, day_dateid, day_sort, day_span, end_date, export, platform, span, start, start_date
+- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, origin, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
+- 请求体类型: 无
+- 请求体JSON字段: 无
+- 响应类型: application/json
+- 响应JSON字段: data, status
+- 示例curl:
+```
+curl -sS -X GET 'https://mc-launcher.webapp.163.com/data_analysis/day_summary/' \
+  -H 'Cookie: ${MCDEV_COOKIE}' \
+```
+
+## GET https://mc-launcher.webapp.163.com/data_analysis/day_top_N/
+
+- 查询参数: category, dateid, platform, sort, span
+- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, origin, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
+- 请求体类型: 无
+- 请求体JSON字段: 无
+- 响应类型: application/json
+- 响应JSON字段: data, status
+- 示例curl:
+```
+curl -sS -X GET 'https://mc-launcher.webapp.163.com/data_analysis/day_top_N/' \
+  -H 'Cookie: ${MCDEV_COOKIE}' \
+```
+
 ## GET https://mc-launcher.webapp.163.com/data_analysis/is_show/
 
 - 查询参数: setting
@@ -165,7 +207,7 @@ curl -sS -X GET 'https://mc-launcher.webapp.163.com/data_analysis/overview/' \
 
 ## GET https://mc-launcher.webapp.163.com/items/categories/pe/
 
-- 查询参数: is_third_party, span, start
+- 查询参数: span, start
 - 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, origin, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
 - 请求体类型: 无
 - 请求体JSON字段: 无
@@ -174,20 +216,6 @@ curl -sS -X GET 'https://mc-launcher.webapp.163.com/data_analysis/overview/' \
 - 示例curl:
 ```
 curl -sS -X GET 'https://mc-launcher.webapp.163.com/items/categories/pe/' \
-  -H 'Cookie: ${MCDEV_COOKIE}' \
-```
-
-## GET https://mc-launcher.webapp.163.com/items/categories/pe/4654542678883956249/incomes/
-
-- 查询参数: begin_time, end_time
-- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, origin, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
-- 请求体类型: 无
-- 请求体JSON字段: 无
-- 响应类型: application/json
-- 响应JSON字段: data, status
-- 示例curl:
-```
-curl -sS -X GET 'https://mc-launcher.webapp.163.com/items/categories/pe/4654542678883956249/incomes/' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
@@ -216,6 +244,20 @@ curl -sS -X GET 'https://mc-launcher.webapp.163.com/items/global_developer_confi
 - 示例curl:
 ```
 curl -sS -X GET 'https://mc-launcher.webapp.163.com/items/java_permit/' \
+  -H 'Cookie: ${MCDEV_COOKIE}' \
+```
+
+## GET https://mc-launcher.webapp.163.com/items/machine_check_queue_length/
+
+- 查询参数: 无
+- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, origin, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
+- 请求体类型: 无
+- 请求体JSON字段: 无
+- 响应类型: application/json
+- 响应JSON字段: data, status
+- 示例curl:
+```
+curl -sS -X GET 'https://mc-launcher.webapp.163.com/items/machine_check_queue_length/' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
@@ -541,7 +583,7 @@ curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/1.6e3a49056641a724418d.j
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
-## GET https://mcdev.webapp.163.com/static/js/109.cca5577c1a31d713e489.js
+## GET https://mcdev.webapp.163.com/static/js/111.8e19216af468367719d0.js
 
 - 查询参数: 无
 - 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
@@ -551,11 +593,11 @@ curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/1.6e3a49056641a724418d.j
 - 响应JSON字段: 无
 - 示例curl:
 ```
-curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/109.cca5577c1a31d713e489.js' \
+curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/111.8e19216af468367719d0.js' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
-## GET https://mcdev.webapp.163.com/static/js/117.fc9e4ba851ca0008b2d6.js
+## GET https://mcdev.webapp.163.com/static/js/112.635c42f19a7dde25cb26.js
 
 - 查询参数: 无
 - 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
@@ -565,7 +607,7 @@ curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/109.cca5577c1a31d713e489
 - 响应JSON字段: 无
 - 示例curl:
 ```
-curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/117.fc9e4ba851ca0008b2d6.js' \
+curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/112.635c42f19a7dde25cb26.js' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
@@ -611,7 +653,7 @@ curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/134.b2b0f7919ec8caf5a3c4
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
-## GET https://mcdev.webapp.163.com/static/js/153.5601d9387b8f3d0c6188.js
+## GET https://mcdev.webapp.163.com/static/js/137.560248907c76345e138b.js
 
 - 查询参数: 无
 - 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
@@ -621,7 +663,21 @@ curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/134.b2b0f7919ec8caf5a3c4
 - 响应JSON字段: 无
 - 示例curl:
 ```
-curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/153.5601d9387b8f3d0c6188.js' \
+curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/137.560248907c76345e138b.js' \
+  -H 'Cookie: ${MCDEV_COOKIE}' \
+```
+
+## GET https://mcdev.webapp.163.com/static/js/14.abc4dc14405d635a7c88.js
+
+- 查询参数: 无
+- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
+- 请求体类型: 无
+- 请求体JSON字段: 无
+- 响应类型: application/javascript
+- 响应JSON字段: 无
+- 示例curl:
+```
+curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/14.abc4dc14405d635a7c88.js' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
@@ -639,6 +695,34 @@ curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/170.239453d3e985aadf1858
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
+## GET https://mcdev.webapp.163.com/static/js/27.28907a6309a87695f38b.js
+
+- 查询参数: 无
+- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
+- 请求体类型: 无
+- 请求体JSON字段: 无
+- 响应类型: application/javascript
+- 响应JSON字段: 无
+- 示例curl:
+```
+curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/27.28907a6309a87695f38b.js' \
+  -H 'Cookie: ${MCDEV_COOKIE}' \
+```
+
+## GET https://mcdev.webapp.163.com/static/js/37.713a5e6b2d7669f40d71.js
+
+- 查询参数: 无
+- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
+- 请求体类型: 无
+- 请求体JSON字段: 无
+- 响应类型: application/javascript
+- 响应JSON字段: 无
+- 示例curl:
+```
+curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/37.713a5e6b2d7669f40d71.js' \
+  -H 'Cookie: ${MCDEV_COOKIE}' \
+```
+
 ## GET https://mcdev.webapp.163.com/static/js/4.b58fc8382be148ebef4f.js
 
 - 查询参数: 无
@@ -650,20 +734,6 @@ curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/170.239453d3e985aadf1858
 - 示例curl:
 ```
 curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/4.b58fc8382be148ebef4f.js' \
-  -H 'Cookie: ${MCDEV_COOKIE}' \
-```
-
-## GET https://mcdev.webapp.163.com/static/js/43.58273171d4e336d28c45.js
-
-- 查询参数: 无
-- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, cookie, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, user-agent
-- 请求体类型: 无
-- 请求体JSON字段: 无
-- 响应类型: application/javascript
-- 响应JSON字段: 无
-- 示例curl:
-```
-curl -sS -X GET 'https://mcdev.webapp.163.com/static/js/43.58273171d4e336d28c45.js' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
 ```
 
@@ -894,7 +964,7 @@ curl -sS -X GET 'https://x19.fp.ps.netease.com/file/6864db4200b50197c45da244RyO2
 ## GET https://x19.fp.ps.netease.com/file/694e4dee0949136aa3b65b06Q3pNWPyk07
 
 - 查询参数: 无
-- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
+- 请求头(字段): :authority, :method, :path, :scheme, Referer, User-Agent, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
 - 请求体类型: 无
 - 请求体JSON字段: 无
 - 响应类型: image/jpeg; charset=binary
@@ -908,7 +978,7 @@ curl -sS -X GET 'https://x19.fp.ps.netease.com/file/694e4dee0949136aa3b65b06Q3pN
 ## GET https://x19.fp.ps.netease.com/file/694e4e09eb22f813068d9242wkUMCBOS07
 
 - 查询参数: 无
-- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
+- 请求头(字段): :authority, :method, :path, :scheme, Referer, User-Agent, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
 - 请求体类型: 无
 - 请求体JSON字段: 无
 - 响应类型: image/jpeg; charset=binary
@@ -922,7 +992,7 @@ curl -sS -X GET 'https://x19.fp.ps.netease.com/file/694e4e09eb22f813068d9242wkUM
 ## GET https://x19.fp.ps.netease.com/file/694e4e134fa67d1766a918a0LmB2yEWC07
 
 - 查询参数: 无
-- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
+- 请求头(字段): :authority, :method, :path, :scheme, Referer, User-Agent, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
 - 请求体类型: 无
 - 请求体JSON字段: 无
 - 响应类型: image/jpeg; charset=binary
@@ -936,7 +1006,7 @@ curl -sS -X GET 'https://x19.fp.ps.netease.com/file/694e4e134fa67d1766a918a0LmB2
 ## GET https://x19.fp.ps.netease.com/file/694f822cd4c83cc524bf681cydwV1TkX07
 
 - 查询参数: 无
-- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
+- 请求头(字段): :authority, :method, :path, :scheme, Referer, User-Agent, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
 - 请求体类型: 无
 - 请求体JSON字段: 无
 - 响应类型: image/jpeg; charset=binary
@@ -950,7 +1020,7 @@ curl -sS -X GET 'https://x19.fp.ps.netease.com/file/694f822cd4c83cc524bf681cydwV
 ## GET https://x19.fp.ps.netease.com/file/694f8236c2eca4bfffeb3685xx36YJYw07
 
 - 查询参数: 无
-- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
+- 请求头(字段): :authority, :method, :path, :scheme, Referer, User-Agent, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
 - 请求体类型: 无
 - 请求体JSON字段: 无
 - 响应类型: image/jpeg; charset=binary
@@ -964,7 +1034,7 @@ curl -sS -X GET 'https://x19.fp.ps.netease.com/file/694f8236c2eca4bfffeb3685xx36
 ## GET https://x19.fp.ps.netease.com/file/69606d590afe16931218f5c3vbQb2cJu07
 
 - 查询参数: 无
-- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
+- 请求头(字段): :authority, :method, :path, :scheme, Referer, User-Agent, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
 - 请求体类型: 无
 - 请求体JSON字段: 无
 - 响应类型: image/jpeg; charset=binary
@@ -978,7 +1048,7 @@ curl -sS -X GET 'https://x19.fp.ps.netease.com/file/69606d590afe16931218f5c3vbQb
 ## GET https://x19.fp.ps.netease.com/file/6989b2aaf5e11551d51bf6a5tA0GiaCJ07
 
 - 查询参数: 无
-- 请求头(字段): :authority, :method, :path, :scheme, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
+- 请求头(字段): :authority, :method, :path, :scheme, Referer, User-Agent, accept, accept-encoding, accept-language, priority, referer, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform, sec-fetch-dest, sec-fetch-mode, sec-fetch-site, sec-fetch-storage-access, user-agent
 - 请求体类型: 无
 - 请求体JSON字段: 无
 - 响应类型: image/jpeg; charset=binary
@@ -999,14 +1069,14 @@ curl -sS -X GET 'https://x19.fp.ps.netease.com/file/6989b2aaf5e11551d51bf6a5tA0G
 - 响应JSON字段: ret, tk
 - 示例请求体(已脱敏):
 ```
-{"encParams": "fd871ca8d5b2fc88266bd9eba94191dcfa4d8b106caf405c82e1d256463df4558eeb2117b997244cc5b2fd5fb53413038f4911ae537b8f6807fc052388d196510895db2009da9167d379bf08e1ed9dee389c87ed3759c08146bbb94a64bfedc733798960c2ca29ad0e69a03941c888f062ba71551199530bf1d0dc93753fe5b4d4b83a61adf55c76009f141d08b7bf9a8f47130ebef0...(truncated)"}
+{"encParams": "fd871ca8d5b2fc88266bd9eba94191dcfa4d8b106caf405c82e1d256463df4558eeb2117b997244cc5b2fd5fb53413038f4911ae537b8f6807fc052388d196510895db2009da9167d379bf08e1ed9dee389c87ed3759c08146bbb94a64bfedc733798960c2ca29ad0e69a03941c888f062ba71551199530bf1d0dc93753fe5b4d4b83a61adf55c76009f141d08b7bf9a185d40a8525c...(truncated)"}
 ```
 - 示例curl:
 ```
 curl -sS -X POST 'https://dl.reg.163.com/dl/zj/mail/gt' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
   -H 'Content-Type: application/json' \
-  -d '{"encParams": "fd871ca8d5b2fc88266bd9eba94191dcfa4d8b106caf405c82e1d256463df4558eeb2117b997244cc5b2fd5fb53413038f4911ae537b8f6807fc052388d196510895db2009da9167d379bf08e1ed9dee389c87ed3759c08146bbb94a64bfedc733798960c2ca29ad0e69a03941c888f062ba71551199530bf1d0dc93753fe5b4d4b83a61adf55c76009f141d08b7bf9a8f47130ebef0...(truncated)"}'
+  -d '{"encParams": "fd871ca8d5b2fc88266bd9eba94191dcfa4d8b106caf405c82e1d256463df4558eeb2117b997244cc5b2fd5fb53413038f4911ae537b8f6807fc052388d196510895db2009da9167d379bf08e1ed9dee389c87ed3759c08146bbb94a64bfedc733798960c2ca29ad0e69a03941c888f062ba71551199530bf1d0dc93753fe5b4d4b83a61adf55c76009f141d08b7bf9a185d40a8525c...(truncated)"}'
 ```
 
 ## POST https://dl.reg.163.com/dl/zj/mail/ini
@@ -1019,14 +1089,14 @@ curl -sS -X POST 'https://dl.reg.163.com/dl/zj/mail/gt' \
 - 响应JSON字段: capFlag, capId, pv, ret
 - 示例请求体(已脱敏):
 ```
-{"encParams": "0fca5dcd3b72ed18732aade75d7ab0881be41de8e71b07a7ecf4ded63db95db23214fc20a2d756bc1ecfefb16b871a7a766a5e870d8784b82d2b6377a802ca62e37f3764b0c1dcc33aa189405c5735218e467dd3c6a4c14d0a92423a291f2177b00edfac56185de349fc7253f4f05e147037734ba83cbe0e2a76ea779c04d6ffe4215c5952ab4593461a263a6b9d41bb510e82628b2b...(truncated)"}
+{"encParams": "0fca5dcd3b72ed18732aade75d7ab0881be41de8e71b07a7ecf4ded63db95db23214fc20a2d756bc1ecfefb16b871a7a766a5e870d8784b82d2b6377a802ca62e37f3764b0c1dcc33aa189405c5735218e467dd3c6a4c14d0a92423a291f2177b00edfac56185de349fc7253f4f05e147037734ba83cbe0e2a76ea779c04d6ffe4215c5952ab4593461a263a6b9d41bba3156c6422a0...(truncated)"}
 ```
 - 示例curl:
 ```
 curl -sS -X POST 'https://dl.reg.163.com/dl/zj/mail/ini' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
   -H 'Content-Type: application/json' \
-  -d '{"encParams": "0fca5dcd3b72ed18732aade75d7ab0881be41de8e71b07a7ecf4ded63db95db23214fc20a2d756bc1ecfefb16b871a7a766a5e870d8784b82d2b6377a802ca62e37f3764b0c1dcc33aa189405c5735218e467dd3c6a4c14d0a92423a291f2177b00edfac56185de349fc7253f4f05e147037734ba83cbe0e2a76ea779c04d6ffe4215c5952ab4593461a263a6b9d41bb510e82628b2b...(truncated)"}'
+  -d '{"encParams": "0fca5dcd3b72ed18732aade75d7ab0881be41de8e71b07a7ecf4ded63db95db23214fc20a2d756bc1ecfefb16b871a7a766a5e870d8784b82d2b6377a802ca62e37f3764b0c1dcc33aa189405c5735218e467dd3c6a4c14d0a92423a291f2177b00edfac56185de349fc7253f4f05e147037734ba83cbe0e2a76ea779c04d6ffe4215c5952ab4593461a263a6b9d41bba3156c6422a0...(truncated)"}'
 ```
 
 ## POST https://dl.reg.163.com/dl/zj/mail/l
@@ -1039,14 +1109,14 @@ curl -sS -X POST 'https://dl.reg.163.com/dl/zj/mail/ini' \
 - 响应JSON字段: ret
 - 示例请求体(已脱敏):
 ```
-{"encParams": "fd871ca8d5b2fc88266bd9eba94191dcdef79d9498eb249cf7af509c9c28099733be934f6fba8d67aaf691d8672378d995a4792335e4c22c84a3aa3104b50cb1666a608b7fe4548b46af113f374f94255d2ca547cbd2c7d3bc16ae298803f22fd77529f37a002f835c46047e75f6c50445223402804e08058ddefd5101b5c9861eb6414c82d4a9ec0f411257ed814355f15b276b9d62...(truncated)"}
+{"encParams": "fd871ca8d5b2fc88266bd9eba94191dcdef79d9498eb249cf7af509c9c280997bcbdfcf8683deae25e7be81da718dc36fbe46814de8b5895b6739ed0cbec711bf8022b99304fc786c307f9618a7df502adb6078320ceee358771297974ac2a51a9d5cef85f2d8a67ae64c801e451183ec6eb1258a566e9ae86b8c5c70a9972dfb29b8eba1a41767150dae616d89202e361f7e7242d0a...(truncated)"}
 ```
 - 示例curl:
 ```
 curl -sS -X POST 'https://dl.reg.163.com/dl/zj/mail/l' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
   -H 'Content-Type: application/json' \
-  -d '{"encParams": "fd871ca8d5b2fc88266bd9eba94191dcdef79d9498eb249cf7af509c9c28099733be934f6fba8d67aaf691d8672378d995a4792335e4c22c84a3aa3104b50cb1666a608b7fe4548b46af113f374f94255d2ca547cbd2c7d3bc16ae298803f22fd77529f37a002f835c46047e75f6c50445223402804e08058ddefd5101b5c9861eb6414c82d4a9ec0f411257ed814355f15b276b9d62...(truncated)"}'
+  -d '{"encParams": "fd871ca8d5b2fc88266bd9eba94191dcdef79d9498eb249cf7af509c9c280997bcbdfcf8683deae25e7be81da718dc36fbe46814de8b5895b6739ed0cbec711bf8022b99304fc786c307f9618a7df502adb6078320ceee358771297974ac2a51a9d5cef85f2d8a67ae64c801e451183ec6eb1258a566e9ae86b8c5c70a9972dfb29b8eba1a41767150dae616d89202e361f7e7242d0a...(truncated)"}'
 ```
 
 ## POST https://dl.reg.163.com/dl/zj/mail/powGetP
@@ -1059,14 +1129,14 @@ curl -sS -X POST 'https://dl.reg.163.com/dl/zj/mail/l' \
 - 响应JSON字段: pVInfo, ret
 - 示例请求体(已脱敏):
 ```
-{"encParams": "408afa64b5ec3fd2072e42eb2ee3d343faff546f8878f98a2e90041ca8fbaf3b62b63f55cb9ef7b1e0e7ec347e3c545c21307d73e54443ffc443f82ef8abd16fb252e0656f145513bcb8be85ad22daf5f689133b9418c0019281aa5308c5d3a17c903cbbc94db2154ad5ae1f688e1f4615d409be71af141fe525c040d7847ffc50ca8e00ab8044303e87aa8ce69d46e9fb5fb11137d4...(truncated)"}
+{"encParams": "408afa64b5ec3fd2072e42eb2ee3d343faff546f8878f98a2e90041ca8fbaf3b62b63f55cb9ef7b1e0e7ec347e3c545c21307d73e54443ffc443f82ef8abd16fb252e0656f145513bcb8be85ad22daf5f689133b9418c0019281aa5308c5d3a17c903cbbc94db2154ad5ae1f688e1f460067405f01ff940b991e92e8cc054d036202eb3658efa3a15044916e26ee010e401b4aa0acae...(truncated)"}
 ```
 - 示例curl:
 ```
 curl -sS -X POST 'https://dl.reg.163.com/dl/zj/mail/powGetP' \
   -H 'Cookie: ${MCDEV_COOKIE}' \
   -H 'Content-Type: application/json' \
-  -d '{"encParams": "408afa64b5ec3fd2072e42eb2ee3d343faff546f8878f98a2e90041ca8fbaf3b62b63f55cb9ef7b1e0e7ec347e3c545c21307d73e54443ffc443f82ef8abd16fb252e0656f145513bcb8be85ad22daf5f689133b9418c0019281aa5308c5d3a17c903cbbc94db2154ad5ae1f688e1f4615d409be71af141fe525c040d7847ffc50ca8e00ab8044303e87aa8ce69d46e9fb5fb11137d4...(truncated)"}'
+  -d '{"encParams": "408afa64b5ec3fd2072e42eb2ee3d343faff546f8878f98a2e90041ca8fbaf3b62b63f55cb9ef7b1e0e7ec347e3c545c21307d73e54443ffc443f82ef8abd16fb252e0656f145513bcb8be85ad22daf5f689133b9418c0019281aa5308c5d3a17c903cbbc94db2154ad5ae1f688e1f460067405f01ff940b991e92e8cc054d036202eb3658efa3a15044916e26ee010e401b4aa0acae...(truncated)"}'
 ```
 
 ## POST https://mc-launcher.webapp.163.com/salog/

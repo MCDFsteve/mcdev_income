@@ -38,9 +38,10 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['收益汇总', 'Mod 列表', '设置'];
+  static const _titles = ['主页', '收益汇总', 'Mod 列表', '设置'];
 
   final _pages = const [
+    HomePage(),
     IncomePage(),
     ModsPage(),
     SettingsPage(),
@@ -61,6 +62,10 @@ class _HomeShellState extends State<HomeShell> {
               onDestinationSelected: (value) => setState(() => _index = value),
               labelType: NavigationRailLabelType.all,
               destinations: const [
+                NavigationRailDestination(
+                  icon: Icon(Icons.home),
+                  label: Text('主页'),
+                ),
                 NavigationRailDestination(
                   icon: Icon(Icons.query_stats),
                   label: Text('收益'),
@@ -92,6 +97,7 @@ class _HomeShellState extends State<HomeShell> {
         onTap: (value) => setState(() => _index = value),
         type: BottomNavigationBarType.fixed,
         items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: '主页'),
           BottomNavigationBarItem(icon: Icon(Icons.query_stats), label: '收益'),
           BottomNavigationBarItem(icon: Icon(Icons.view_list), label: 'Mod'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: '设置'),
@@ -139,6 +145,274 @@ class PlaceholderPage extends StatelessWidget {
   }
 }
 
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final _dateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
+  final _numberFormat = NumberFormat.decimalPattern();
+  bool _loading = false;
+  String? _error;
+  OverviewStats? _stats;
+  DateTime? _updatedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOverview();
+  }
+
+  Future<void> _loadOverview() async {
+    final cookieHeader = await LoginCookieHelper.buildCookieHeader();
+    if (cookieHeader.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _stats = null;
+        _loading = false;
+        _error = '请先到“设置”里通过 WebView 登录。';
+      });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    final api = McDevApi(
+      cookie: cookieHeader,
+      category: _categoryValue(_Category.pe),
+    );
+    try {
+      final stats = await api.fetchOverview();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _stats = stats;
+        _updatedAt = DateTime.now();
+        _loading = false;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = error.toString();
+        });
+      }
+    } finally {
+      api.close();
+    }
+  }
+
+  String _formatInt(int value) => _numberFormat.format(value);
+
+  Widget _buildSimpleCard(
+    BuildContext context, {
+    required String title,
+    required String value,
+    String? subtitle,
+  }) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.bodySmall),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: theme.textTheme.titleLarge,
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 4),
+              Text(subtitle, style: theme.textTheme.bodySmall),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPairCard(
+    BuildContext context, {
+    required String title,
+    required String mainValue,
+    required String subtitleLabel,
+    required String subtitleValue,
+    required int diff,
+  }) {
+    final theme = Theme.of(context);
+    final isUp = diff >= 0;
+    final diffText = '${isUp ? '+' : ''}${_formatInt(diff)}';
+    final diffColor = isUp ? Colors.green : Colors.red;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.bodySmall),
+            const SizedBox(height: 6),
+            Text(
+              mainValue,
+              style: theme.textTheme.titleLarge,
+            ),
+            const SizedBox(height: 4),
+            Text.rich(
+              TextSpan(
+                text: '$subtitleLabel $subtitleValue',
+                style: theme.textTheme.bodySmall,
+                children: [
+                  TextSpan(
+                    text: '  较$subtitleLabel $diffText',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: diffColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError(ThemeData theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, color: theme.colorScheme.error, size: 40),
+            const SizedBox(height: 12),
+            Text(_error ?? '加载失败'),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _loadOverview,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final width = MediaQuery.of(context).size.width;
+    final stats = _stats;
+    final columns = width >= 1200 ? 4 : (width >= 900 ? 3 : 1);
+
+    return SafeArea(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('数据概览', style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 4),
+                      Text(
+                        _updatedAt == null
+                            ? '尚未更新'
+                            : '最近更新 ${_dateTimeFormat.format(_updatedAt!)}',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _loading ? null : _loadOverview,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('刷新'),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _loading && stats == null
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? _buildError(theme)
+                    : stats == null
+                        ? const Center(child: Text('暂无数据'))
+                        : GridView.count(
+                            padding:
+                                const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            crossAxisCount: columns,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: columns >= 3 ? 1.6 : 2.4,
+                            children: [
+                              _buildPairCard(
+                                context,
+                                title: '本月钻石收益',
+                                mainValue: _formatInt(stats.thisMonthDiamond),
+                                subtitleLabel: '14天日均',
+                                subtitleValue:
+                                    _formatInt(stats.days14AverageDiamond),
+                                diff: stats.thisMonthDiamond -
+                                    stats.days14AverageDiamond,
+                              ),
+                              _buildPairCard(
+                                context,
+                                title: '昨日钻石收益',
+                                mainValue: _formatInt(stats.yesterdayDiamond),
+                                subtitleLabel: '14天日均',
+                                subtitleValue:
+                                    _formatInt(stats.days14AverageDiamond),
+                                diff: stats.yesterdayDiamond -
+                                    stats.days14AverageDiamond,
+                              ),
+                              _buildPairCard(
+                                context,
+                                title: '本月资源下载数',
+                                mainValue: _formatInt(stats.thisMonthDownload),
+                                subtitleLabel: '14天日均',
+                                subtitleValue:
+                                    _formatInt(stats.days14AverageDownload),
+                                diff: stats.thisMonthDownload -
+                                    stats.days14AverageDownload,
+                              ),
+                              _buildPairCard(
+                                context,
+                                title: '昨日资源下载数',
+                                mainValue: _formatInt(stats.yesterdayDownload),
+                                subtitleLabel: '14天日均',
+                                subtitleValue:
+                                    _formatInt(stats.days14AverageDownload),
+                                diff: stats.yesterdayDownload -
+                                    stats.days14AverageDownload,
+                              ),
+                            ],
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ModsPage extends StatefulWidget {
   const ModsPage({super.key});
 
@@ -148,11 +422,16 @@ class ModsPage extends StatefulWidget {
 
 class _ModsPageState extends State<ModsPage> {
   final _dateFormat = DateFormat('yyyy-MM-dd');
+  final _numberFormat = NumberFormat.decimalPattern();
   _Category _category = _Category.pe;
   bool _loading = false;
   String? _error;
   List<ModItem> _mods = [];
   String _search = '';
+  bool _salesLoading = false;
+  String? _salesError;
+  Map<String, int> _salesById = {};
+  DateTime? _salesUpdatedAt;
 
   @override
   void initState() {
@@ -186,21 +465,126 @@ class _ModsPageState extends State<ModsPage> {
       category: _categoryValue(_category),
     );
     try {
-      final mods =
-          await api.fetchMods(onlyPriced: false, onlyPublished: true);
+      final mods = await api.fetchMods(onlyPriced: false, onlyPublished: false);
       if (!mounted) {
         return;
       }
       setState(() {
         _mods = mods;
         _loading = false;
-        _error = mods.isEmpty ? '未获取到已发布的 Mod。' : null;
+        _error = mods.isEmpty ? '未获取到 Mod。' : null;
+        _salesById = {};
+        _salesError = null;
+        _salesUpdatedAt = null;
       });
+      if (mods.isNotEmpty) {
+        _loadSales(cookieHeader, mods);
+      }
     } catch (error) {
       if (mounted) {
         setState(() {
           _loading = false;
           _error = error.toString();
+        });
+      }
+    } finally {
+      api.close();
+    }
+  }
+
+  String _analysisCategory(_Category category) {
+    return category == _Category.pe ? 'pe' : 'pc';
+  }
+
+  Future<Map<String, int>> _fetchSalesInBatches(
+    McDevApi api,
+    List<String> ids,
+    DateTime startDate,
+    DateTime endDate,
+    String platform,
+    String category,
+  ) async {
+    const batchSize = 10;
+    final result = <String, int>{};
+    for (var i = 0; i < ids.length; i += batchSize) {
+      if (!mounted) {
+        return result;
+      }
+      final batch = ids.sublist(i, min(i + batchSize, ids.length));
+      final batchResult = await api.fetchSalesTotals(
+        itemIds: batch,
+        startDate: startDate,
+        endDate: endDate,
+        platform: platform,
+        category: category,
+      );
+      result.addAll(batchResult);
+    }
+    return result;
+  }
+
+  Future<void> _loadSales(String cookieHeader, List<ModItem> mods) async {
+    if (!mounted) {
+      return;
+    }
+    if (mods.isEmpty) {
+      setState(() {
+        _salesById = {};
+        _salesError = null;
+        _salesLoading = false;
+        _salesUpdatedAt = null;
+      });
+      return;
+    }
+    setState(() {
+      _salesLoading = true;
+      _salesError = null;
+    });
+
+    final api = McDevApi(
+      cookie: cookieHeader,
+      category: _categoryValue(_category),
+    );
+    try {
+      final ids = mods.map((mod) => mod.id).toList();
+      final now = DateTime.now();
+      final start7 = now.subtract(const Duration(days: 7));
+      final platform = _analysisCategory(_category);
+      final category = platform;
+      bool allZero(Map<String, int> map) =>
+          map.isNotEmpty && map.values.every((value) => value == 0);
+      var salesMap = await _fetchSalesInBatches(
+        api,
+        ids,
+        start7,
+        now,
+        platform,
+        category,
+      );
+      if (salesMap.isEmpty || allZero(salesMap)) {
+        final start30 = now.subtract(const Duration(days: 30));
+        salesMap = await _fetchSalesInBatches(
+          api,
+          ids,
+          start30,
+          now,
+          platform,
+          category,
+        );
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _salesById = salesMap;
+        _salesLoading = false;
+        _salesUpdatedAt = DateTime.now();
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _salesLoading = false;
+          _salesError = error.toString();
         });
       }
     } finally {
@@ -254,15 +638,27 @@ class _ModsPageState extends State<ModsPage> {
     if (price <= 0) {
       return '免费';
     }
+    final priceText = _numberFormat.format(price);
     final kind = _priceKind(mod.priceType);
     switch (kind) {
       case _PriceKind.diamond:
-        return '$price 钻石';
+        return '$priceText 钻石';
       case _PriceKind.emerald:
-        return '$price 绿宝石';
+        return '$priceText 绿宝石';
       case _PriceKind.other:
-        return '$price';
+        return priceText;
     }
+  }
+
+  String _salesLabel(ModItem mod) {
+    final sales = _salesById[mod.id];
+    if (sales != null) {
+      return _numberFormat.format(sales);
+    }
+    if (_salesLoading) {
+      return '加载中';
+    }
+    return '暂无';
   }
 
   Widget _buildError(ThemeData theme) {
@@ -333,6 +729,8 @@ class _ModsPageState extends State<ModsPage> {
             const SizedBox(height: 4),
             Text('价格: ${_priceLabel(mod)}', style: theme.textTheme.bodySmall),
             const SizedBox(height: 4),
+            Text('总销量: ${_salesLabel(mod)}', style: theme.textTheme.bodySmall),
+            const SizedBox(height: 4),
             Text('上架: $releaseText', style: theme.textTheme.bodySmall),
           ],
         ),
@@ -391,7 +789,19 @@ class _ModsPageState extends State<ModsPage> {
                       icon: const Icon(Icons.refresh),
                       label: const Text('刷新'),
                     ),
-                    Text('已发布 ${filtered.length} / 共 ${_mods.length}'),
+                    Text('显示 ${filtered.length} / 共 ${_mods.length}'),
+                    if (_salesLoading) const Text('总销量加载中...'),
+                    if (_salesError != null)
+                      Text(
+                        '总销量加载失败',
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    if (!_salesLoading && _salesError == null)
+                      Text(
+                        _salesUpdatedAt == null
+                            ? '总销量未更新'
+                            : '总销量更新 ${_dateFormat.format(_salesUpdatedAt!)}',
+                      ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -413,7 +823,7 @@ class _ModsPageState extends State<ModsPage> {
                 : _error != null
                     ? _buildError(theme)
                     : filtered.isEmpty
-                        ? const Center(child: Text('暂无已发布 Mod'))
+                        ? const Center(child: Text('暂无 Mod'))
                         : Scrollbar(
                             child: GridView.builder(
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -422,7 +832,7 @@ class _ModsPageState extends State<ModsPage> {
                                 crossAxisCount: isWide ? 2 : 1,
                                 mainAxisSpacing: 12,
                                 crossAxisSpacing: 12,
-                                mainAxisExtent: isWide ? 170 : 190,
+                                mainAxisExtent: isWide ? 190 : 210,
                               ),
                               itemCount: filtered.length,
                               itemBuilder: (context, index) =>
@@ -3332,12 +3742,40 @@ class McDevApi {
 
   bool _isPublishedStatus(String? status, dynamic weakOffline) {
     final value = status?.toLowerCase().trim() ?? '';
+    final isOffline = value.contains('offline') ||
+        value.contains('下架') ||
+        value.contains('下线') ||
+        value.contains('封禁') ||
+        value.contains('违规') ||
+        value.contains('驳回') ||
+        value.contains('拒绝') ||
+        value.contains('草稿') ||
+        value.contains('待发布') ||
+        value.contains('预发布');
+    if (isOffline) {
+      return false;
+    }
     if (value.contains('online') ||
         value.contains('publish') ||
         value.contains('on_shelf') ||
         value.contains('onshelf') ||
+        value.contains('已上架') ||
+        value.contains('已上线') ||
         value.contains('上架') ||
-        value.contains('上线')) {
+        value.contains('上线') ||
+        value.contains('审核') ||
+        value.contains('待审') ||
+        value.contains('审查') ||
+        value.contains('审批') ||
+        value.contains('更新') ||
+        value.contains('提交') ||
+        value.contains('发布中') ||
+        value.contains('上架中') ||
+        value.contains('上线中') ||
+        value.contains('review') ||
+        value.contains('pending') ||
+        value.contains('audit') ||
+        value.contains('updat')) {
       return true;
     }
     if (weakOffline is bool && weakOffline) {
@@ -3347,6 +3785,29 @@ class McDevApi {
       return true;
     }
     return false;
+  }
+
+  String _formatDateId(DateTime value) {
+    return DateFormat('yyyyMMdd').format(value);
+  }
+
+  Future<OverviewStats> fetchOverview() async {
+    final uri = Uri.https(
+      'mc-launcher.webapp.163.com',
+      '/data_analysis/overview/',
+    );
+    final payload = await _getJson(uri);
+    final status = payload['status']?.toString();
+    if (status != null && status != 'ok') {
+      final message =
+          payload['message']?.toString() ?? payload['msg']?.toString() ?? '';
+      throw McDevException('概览接口状态异常: $status $message', uri);
+    }
+    final data = payload['data'];
+    if (data is! Map<String, dynamic>) {
+      throw McDevException('概览接口返回异常: data 非对象', uri);
+    }
+    return OverviewStats.fromJson(data);
   }
 
   Future<List<ModItem>> fetchMods({
@@ -3398,7 +3859,7 @@ class McDevApi {
           if (onlyPublished && !isPublished) {
             continue;
           }
-          if (onlyPriced && price != null && price <= 0) {
+          if (onlyPriced && (price == null || price <= 0)) {
             continue;
           }
           final name = entry['item_name']?.toString() ?? id;
@@ -3436,6 +3897,76 @@ class McDevApi {
     }
 
     return items;
+  }
+
+  Future<Map<String, int>> fetchSalesTotals({
+    required List<String> itemIds,
+    required DateTime startDate,
+    required DateTime endDate,
+    required String platform,
+    required String category,
+  }) async {
+    if (itemIds.isEmpty) {
+      return {};
+    }
+    final uri = Uri.https(
+      'mc-launcher.webapp.163.com',
+      '/data_analysis/day_detail/',
+      {
+        'platform': platform,
+        'category': category,
+        'start_date': _formatDateId(startDate),
+        'end_date': _formatDateId(endDate),
+        'item_list_str': itemIds.join(','),
+        'sort': 'dateid',
+        'order': 'ASC',
+        'start': '0',
+        'span': '999999999',
+        'is_need_us_rank_data': 'true',
+      },
+    );
+
+    final payload = await _getJson(uri);
+    final status = payload['status']?.toString();
+    if (status != null && status != 'ok') {
+      final message =
+          payload['message']?.toString() ?? payload['msg']?.toString() ?? '';
+      throw McDevException('统计接口状态异常: $status $message', uri);
+    }
+    final data = payload['data'];
+    if (data is! Map<String, dynamic>) {
+      throw McDevException('统计接口返回异常: data 非对象', uri);
+    }
+    final list = data['data'];
+    if (list is! List) {
+      return {};
+    }
+
+      final salesById = <String, int>{};
+      for (final entry in list) {
+        if (entry is! Map<String, dynamic>) {
+          continue;
+        }
+        final id = entry['iid']?.toString();
+      if (id == null || id.isEmpty) {
+        continue;
+      }
+      final salesRaw = entry['download_num'];
+      int? sales;
+      if (salesRaw is num) {
+        sales = salesRaw.toInt();
+      } else if (salesRaw != null) {
+        sales = int.tryParse(salesRaw.toString());
+      }
+      if (sales == null) {
+        continue;
+      }
+      final prev = salesById[id];
+      if (prev == null || sales > prev) {
+        salesById[id] = sales;
+      }
+    }
+    return salesById;
   }
 
   Future<DeveloperProfile> fetchDeveloperProfile() async {
@@ -3757,6 +4288,63 @@ class IncomeSummary {
   final String? error;
   final String? priceType;
   final DateTime? releaseAt;
+}
+
+class OverviewStats {
+  OverviewStats({
+    required this.thisMonthDiamond,
+    required this.lastMonthDiamond,
+    required this.yesterdayDiamond,
+    required this.days14AverageDiamond,
+    required this.thisMonthDownload,
+    required this.lastMonthDownload,
+    required this.yesterdayDownload,
+    required this.days14AverageDownload,
+    required this.dayDiamondDiff,
+    required this.dayDownloadDiff,
+    required this.monthDiamondDiff,
+    required this.monthDownloadDiff,
+  });
+
+  final int thisMonthDiamond;
+  final int lastMonthDiamond;
+  final int yesterdayDiamond;
+  final int days14AverageDiamond;
+  final int thisMonthDownload;
+  final int lastMonthDownload;
+  final int yesterdayDownload;
+  final int days14AverageDownload;
+  final int dayDiamondDiff;
+  final int dayDownloadDiff;
+  final int monthDiamondDiff;
+  final int monthDownloadDiff;
+
+  static int _parseInt(dynamic value) {
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value) ?? 0;
+    }
+    return 0;
+  }
+
+  factory OverviewStats.fromJson(Map<String, dynamic> data) {
+    return OverviewStats(
+      thisMonthDiamond: _parseInt(data['this_month_diamond']),
+      lastMonthDiamond: _parseInt(data['last_month_diamond']),
+      yesterdayDiamond: _parseInt(data['yesterday_diamond']),
+      days14AverageDiamond: _parseInt(data['days_14_average_diamond']),
+      thisMonthDownload: _parseInt(data['this_month_download']),
+      lastMonthDownload: _parseInt(data['last_month_download']),
+      yesterdayDownload: _parseInt(data['yesterday_download']),
+      days14AverageDownload: _parseInt(data['days_14_average_download']),
+      dayDiamondDiff: _parseInt(data['day_diamond_diff']),
+      dayDownloadDiff: _parseInt(data['day_download_diff']),
+      monthDiamondDiff: _parseInt(data['month_diamond_diff']),
+      monthDownloadDiff: _parseInt(data['month_download_diff']),
+    );
+  }
 }
 
 class DeveloperProfile {
