@@ -38,7 +38,8 @@ dependencies:
   http: ^1.2.2
   intl: ^0.20.2
   oreui_flutter:
-    path: ../oreui_flutter
+    git:
+      url: https://github.com/MCDFsteve/oreui_flutter
   shared_preferences: ^2.2.3
 
 dev_dependencies:
@@ -51,6 +52,56 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  icons_launcher: ^3.0.3
+  package_rename: ^1.10.1
+
+icons_launcher:
+  image_path: "assets/icon.png"
+  platforms:
+    android:
+      enable: true
+      image_path: "assets/icon.png"
+    ios:
+      enable: true
+      image_path: "assets/icon_apple.png"
+    macos:
+      enable: true
+      image_path: "assets/icon_apple.png"
+    web:
+      enable: true
+      image_path: "assets/icon.png"
+      favicon_path: "assets/icon.png"
+    windows:
+      enable: true
+      image_path: "assets/icon.png"
+    linux:
+      enable: true
+      image_path: "assets/icon.png"
+
+package_rename_config:
+  android:
+    app_name: "Cons Melt"
+    package_name: "com.aimessoft.consmelt"
+    override_old_package: "com.example.mcdev_income"
+    lang: "kotlin"
+  ios:
+    app_name: "Cons Melt"
+    bundle_name: "Cons Melt"
+    package_name: "com.aimessoft.consmelt"
+  macos:
+    app_name: "Cons Melt"
+    package_name: "com.aimessoft.consmelt"
+  linux:
+    app_name: "Cons Melt"
+    package_name: "com.aimessoft.consmelt"
+    exe_name: "cons_melt"
+  web:
+    app_name: "Cons Melt"
+    short_app_name: "Cons Melt"
+    description: "Cons Melt"
+  windows:
+    app_name: "Cons Melt"
+    exe_name: "cons_melt"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "mcdev_income" "\0"
+            VALUE "FileDescription", "Cons Melt" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "mcdev_income" "\0"
+            VALUE "InternalName", "Cons Melt" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "mcdev_income.exe" "\0"
-            VALUE "ProductName", "mcdev_income" "\0"
+            VALUE "OriginalFilename", "cons_melt.exe" "\0"
+            VALUE "ProductName", "Cons Melt" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -1,4 +1,4 @@
-package com.example.mcdev_income
+package com.aimessoft.consmelt
 
 import io.flutter.embedding.android.FlutterActivity
 

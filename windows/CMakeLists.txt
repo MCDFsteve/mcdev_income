@@ -4,7 +4,7 @@ project(mcdev_income LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "mcdev_income")
+set(BINARY_NAME "cons_melt")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
