@@ -1,0 +1,36 @@
+name: Build Android
+
+on:
+  workflow_call:
+    outputs:
+      artifact-name:
+        description: Android APK artifact name
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: android-apk
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build APK (release)
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/app/outputs/**/*.apk

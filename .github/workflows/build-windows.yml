@@ -1,0 +1,43 @@
+name: Build Windows
+
+on:
+  workflow_call:
+    outputs:
+      artifact-name:
+        description: Windows artifact name
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+jobs:
+  build:
+    name: Build Windows
+    runs-on: windows-latest
+    outputs:
+      artifact-name: windows-release
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Windows (release)
+        run: flutter build windows --release
+
+      - name: Package Windows build
+        shell: pwsh
+        run: |
+          $source = "build/windows/x64/runner/Release/*"
+          $dest = "windows-release.zip"
+          Compress-Archive -Path $source -DestinationPath $dest
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: windows-release.zip
