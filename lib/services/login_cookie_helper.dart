@@ -10,6 +10,7 @@ class LoginCookieHelper {
   static Future<Map<String, String>> readCookies({
     bool allowCache = true,
   }) async {
+    app_logger.info('LoginCookieHelper.readCookies start');
     final manager = CookieManager.instance();
     final cookieMap = <String, String>{};
 
@@ -25,21 +26,27 @@ class LoginCookieHelper {
     }
 
     if (cookieMap.isNotEmpty) {
+      app_logger.info('LoginCookieHelper.readCookies fresh=${cookieMap.length}');
       await _persistCookies(cookieMap);
       return cookieMap;
     }
 
     if (!allowCache) {
+      app_logger.info('LoginCookieHelper.readCookies empty no-cache');
       return {};
     }
+    app_logger.info('LoginCookieHelper.readCookies using cache');
     return _readCachedCookies();
   }
 
   static Future<String> buildCookieHeader({bool allowCache = true}) async {
+    app_logger.info('LoginCookieHelper.buildCookieHeader start');
     final cookies = await readCookies(allowCache: allowCache);
     if (cookies.isEmpty) {
+      app_logger.info('LoginCookieHelper.buildCookieHeader empty');
       return '';
     }
+    app_logger.info('LoginCookieHelper.buildCookieHeader ok');
     return cookies.entries
         .map((entry) => '${entry.key}=${entry.value}')
         .join('; ');

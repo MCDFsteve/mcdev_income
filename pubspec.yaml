@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.10.4
@@ -38,8 +38,7 @@ dependencies:
   http: ^1.2.2
   intl: ^0.20.2
   oreui_flutter:
-    git:
-      url: https://github.com/MCDFsteve/oreui_flutter
+    path: third_party/oreui_flutter
   shared_preferences: ^2.2.3
 
 dev_dependencies:
@@ -54,6 +53,10 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   icons_launcher: ^3.0.3
   package_rename: ^1.10.1
+
+dependency_overrides:
+  flutter_inappwebview_windows:
+    path: third_party/flutter_inappwebview_windows
 
 icons_launcher:
   image_path: "assets/icon.png"

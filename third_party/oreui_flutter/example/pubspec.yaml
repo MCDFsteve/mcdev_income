@@ -1,0 +1,20 @@
+name: oreui_flutter_example
+description: Ore UI Flutter showcase.
+publish_to: "none"
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  oreui_flutter:
+    path: ..
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

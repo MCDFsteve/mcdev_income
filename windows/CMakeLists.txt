@@ -10,6 +10,10 @@ set(BINARY_NAME "cons_melt")
 # versions of CMake.
 cmake_policy(VERSION 3.14...3.25)
 
+# Force WebView2 plugin to use the pixel-buffer fallback to avoid GPU/D3D
+# initialization issues that can crash on some Windows setups.
+set(FLUTTER_WEBVIEW_WINDOWS_USE_TEXTURE_FALLBACK ON)
+
 # Define build configuration option.
 get_property(IS_MULTICONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if(IS_MULTICONFIG)
