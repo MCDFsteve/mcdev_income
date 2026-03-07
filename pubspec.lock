@@ -298,7 +298,7 @@ packages:
   oreui_flutter:
     dependency: "direct main"
     description:
-    path: "third_party/oreui_flutter"
+      path: "third_party/oreui_flutter"
       relative: true
     source: path
     version: "0.0.1"
