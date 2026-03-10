@@ -17,9 +17,11 @@ class _IncomePageState extends State<IncomePage> {
   IncomeScope _scope = IncomeScope.all;
   bool _loading = false;
   String? _error;
+  String? _downloadError;
 
   int _totalDiamonds = 0;
   int _totalPoints = 0;
+  int _totalDownloads = 0;
   int _refundPendingOrders = 0;
   int _refundedOrders = 0;
   int _refundOtherOrders = 0;
@@ -46,8 +48,9 @@ class _IncomePageState extends State<IncomePage> {
       TextEditingController(text: '1.0');
   final TextEditingController _defaultNeteaseRatioController =
       TextEditingController(text: '1.0');
-  final TextEditingController _taxRateController =
-      TextEditingController(text: '0.2');
+  final TextEditingController _taxRateController = TextEditingController(
+    text: '0.2',
+  );
   final ScrollController _leftScrollController = ScrollController();
   final ScrollController _rightScrollController = ScrollController();
   List<IncomePreset> _presets = [];
@@ -149,9 +152,11 @@ class _IncomePageState extends State<IncomePage> {
         if (entry is Map<String, dynamic>) {
           presets.add(IncomePreset.fromJson(entry));
         } else if (entry is Map) {
-          presets.add(IncomePreset.fromJson(
-            entry.map((key, value) => MapEntry(key.toString(), value)),
-          ));
+          presets.add(
+            IncomePreset.fromJson(
+              entry.map((key, value) => MapEntry(key.toString(), value)),
+            ),
+          );
         }
       }
       if (!mounted) {
@@ -211,9 +216,9 @@ class _IncomePageState extends State<IncomePage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('暂无预设')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂无预设')));
       return;
     }
     await showModalBottomSheet<void>(
@@ -274,8 +279,9 @@ class _IncomePageState extends State<IncomePage> {
                         tooltip: '删除',
                         onPressed: () async {
                           setState(() {
-                            _presets =
-                                _presets.where((p) => p.id != preset.id).toList();
+                            _presets = _presets
+                                .where((p) => p.id != preset.id)
+                                .toList();
                             if (_selectedPresetId == preset.id) {
                               _selectedPresetId = null;
                             }
@@ -484,10 +490,12 @@ class _IncomePageState extends State<IncomePage> {
       _neteaseRatioTextByModId = preset.neteaseRatios.map(
         (key, value) => MapEntry(key, _formatRatio(value)),
       );
-      _defaultInternalRatioController.text =
-          _formatRatio(preset.defaultInternalRatio);
-      _defaultNeteaseRatioController.text =
-          _formatRatio(preset.defaultNeteaseRatio);
+      _defaultInternalRatioController.text = _formatRatio(
+        preset.defaultInternalRatio,
+      );
+      _defaultNeteaseRatioController.text = _formatRatio(
+        preset.defaultNeteaseRatio,
+      );
       _taxRateController.text = _formatRatio(preset.taxRate);
       _modSearch = '';
     });
@@ -527,7 +535,7 @@ class _IncomePageState extends State<IncomePage> {
       category: _categoryValue(_category),
     );
     try {
-      final mods = await api.fetchMods();
+      final mods = await api.fetchMods(onlyPriced: false, onlyPublished: false);
       if (!mounted) {
         return mods;
       }
@@ -536,10 +544,8 @@ class _IncomePageState extends State<IncomePage> {
         _mods = mods;
         _modsCategory = _category;
         _modsLoading = false;
-        _modsError =
-            mods.isEmpty ? '未获取到任何 Mod，请确认账号权限与类别。' : null;
-        _selectedModIds =
-            _selectedModIds.where(availableIds.contains).toSet();
+        _modsError = mods.isEmpty ? '未获取到任何 Mod，请确认账号权限与类别。' : null;
+        _selectedModIds = _selectedModIds.where(availableIds.contains).toSet();
         if (_singleModId != null && !availableIds.contains(_singleModId)) {
           _singleModId = null;
         }
@@ -643,12 +649,289 @@ class _IncomePageState extends State<IncomePage> {
     return doubleValue.toStringAsFixed(2);
   }
 
+  String _summarySortLabel() {
+    switch (_summarySortKey) {
+      case _SummarySortKey.diamonds:
+        return '钻石';
+      case _SummarySortKey.downloads:
+        return '新增下载';
+      case _SummarySortKey.releaseTime:
+        return '上架时间';
+    }
+  }
+
+  String _csvEscape(String value) {
+    final normalized = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final escaped = normalized.replaceAll('"', '""');
+    final needsQuote =
+        escaped.contains(',') ||
+        escaped.contains('"') ||
+        escaped.contains('\n');
+    if (needsQuote) {
+      return '"$escaped"';
+    }
+    return escaped;
+  }
+
+  String _buildIncomeCsv() {
+    final exportTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    final range = _range;
+    final rangeText = range == null
+        ? '未选择'
+        : '${_dateFormat.format(range.start)} ~ ${_dateFormat.format(range.end)}';
+    final defaultInternalParse = _parseRate(
+      _defaultInternalRatioController.text,
+      fieldName: '默认内部分成',
+      defaultValue: 1.0,
+      invalidValue: 1.0,
+    );
+    final defaultNeteaseParse = _parseRate(
+      _defaultNeteaseRatioController.text,
+      fieldName: '默认网易分成',
+      defaultValue: 1.0,
+      invalidValue: 1.0,
+    );
+    final taxParse = _parseRate(
+      _taxRateController.text,
+      fieldName: '税收比例',
+      defaultValue: 0.2,
+      invalidValue: 0.2,
+    );
+    final summaries = _sortedSummaries(_summaries);
+
+    final rows = <List<String>>[
+      ['导出时间', exportTime],
+      ['类别', _categoryLabel(_category)],
+      ['时间范围', rangeText],
+      ['统计范围', _scopeLabel()],
+      ['排序字段', _summarySortLabel()],
+      ['排序方向', _summarySortAscending ? '升序' : '降序'],
+      ['默认内部分成', _formatNumber(defaultInternalParse.value)],
+      ['默认网易分成', _formatNumber(defaultNeteaseParse.value)],
+      ['税率', _formatNumber(taxParse.value)],
+      [],
+      [
+        '序号',
+        'ModID',
+        'Mod名称',
+        '钻石',
+        '绿宝石',
+        '订单数',
+        '新增下载量',
+        '退款中',
+        '已退款',
+        '其他退款',
+        '上架日期',
+        '内部分成输入',
+        '内部分成生效值',
+        '内部分成来源',
+        '内部分成错误',
+        '网易分成输入',
+        '网易分成生效值',
+        '网易分成来源',
+        '网易分成错误',
+        '税率',
+        '税前分成',
+        '税后分成',
+        '分成计算错误',
+        '收益接口错误',
+      ],
+    ];
+
+    double shareTotal = 0;
+    for (var i = 0; i < summaries.length; i += 1) {
+      final summary = summaries[i];
+      final internalRaw =
+          _internalRatioTextByModId[summary.itemId]?.trim() ?? '';
+      final neteaseRaw = _neteaseRatioTextByModId[summary.itemId]?.trim() ?? '';
+      final internalParse = _parseRate(
+        internalRaw,
+        fieldName: '内部分成',
+        defaultValue: defaultInternalParse.value,
+        invalidValue: 0,
+      );
+      final neteaseParse = _parseRate(
+        neteaseRaw,
+        fieldName: '网易分成',
+        defaultValue: defaultNeteaseParse.value,
+        invalidValue: 0,
+      );
+      final errorFields = <String>[];
+      if (!internalParse.isValid) {
+        errorFields.add('内部分成');
+      }
+      if (!neteaseParse.isValid) {
+        errorFields.add('网易分成');
+      }
+      final gross =
+          summary.totalDiamonds.toDouble() /
+          100 *
+          internalParse.value *
+          neteaseParse.value;
+      final net = gross * (1 - taxParse.value);
+      shareTotal += net;
+      final calcError = errorFields.isEmpty
+          ? ''
+          : '参数错误: ${errorFields.join('、')}';
+
+      rows.add([
+        '${i + 1}',
+        summary.itemId,
+        summary.itemName,
+        summary.totalDiamonds.toString(),
+        summary.totalPoints.toString(),
+        summary.orderCount.toString(),
+        summary.downloadCount.toString(),
+        summary.refundPendingCount.toString(),
+        summary.refundedCount.toString(),
+        summary.refundOtherCount.toString(),
+        summary.releaseAt == null ? '' : _dateFormat.format(summary.releaseAt!),
+        internalRaw,
+        _formatNumber(internalParse.value),
+        internalParse.isDefault ? '默认' : '自定义',
+        internalParse.error ?? '',
+        neteaseRaw,
+        _formatNumber(neteaseParse.value),
+        neteaseParse.isDefault ? '默认' : '自定义',
+        neteaseParse.error ?? '',
+        _formatNumber(taxParse.value),
+        _formatNumber(gross),
+        _formatNumber(net),
+        calcError,
+        summary.error ?? '',
+      ]);
+    }
+
+    rows.add([]);
+    rows.add([
+      '汇总',
+      '',
+      '',
+      _totalDiamonds.toString(),
+      _totalPoints.toString(),
+      '',
+      _totalDownloads.toString(),
+      _refundPendingOrders.toString(),
+      _refundedOrders.toString(),
+      _refundOtherOrders.toString(),
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      _formatNumber(taxParse.value),
+      '',
+      _formatNumber(shareTotal),
+      '',
+      _downloadError ?? '',
+    ]);
+
+    final buffer = StringBuffer('\ufeff');
+    for (final row in rows) {
+      if (row.isEmpty) {
+        buffer.writeln();
+        continue;
+      }
+      buffer.writeln(row.map(_csvEscape).join(','));
+    }
+    return buffer.toString();
+  }
+
+  Future<void> _exportSummariesCsv() async {
+    if (_summaries.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂无可导出的查询结果')));
+      return;
+    }
+
+    final csv = _buildIncomeCsv();
+    final fileName =
+        'income_export_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv';
+    String? savedPath;
+    String? saveError;
+
+    try {
+      savedPath = await csv_file_saver.saveCsvToFile(
+        fileName: fileName,
+        content: csv,
+      );
+    } catch (error) {
+      saveError = error.toString();
+    }
+
+    await Clipboard.setData(ClipboardData(text: csv));
+    if (!mounted) {
+      return;
+    }
+
+    final tips = <String>[];
+    if (savedPath != null && savedPath.isNotEmpty) {
+      tips.add('CSV已导出: $savedPath');
+    } else {
+      tips.add('未写入本地文件');
+    }
+    tips.add('CSV已复制到剪贴板');
+    if (saveError != null && saveError!.isNotEmpty) {
+      tips.add('保存失败: $saveError');
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(tips.join('；')),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
+  String _analysisCategory(_Category category) {
+    return category == _Category.pe ? 'pe' : 'pc';
+  }
+
+  Future<Map<String, int>> _fetchDownloadsInBatches({
+    required McDevApi api,
+    required List<String> itemIds,
+    required DateTime startDate,
+    required DateTime endDate,
+    required String analysisCategory,
+  }) async {
+    if (itemIds.isEmpty) {
+      return {};
+    }
+    const batchSize = 10;
+    final result = <String, int>{};
+    for (var i = 0; i < itemIds.length; i += batchSize) {
+      if (!mounted) {
+        return result;
+      }
+      final batch = itemIds.sublist(i, min(i + batchSize, itemIds.length));
+      final batchResult = await api.fetchSalesIncrements(
+        itemIds: batch,
+        startDate: startDate,
+        endDate: endDate,
+        platform: analysisCategory,
+        category: analysisCategory,
+      );
+      result.addAll(batchResult);
+    }
+    return result;
+  }
+
   List<IncomeSummary> _sortedSummaries(List<IncomeSummary> input) {
     final list = List<IncomeSummary>.from(input);
     list.sort((a, b) {
       switch (_summarySortKey) {
         case _SummarySortKey.diamonds:
           final cmp = a.totalDiamonds.compareTo(b.totalDiamonds);
+          return _summarySortAscending ? cmp : -cmp;
+        case _SummarySortKey.downloads:
+          final cmp = a.downloadCount.compareTo(b.downloadCount);
           return _summarySortAscending ? cmp : -cmp;
         case _SummarySortKey.releaseTime:
           return _compareReleaseTime(a.releaseAt, b.releaseAt);
@@ -819,8 +1102,9 @@ class _IncomePageState extends State<IncomePage> {
           });
           return;
         }
-        targetMods =
-            mods.where((mod) => _selectedModIds.contains(mod.id)).toList();
+        targetMods = mods
+            .where((mod) => _selectedModIds.contains(mod.id))
+            .toList();
         break;
       case IncomeScope.single:
         if (_singleModId == null) {
@@ -842,9 +1126,11 @@ class _IncomePageState extends State<IncomePage> {
     setState(() {
       _loading = true;
       _error = null;
+      _downloadError = null;
       _summaries = [];
       _totalDiamonds = 0;
       _totalPoints = 0;
+      _totalDownloads = 0;
       _refundPendingOrders = 0;
       _refundedOrders = 0;
       _refundOtherOrders = 0;
@@ -870,6 +1156,7 @@ class _IncomePageState extends State<IncomePage> {
       final summaries = <IncomeSummary>[];
       int diamonds = 0;
       int points = 0;
+      int downloads = 0;
       int diamondPriced = 0;
       int emeraldPriced = 0;
       int otherPriced = 0;
@@ -877,10 +1164,30 @@ class _IncomePageState extends State<IncomePage> {
       int refunded = 0;
       int refundOther = 0;
       int processed = 0;
+      final modById = {for (final mod in targetMods) mod.id: mod};
+      final analysisCategory = _analysisCategory(_category);
+      var downloadById = <String, int>{};
+      String? downloadErrorText;
+      try {
+        downloadById = await _fetchDownloadsInBatches(
+          api: api,
+          itemIds: targetMods.map((mod) => mod.id).toList(),
+          startDate: range.start,
+          endDate: range.end,
+          analysisCategory: analysisCategory,
+        );
+      } catch (error) {
+        downloadErrorText = error.toString();
+        if (kDebugMode) {
+          debugPrint('fetch downloads failed: $error');
+        }
+      }
 
       for (var i = 0; i < targetMods.length; i += batchSize) {
-        final batch =
-            targetMods.sublist(i, min(i + batchSize, targetMods.length));
+        final batch = targetMods.sublist(
+          i,
+          min(i + batchSize, targetMods.length),
+        );
         final results = await Future.wait(
           batch.map((mod) => api.fetchIncomeWithRetry(mod, range)),
         );
@@ -888,25 +1195,37 @@ class _IncomePageState extends State<IncomePage> {
           return;
         }
         processed += results.length;
-        for (final summary in results) {
-          if (summary.error == null) {
+        for (final rawSummary in results) {
+          final summary = rawSummary.copyWith(
+            downloadCount: downloadById[rawSummary.itemId] ?? 0,
+          );
+          final includeInDetails =
+              summary.error == null || downloadById.containsKey(summary.itemId);
+          if (includeInDetails) {
             summaries.add(summary);
+          }
+          downloads += summary.downloadCount;
+
+          if (summary.error == null) {
             diamonds += summary.totalDiamonds;
             points += summary.totalPoints;
             refundPending += summary.refundPendingCount;
             refunded += summary.refundedCount;
             refundOther += summary.refundOtherCount;
-            final kind = _priceKind(summary.priceType);
-            switch (kind) {
-              case _PriceKind.diamond:
-                diamondPriced += 1;
-                break;
-              case _PriceKind.emerald:
-                emeraldPriced += 1;
-                break;
-              case _PriceKind.other:
-                otherPriced += 1;
-                break;
+            final sourceMod = modById[summary.itemId];
+            if ((sourceMod?.price ?? 0) > 0) {
+              final kind = _priceKind(summary.priceType);
+              switch (kind) {
+                case _PriceKind.diamond:
+                  diamondPriced += 1;
+                  break;
+                case _PriceKind.emerald:
+                  emeraldPriced += 1;
+                  break;
+                case _PriceKind.other:
+                  otherPriced += 1;
+                  break;
+              }
             }
           }
         }
@@ -916,6 +1235,8 @@ class _IncomePageState extends State<IncomePage> {
           _summaries = List.of(summaries);
           _totalDiamonds = diamonds;
           _totalPoints = points;
+          _totalDownloads = downloads;
+          _downloadError = downloadErrorText;
           _refundPendingOrders = refundPending;
           _refundedOrders = refunded;
           _refundOtherOrders = refundOther;

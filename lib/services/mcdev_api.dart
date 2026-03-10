@@ -23,7 +23,8 @@ class McDevApi {
 
   bool _isPublishedStatus(String? status, dynamic weakOffline) {
     final value = status?.toLowerCase().trim() ?? '';
-    final isOffline = value.contains('offline') ||
+    final isOffline =
+        value.contains('offline') ||
         value.contains('下架') ||
         value.contains('下线') ||
         value.contains('封禁') ||
@@ -160,8 +161,9 @@ class McDevApi {
               price: price,
               priceType: priceType,
               status: status,
-              weakOffline:
-                  weakOffline is bool ? weakOffline : weakOffline == 'true',
+              weakOffline: weakOffline is bool
+                  ? weakOffline
+                  : weakOffline == 'true',
               releaseAt: releaseAt,
             ),
           );
@@ -190,22 +192,19 @@ class McDevApi {
     if (itemIds.isEmpty) {
       return {};
     }
-    final uri = Uri.https(
-      'mc-launcher.webapp.163.com',
-      '/data_analysis/day_detail/',
-      {
-        'platform': platform,
-        'category': category,
-        'start_date': _formatDateId(startDate),
-        'end_date': _formatDateId(endDate),
-        'item_list_str': itemIds.join(','),
-        'sort': 'dateid',
-        'order': 'ASC',
-        'start': '0',
-        'span': '999999999',
-        'is_need_us_rank_data': 'true',
-      },
-    );
+    final uri =
+        Uri.https('mc-launcher.webapp.163.com', '/data_analysis/day_detail/', {
+          'platform': platform,
+          'category': category,
+          'start_date': _formatDateId(startDate),
+          'end_date': _formatDateId(endDate),
+          'item_list_str': itemIds.join(','),
+          'sort': 'dateid',
+          'order': 'ASC',
+          'start': '0',
+          'span': '999999999',
+          'is_need_us_rank_data': 'true',
+        });
 
     final payload = await _getJson(uri);
     final status = payload['status']?.toString();
@@ -223,12 +222,12 @@ class McDevApi {
       return {};
     }
 
-      final salesById = <String, int>{};
-      for (final entry in list) {
-        if (entry is! Map<String, dynamic>) {
-          continue;
-        }
-        final id = entry['iid']?.toString();
+    final salesById = <String, int>{};
+    for (final entry in list) {
+      if (entry is! Map<String, dynamic>) {
+        continue;
+      }
+      final id = entry['iid']?.toString();
       if (id == null || id.isEmpty) {
         continue;
       }
@@ -248,6 +247,101 @@ class McDevApi {
       }
     }
     return salesById;
+  }
+
+  Future<Map<String, int>> fetchSalesIncrements({
+    required List<String> itemIds,
+    required DateTime startDate,
+    required DateTime endDate,
+    required String platform,
+    required String category,
+  }) async {
+    if (itemIds.isEmpty) {
+      return {};
+    }
+
+    final baselineDate = startDate.subtract(const Duration(days: 1));
+    final uri =
+        Uri.https('mc-launcher.webapp.163.com', '/data_analysis/day_detail/', {
+          'platform': platform,
+          'category': category,
+          'start_date': _formatDateId(baselineDate),
+          'end_date': _formatDateId(endDate),
+          'item_list_str': itemIds.join(','),
+          'sort': 'dateid',
+          'order': 'ASC',
+          'start': '0',
+          'span': '999999999',
+          'is_need_us_rank_data': 'true',
+        });
+
+    final payload = await _getJson(uri);
+    final status = payload['status']?.toString();
+    if (status != null && status != 'ok') {
+      final message =
+          payload['message']?.toString() ?? payload['msg']?.toString() ?? '';
+      throw McDevException('统计接口状态异常: $status $message', uri);
+    }
+    final data = payload['data'];
+    if (data is! Map<String, dynamic>) {
+      throw McDevException('统计接口返回异常: data 非对象', uri);
+    }
+    final list = data['data'];
+    if (list is! List) {
+      return {for (final id in itemIds) id: 0};
+    }
+
+    final startDateId = _formatDateId(startDate);
+    final endDateId = _formatDateId(endDate);
+    final baselineById = <String, int>{};
+    final currentById = <String, int>{};
+
+    for (final entry in list) {
+      if (entry is! Map<String, dynamic>) {
+        continue;
+      }
+      final id = entry['iid']?.toString();
+      final dateId = entry['dateid']?.toString();
+      if (id == null || id.isEmpty || dateId == null || dateId.isEmpty) {
+        continue;
+      }
+
+      final salesRaw = entry['download_num'];
+      int? sales;
+      if (salesRaw is num) {
+        sales = salesRaw.toInt();
+      } else if (salesRaw != null) {
+        sales = int.tryParse(salesRaw.toString());
+      }
+      if (sales == null) {
+        continue;
+      }
+
+      if (dateId.compareTo(startDateId) < 0) {
+        final prev = baselineById[id];
+        if (prev == null || sales > prev) {
+          baselineById[id] = sales;
+        }
+        continue;
+      }
+      if (dateId.compareTo(endDateId) > 0) {
+        continue;
+      }
+
+      final prev = currentById[id];
+      if (prev == null || sales > prev) {
+        currentById[id] = sales;
+      }
+    }
+
+    final incrementsById = <String, int>{};
+    for (final id in itemIds) {
+      final baseline = baselineById[id] ?? 0;
+      final current = currentById[id] ?? baseline;
+      final increment = current - baseline;
+      incrementsById[id] = increment > 0 ? increment : 0;
+    }
+    return incrementsById;
   }
 
   Future<DeveloperProfile> fetchDeveloperProfile() async {
@@ -368,7 +462,8 @@ class McDevApi {
       'mod=${mod.id} name=${mod.name} count=$count orders=$ordersLength '
       'pendingByOrders=$refundPending refundedByOrders=$refunded otherByOrders=$refundOther',
     );
-    final needsServerCounts = count > 0 &&
+    final needsServerCounts =
+        count > 0 &&
         (ordersLength < count ||
             (ordersLength > 0 && refundPending == 0 && refunded == 0));
     if (needsServerCounts) {

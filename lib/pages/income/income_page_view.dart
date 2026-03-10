@@ -7,8 +7,7 @@ extension _IncomePageView on _IncomePageState {
     final segmentButtonWidth = OreTokens.controlHeightMd * 2.5;
     final modSelectButtonWidth = OreTokens.controlHeightMd * 3;
     final shareFieldRightPadding =
-        ore.borderWidth * OreTokens.scrollbarWidthUnits +
-            OreTokens.gapSm;
+        ore.borderWidth * OreTokens.scrollbarWidthUnits + OreTokens.gapSm;
     final defaultInternalParse = _parseRate(
       _defaultInternalRatioController.text,
       fieldName: '默认内部分成',
@@ -55,13 +54,15 @@ extension _IncomePageView on _IncomePageState {
         if (!neteaseParse.isValid) {
           errorFields.add('网易分成');
         }
-        final gross = summary.totalDiamonds.toDouble() /
+        final gross =
+            summary.totalDiamonds.toDouble() /
             100 *
             internalParse.value *
             neteaseParse.value;
         final net = gross * (1 - taxParse.value);
-        final error =
-            errorFields.isEmpty ? null : '参数错误: ${errorFields.join('、')}';
+        final error = errorFields.isEmpty
+            ? null
+            : '参数错误: ${errorFields.join('、')}';
         shareResults[summary.itemId] = _ShareResult(net, error: error);
         shareTotal += net;
         if (error != null) {
@@ -75,26 +76,27 @@ extension _IncomePageView on _IncomePageState {
     final filteredMods = searchText.isEmpty
         ? _mods
         : _mods
-            .where((mod) =>
-                mod.name.toLowerCase().contains(searchText) ||
-                mod.id.toLowerCase().contains(searchText))
-            .toList();
-    final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+              .where(
+                (mod) =>
+                    mod.name.toLowerCase().contains(searchText) ||
+                    mod.id.toLowerCase().contains(searchText),
+              )
+              .toList();
+    final isMobile =
+        defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
     final isWide = !isMobile && MediaQuery.of(context).size.width >= 1000;
 
     const noPresetValue = '__none__';
-    final selectedPresetValue = _presets.any((preset) => preset.id == _selectedPresetId)
+    final selectedPresetValue =
+        _presets.any((preset) => preset.id == _selectedPresetId)
         ? _selectedPresetId
         : noPresetValue;
 
     Widget buildSection(Widget child) {
       return OreStrip(
         tone: OreStripTone.dark,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: child,
-        ),
+        child: Padding(padding: const EdgeInsets.all(12), child: child),
       );
     }
 
@@ -127,10 +129,7 @@ extension _IncomePageView on _IncomePageState {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '时间范围: ${_rangeLabel()}',
-              style: theme.textTheme.bodyMedium,
-            ),
+            Text('时间范围: ${_rangeLabel()}', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: _loading ? null : _pickRange,
@@ -219,8 +218,9 @@ extension _IncomePageView on _IncomePageState {
                 ),
                 IconButton(
                   tooltip: '更新当前预设',
-                  onPressed:
-                      _selectedPresetId == null ? null : _updateSelectedPreset,
+                  onPressed: _selectedPresetId == null
+                      ? null
+                      : _updateSelectedPreset,
                   icon: const Icon(Icons.save_outlined),
                 ),
                 IconButton(
@@ -244,10 +244,7 @@ extension _IncomePageView on _IncomePageState {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        '选择 Mod',
-                        style: theme.textTheme.titleMedium,
-                      ),
+                      child: Text('选择 Mod', style: theme.textTheme.titleMedium),
                     ),
                     TextButton.icon(
                       onPressed: _modsLoading ? null : () => _loadMods(),
@@ -286,23 +283,23 @@ extension _IncomePageView on _IncomePageState {
                   Wrap(
                     spacing: 8,
                     children: [
-                    OutlinedButton(
-                      onPressed: _mods.isEmpty ? null : _selectAllMods,
-                      child: const Text('全选'),
-                      width: modSelectButtonWidth,
-                    ),
-                    OutlinedButton(
-                      onPressed: _selectedModIds.isEmpty
-                          ? null
-                          : _clearModSelection,
-                      child: const Text('全不选'),
-                      width: modSelectButtonWidth,
-                    ),
-                    OutlinedButton(
-                      onPressed: _mods.isEmpty ? null : _invertModSelection,
-                      child: const Text('反选'),
-                      width: modSelectButtonWidth,
-                    ),
+                      OutlinedButton(
+                        onPressed: _mods.isEmpty ? null : _selectAllMods,
+                        child: const Text('全选'),
+                        width: modSelectButtonWidth,
+                      ),
+                      OutlinedButton(
+                        onPressed: _selectedModIds.isEmpty
+                            ? null
+                            : _clearModSelection,
+                        child: const Text('全不选'),
+                        width: modSelectButtonWidth,
+                      ),
+                      OutlinedButton(
+                        onPressed: _mods.isEmpty ? null : _invertModSelection,
+                        child: const Text('反选'),
+                        width: modSelectButtonWidth,
+                      ),
                     ],
                   ),
                 ],
@@ -312,29 +309,26 @@ extension _IncomePageView on _IncomePageState {
                   child: filteredMods.isEmpty
                       ? Center(
                           child: Text(
-                            _mods.isEmpty
-                                ? '暂无 Mod，请先登录并刷新列表'
-                                : '未找到匹配的 Mod',
+                            _mods.isEmpty ? '暂无 Mod，请先登录并刷新列表' : '未找到匹配的 Mod',
                             style: theme.textTheme.bodySmall,
                           ),
                         )
                       : ListView.separated(
                           itemCount: filteredMods.length,
-                          separatorBuilder: (_, __) =>
-                              const Divider(height: 1),
+                          separatorBuilder: (_, __) => const Divider(height: 1),
                           itemBuilder: (context, index) {
                             final mod = filteredMods[index];
                             if (_scope == IncomeScope.multiple) {
-                              final selected =
-                                  _selectedModIds.contains(mod.id);
+                              final selected = _selectedModIds.contains(mod.id);
                               return CheckboxListTile(
                                 value: selected,
                                 dense: true,
                                 title: Text(mod.name),
                                 subtitle: Text(mod.id),
-                                onChanged: (value) =>
-                                    _toggleMultiSelection(
-                                        mod.id, value ?? false),
+                                onChanged: (value) => _toggleMultiSelection(
+                                  mod.id,
+                                  value ?? false,
+                                ),
                               );
                             }
                             return RadioListTile<String>(
@@ -398,8 +392,7 @@ extension _IncomePageView on _IncomePageState {
                     Expanded(
                       child: TextField(
                         controller: _defaultNeteaseRatioController,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(
+                        keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
                         decoration: InputDecoration(
@@ -422,8 +415,9 @@ extension _IncomePageView on _IncomePageState {
                 padding: EdgeInsets.only(right: shareFieldRightPadding),
                 child: TextField(
                   controller: _taxRateController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: InputDecoration(
                     labelText: '税收比例',
                     hintText: '默认 0.2',
@@ -440,22 +434,30 @@ extension _IncomePageView on _IncomePageState {
                 style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 4),
-              Text(
-                '未填写的 Mod 比例将使用上述默认值。',
-                style: theme.textTheme.bodySmall,
-              ),
+              Text('未填写的 Mod 比例将使用上述默认值。', style: theme.textTheme.bodySmall),
             ],
           ),
         ),
       ),
       buildSection(
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _loading ? null : _runQuery,
-            icon: const Icon(Icons.search),
-            label: Text('开始查询 (${_scopeLabel()})'),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _loading ? null : _runQuery,
+                icon: const Icon(Icons.search),
+                label: Text('开始查询 (${_scopeLabel()})'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: _loading || _summaries.isEmpty
+                  ? null
+                  : _exportSummariesCsv,
+              icon: const Icon(Icons.download_outlined, size: 18),
+              label: const Text('导出CSV'),
+            ),
+          ],
         ),
       ),
       const SizedBox(height: 12),
@@ -543,21 +545,30 @@ extension _IncomePageView on _IncomePageState {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '钻石 ${summary.totalDiamonds} · 绿宝石 ${summary.totalPoints} · 订单 ${summary.orderCount}'
+                    '钻石 ${summary.totalDiamonds} · 绿宝石 ${summary.totalPoints} · 订单 ${summary.orderCount} · 新增下载 ${summary.downloadCount}'
                     '$refundInfo'
                     '${summary.releaseAt == null ? '' : ' · 上架 ${_dateFormat.format(summary.releaseAt!)}'}',
                     style: theme.textTheme.bodySmall,
                   ),
+                  if (summary.error != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '收益数据异常: ${summary.error}',
+                      style: TextStyle(
+                        color: theme.colorScheme.error,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
                         child: TextField(
                           controller: internalController,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: InputDecoration(
                             labelText: '内部分成比例',
                             hintText:
@@ -572,8 +583,9 @@ extension _IncomePageView on _IncomePageState {
                             setState(() {
                               final trimmed = value.trim();
                               if (trimmed.isEmpty) {
-                                _internalRatioTextByModId
-                                    .remove(summary.itemId);
+                                _internalRatioTextByModId.remove(
+                                  summary.itemId,
+                                );
                               } else {
                                 _internalRatioTextByModId[summary.itemId] =
                                     value;
@@ -585,14 +597,14 @@ extension _IncomePageView on _IncomePageState {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Padding(
-                          padding:
-                              EdgeInsets.only(right: shareFieldRightPadding),
+                          padding: EdgeInsets.only(
+                            right: shareFieldRightPadding,
+                          ),
                           child: TextField(
                             controller: neteaseController,
-                            keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
                             decoration: InputDecoration(
                               labelText: '网易分成比例',
                               hintText:
@@ -607,8 +619,9 @@ extension _IncomePageView on _IncomePageState {
                               setState(() {
                                 final trimmed = value.trim();
                                 if (trimmed.isEmpty) {
-                                  _neteaseRatioTextByModId
-                                      .remove(summary.itemId);
+                                  _neteaseRatioTextByModId.remove(
+                                    summary.itemId,
+                                  );
                                 } else {
                                   _neteaseRatioTextByModId[summary.itemId] =
                                       value;
@@ -659,11 +672,16 @@ extension _IncomePageView on _IncomePageState {
                 Text('汇总', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Text('总钻石: $_totalDiamonds'),
+                Text('新增下载量: $_totalDownloads'),
+                if (_downloadError != null)
+                  Text(
+                    '下载量接口异常: $_downloadError',
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
                 Text('分成总计(税后): ${_formatNumber(shareTotal)}'),
                 Text('退款中订单: $_refundPendingOrders'),
                 Text('已退款订单: $_refundedOrders'),
-                if (_refundOtherOrders > 0)
-                  Text('其他退款状态: $_refundOtherOrders'),
+                if (_refundOtherOrders > 0) Text('其他退款状态: $_refundOtherOrders'),
                 if (hasGlobalError)
                   Text(
                     '全局比例存在错误',
@@ -679,8 +697,7 @@ extension _IncomePageView on _IncomePageState {
                 const SizedBox(height: 4),
                 Text('钻石定价 Mod: $_diamondPricedMods'),
                 Text('绿宝石定价 Mod: $_emeraldPricedMods'),
-                if (_otherPricedMods > 0)
-                  Text('其他定价 Mod: $_otherPricedMods'),
+                if (_otherPricedMods > 0) Text('其他定价 Mod: $_otherPricedMods'),
                 const SizedBox(height: 8),
                 Text(
                   '提示: 查询时间会转换为 UTC 时间提交到接口。',
@@ -696,6 +713,11 @@ extension _IncomePageView on _IncomePageState {
               Expanded(
                 child: Text('按 Mod 明细', style: theme.textTheme.titleMedium),
               ),
+              IconButton(
+                tooltip: '导出CSV',
+                onPressed: _loading ? null : _exportSummariesCsv,
+                icon: const Icon(Icons.download_outlined),
+              ),
               DropdownButtonHideUnderline(
                 child: DropdownButton<_SummarySortKey>(
                   value: _summarySortKey,
@@ -709,6 +731,10 @@ extension _IncomePageView on _IncomePageState {
                     DropdownMenuItem(
                       value: _SummarySortKey.diamonds,
                       child: Text('钻石'),
+                    ),
+                    DropdownMenuItem(
+                      value: _SummarySortKey.downloads,
+                      child: Text('新增下载'),
                     ),
                     DropdownMenuItem(
                       value: _SummarySortKey.releaseTime,
@@ -786,6 +812,14 @@ extension _IncomePageView on _IncomePageState {
                                   ),
                                   const SizedBox(height: 8),
                                   Text('总钻石: $_totalDiamonds'),
+                                  Text('新增下载量: $_totalDownloads'),
+                                  if (_downloadError != null)
+                                    Text(
+                                      '下载量接口异常: $_downloadError',
+                                      style: TextStyle(
+                                        color: theme.colorScheme.error,
+                                      ),
+                                    ),
                                   Text(
                                     '分成总计(税后): ${_formatNumber(shareTotal)}',
                                   ),
@@ -832,21 +866,30 @@ extension _IncomePageView on _IncomePageState {
                                     style: theme.textTheme.titleMedium,
                                   ),
                                 ),
+                                IconButton(
+                                  tooltip: '导出CSV',
+                                  onPressed: _loading
+                                      ? null
+                                      : _exportSummariesCsv,
+                                  icon: const Icon(Icons.download_outlined),
+                                ),
                                 DropdownButtonHideUnderline(
                                   child: DropdownButton<_SummarySortKey>(
                                     value: _summarySortKey,
                                     isDense: true,
                                     onChanged: (value) {
                                       if (value != null) {
-                                        setState(
-                                          () => _summarySortKey = value,
-                                        );
+                                        setState(() => _summarySortKey = value);
                                       }
                                     },
                                     items: const [
                                       DropdownMenuItem(
                                         value: _SummarySortKey.diamonds,
                                         child: Text('钻石'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: _SummarySortKey.downloads,
+                                        child: Text('新增下载'),
                                       ),
                                       DropdownMenuItem(
                                         value: _SummarySortKey.releaseTime,
@@ -856,8 +899,7 @@ extension _IncomePageView on _IncomePageState {
                                   ),
                                 ),
                                 IconButton(
-                                  tooltip:
-                                      _summarySortAscending ? '升序' : '降序',
+                                  tooltip: _summarySortAscending ? '升序' : '降序',
                                   icon: Icon(
                                     _summarySortAscending
                                         ? Icons.arrow_upward
@@ -897,10 +939,7 @@ extension _IncomePageView on _IncomePageState {
         padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ...leftWidgets,
-            ...rightWidgets,
-          ],
+          children: [...leftWidgets, ...rightWidgets],
         ),
       ),
     );

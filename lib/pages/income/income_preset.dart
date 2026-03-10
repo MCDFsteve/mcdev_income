@@ -1,7 +1,8 @@
 part of mcdev_income_app;
 
 enum IncomeScope { all, multiple, single }
-enum _SummarySortKey { diamonds, releaseTime }
+
+enum _SummarySortKey { diamonds, downloads, releaseTime }
 
 class IncomePreset {
   IncomePreset({
@@ -49,9 +50,8 @@ class IncomePreset {
   static IncomePreset fromJson(Map<String, dynamic> json) {
     final rawCategory = json['category']?.toString();
     final rawScope = json['scope']?.toString();
-    final modIds = (json['modIds'] as List?)
-            ?.map((entry) => entry.toString())
-            .toList() ??
+    final modIds =
+        (json['modIds'] as List?)?.map((entry) => entry.toString()).toList() ??
         <String>[];
     final internalRatios = _parseDoubleMap(json['internalRatios']);
     final neteaseRatios = _parseDoubleMap(json['neteaseRatios']);
@@ -60,8 +60,7 @@ class IncomePreset {
     final defaultNeteaseRatio =
         _tryParseDouble(json['defaultNeteaseRatio']) ?? 1.0;
     final taxRate = _tryParseDouble(json['taxRate']) ?? 0.2;
-    final updatedAt =
-        DateTime.tryParse(json['updatedAt']?.toString() ?? '');
+    final updatedAt = DateTime.tryParse(json['updatedAt']?.toString() ?? '');
 
     return IncomePreset(
       id: json['id']?.toString() ?? '',

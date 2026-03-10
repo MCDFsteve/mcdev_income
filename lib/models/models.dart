@@ -69,8 +69,10 @@ DateTime? _epochToDateTime(int value) {
     return null;
   }
   if (value < 1000000000000) {
-    return DateTime.fromMillisecondsSinceEpoch(value * 1000, isUtc: true)
-        .toLocal();
+    return DateTime.fromMillisecondsSinceEpoch(
+      value * 1000,
+      isUtc: true,
+    ).toLocal();
   }
   return DateTime.fromMillisecondsSinceEpoch(value, isUtc: true).toLocal();
 }
@@ -102,6 +104,7 @@ class IncomeSummary {
     required this.totalDiamonds,
     required this.totalPoints,
     required this.orderCount,
+    this.downloadCount = 0,
     this.refundPendingCount = 0,
     this.refundedCount = 0,
     this.refundOtherCount = 0,
@@ -115,12 +118,30 @@ class IncomeSummary {
   final int totalDiamonds;
   final int totalPoints;
   final int orderCount;
+  final int downloadCount;
   final int refundPendingCount;
   final int refundedCount;
   final int refundOtherCount;
   final String? error;
   final String? priceType;
   final DateTime? releaseAt;
+
+  IncomeSummary copyWith({int? downloadCount}) {
+    return IncomeSummary(
+      itemId: itemId,
+      itemName: itemName,
+      totalDiamonds: totalDiamonds,
+      totalPoints: totalPoints,
+      orderCount: orderCount,
+      downloadCount: downloadCount ?? this.downloadCount,
+      refundPendingCount: refundPendingCount,
+      refundedCount: refundedCount,
+      refundOtherCount: refundOtherCount,
+      error: error,
+      priceType: priceType,
+      releaseAt: releaseAt,
+    );
+  }
 }
 
 class OverviewStats {

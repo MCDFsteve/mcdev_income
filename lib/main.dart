@@ -5,10 +5,12 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:mcdev_income/logging/app_logger.dart' as app_logger;
+import 'package:mcdev_income/utils/csv_file_saver.dart' as csv_file_saver;
 import 'package:mcdev_income/ui/ore_material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -29,21 +31,24 @@ part 'pages/settings_page.dart';
 part 'pages/login_webview_page.dart';
 
 Future<void> main() async {
-  runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    await app_logger.init(appFolderName: 'ConsMelt');
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      await app_logger.init(appFolderName: 'ConsMelt');
 
-    FlutterError.onError = (details) {
-      app_logger.flutterError(details);
-    };
+      FlutterError.onError = (details) {
+        app_logger.flutterError(details);
+      };
 
-    WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-      app_logger.error('Uncaught platform error', error, stack);
-      return true;
-    };
+      WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+        app_logger.error('Uncaught platform error', error, stack);
+        return true;
+      };
 
-    runApp(const McDevIncomeApp());
-  }, (error, stack) {
-    app_logger.error('Uncaught zone error', error, stack);
-  });
+      runApp(const McDevIncomeApp());
+    },
+    (error, stack) {
+      app_logger.error('Uncaught zone error', error, stack);
+    },
+  );
 }
