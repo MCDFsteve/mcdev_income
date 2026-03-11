@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
+
 String _joinPath(String dir, String fileName) {
   if (dir.endsWith(Platform.pathSeparator)) {
     return '$dir$fileName';
@@ -33,10 +35,38 @@ List<String> _candidateDirectories() {
   return dirs;
 }
 
+String _normalizeCsvPath(String path) {
+  final trimmed = path.trim();
+  if (trimmed.toLowerCase().endsWith('.csv')) {
+    return trimmed;
+  }
+  return '$trimmed.csv';
+}
+
 Future<String?> saveCsvToFile({
   required String fileName,
   required String content,
 }) async {
+  if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+    try {
+      final selectedPath = await FilePicker.platform.saveFile(
+        dialogTitle: '导出CSV',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const <String>['csv'],
+      );
+      if (selectedPath == null || selectedPath.trim().isEmpty) {
+        return null;
+      }
+      final file = File(_normalizeCsvPath(selectedPath));
+      await file.parent.create(recursive: true);
+      await file.writeAsString(content, flush: true);
+      return file.path;
+    } catch (_) {
+      // Fall through to default directory fallback when picker is unavailable.
+    }
+  }
+
   for (final dirPath in _candidateDirectories()) {
     try {
       final dir = Directory(dirPath);

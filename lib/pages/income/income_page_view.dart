@@ -23,8 +23,8 @@ extension _IncomePageView on _IncomePageState {
     final taxParse = _parseRate(
       _taxRateController.text,
       fieldName: '税收比例',
-      defaultValue: 0.2,
-      invalidValue: 0.2,
+      defaultValue: 0.16,
+      invalidValue: 0.16,
     );
     final hasGlobalError =
         !defaultInternalParse.isValid ||
@@ -420,7 +420,7 @@ extension _IncomePageView on _IncomePageState {
                   ),
                   decoration: InputDecoration(
                     labelText: '税收比例',
-                    hintText: '默认 0.2',
+                    hintText: '默认 0.16',
                     border: const OutlineInputBorder(),
                     isDense: true,
                     errorText: taxParse.isValid ? null : taxParse.error,
@@ -451,7 +451,7 @@ extension _IncomePageView on _IncomePageState {
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(
-              onPressed: _loading || _summaries.isEmpty
+              onPressed: _loading || _exportingCsv || _summaries.isEmpty
                   ? null
                   : _exportSummariesCsv,
               icon: const Icon(Icons.download_outlined, size: 18),
@@ -715,7 +715,9 @@ extension _IncomePageView on _IncomePageState {
               ),
               IconButton(
                 tooltip: '导出CSV',
-                onPressed: _loading ? null : _exportSummariesCsv,
+                onPressed: _loading || _exportingCsv
+                    ? null
+                    : _exportSummariesCsv,
                 icon: const Icon(Icons.download_outlined),
               ),
               DropdownButtonHideUnderline(
@@ -868,7 +870,7 @@ extension _IncomePageView on _IncomePageState {
                                 ),
                                 IconButton(
                                   tooltip: '导出CSV',
-                                  onPressed: _loading
+                                  onPressed: _loading || _exportingCsv
                                       ? null
                                       : _exportSummariesCsv,
                                   icon: const Icon(Icons.download_outlined),

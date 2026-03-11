@@ -16,6 +16,7 @@ class _IncomePageState extends State<IncomePage> {
   _Category? _modsCategory;
   IncomeScope _scope = IncomeScope.all;
   bool _loading = false;
+  bool _exportingCsv = false;
   String? _error;
   String? _downloadError;
 
@@ -49,7 +50,7 @@ class _IncomePageState extends State<IncomePage> {
   final TextEditingController _defaultNeteaseRatioController =
       TextEditingController(text: '1.0');
   final TextEditingController _taxRateController = TextEditingController(
-    text: '0.2',
+    text: '0.16',
   );
   final ScrollController _leftScrollController = ScrollController();
   final ScrollController _rightScrollController = ScrollController();
@@ -364,8 +365,8 @@ class _IncomePageState extends State<IncomePage> {
     final taxRate = _parseRate(
       _taxRateController.text,
       fieldName: '税收比例',
-      defaultValue: 0.2,
-      invalidValue: 0.2,
+      defaultValue: 0.16,
+      invalidValue: 0.16,
     ).value;
     return IncomePreset(
       id: id,
@@ -694,8 +695,8 @@ class _IncomePageState extends State<IncomePage> {
     final taxParse = _parseRate(
       _taxRateController.text,
       fieldName: '税收比例',
-      defaultValue: 0.2,
-      invalidValue: 0.2,
+      defaultValue: 0.16,
+      invalidValue: 0.16,
     );
     final summaries = _sortedSummaries(_summaries);
 
@@ -842,51 +843,98 @@ class _IncomePageState extends State<IncomePage> {
   }
 
   Future<void> _exportSummariesCsv() async {
+    if (_exportingCsv) {
+      return;
+    }
     if (_summaries.isEmpty) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('暂无可导出的查询结果')));
+      await _showExportMessage('暂无可导出的查询结果');
       return;
     }
 
-    final csv = _buildIncomeCsv();
-    final fileName =
-        'income_export_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv';
-    String? savedPath;
-    String? saveError;
-
+    setState(() {
+      _exportingCsv = true;
+    });
     try {
-      savedPath = await csv_file_saver.saveCsvToFile(
-        fileName: fileName,
-        content: csv,
-      );
-    } catch (error) {
-      saveError = error.toString();
-    }
+      final csv = _buildIncomeCsv();
+      final fileName =
+          'income_export_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv';
+      String? savedPath;
+      String? saveError;
+      bool copiedToClipboard = false;
+      String? clipboardError;
 
-    await Clipboard.setData(ClipboardData(text: csv));
+      debugPrint(
+        '[csv] export start fileName=$fileName rows=${_summaries.length}',
+      );
+      try {
+        savedPath = await csv_file_saver.saveCsvToFile(
+          fileName: fileName,
+          content: csv,
+        );
+      } catch (error) {
+        saveError = error.toString();
+      }
+
+      try {
+        await Clipboard.setData(ClipboardData(text: csv));
+        copiedToClipboard = true;
+      } catch (error) {
+        clipboardError = error.toString();
+      }
+
+      final tips = <String>[];
+      if (savedPath != null && savedPath.isNotEmpty) {
+        tips.add('CSV已导出: $savedPath');
+      } else {
+        tips.add('未写入本地文件（可能取消了保存）');
+      }
+      tips.add(copiedToClipboard ? 'CSV已复制到剪贴板' : 'CSV复制剪贴板失败');
+      if (saveError != null && saveError.isNotEmpty) {
+        tips.add('保存失败: $saveError');
+      }
+      if (clipboardError != null && clipboardError.isNotEmpty) {
+        tips.add('剪贴板失败: $clipboardError');
+      }
+      debugPrint('[csv] export result: ${tips.join('；')}');
+      await _showExportMessage(tips.join('；'));
+    } catch (error, stackTrace) {
+      debugPrint('[csv] export unexpected error: $error');
+      debugPrint('$stackTrace');
+      await _showExportMessage('导出失败: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _exportingCsv = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showExportMessage(String message) async {
     if (!mounted) {
       return;
     }
-
-    final tips = <String>[];
-    if (savedPath != null && savedPath.isNotEmpty) {
-      tips.add('CSV已导出: $savedPath');
-    } else {
-      tips.add('未写入本地文件');
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger != null) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
+      );
+      return;
     }
-    tips.add('CSV已复制到剪贴板');
-    if (saveError != null && saveError!.isNotEmpty) {
-      tips.add('保存失败: $saveError');
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(tips.join('；')),
-        duration: const Duration(seconds: 6),
-      ),
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('CSV导出'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        );
+      },
     );
   }
 
