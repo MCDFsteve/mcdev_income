@@ -516,7 +516,7 @@ class _IncomePageState extends State<IncomePage> {
         setState(() {
           _mods = [];
           _modsLoading = false;
-          _modsError = '请先到“设置”里通过 WebView 登录。';
+          _modsError = '请先到“设置”里登录。';
         });
       }
       return [];
@@ -1119,7 +1119,7 @@ class _IncomePageState extends State<IncomePage> {
 
     final cookieHeader = await LoginCookieHelper.buildCookieHeader();
     if (cookieHeader.isEmpty) {
-      setState(() => _error = '请先到“设置”里通过 WebView 登录。');
+      setState(() => _error = '请先到“设置”里登录。');
       return;
     }
     if (range == null) {

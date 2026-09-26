@@ -58,10 +58,10 @@ class _SettingsPageState extends State<SettingsPage> {
     return loggedIn;
   }
 
-  Future<void> _openLoginWebView() async {
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (context) => const LoginWebViewPage()),
-    );
+  Future<void> _openLoginPage() async {
+    final result = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (context) => const LoginPage()));
     if (result == true) {
       await _refreshStatus();
       await _loadDeveloperProfile();
@@ -80,20 +80,20 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     final profile = _developerProfile;
     if (profile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('未获取到开发者信息，请稍后重试。')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('未获取到开发者信息，请稍后重试。')));
       return;
     }
 
-    final detailItems = _buildDeveloperInfoItems(profile)
-        .where((item) => item.label != '昵称' && item.label != '简介')
-        .toList();
+    final detailItems = _buildDeveloperInfoItems(
+      profile,
+    ).where((item) => item.label != '昵称' && item.label != '简介').toList();
 
     if (detailItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('暂无更多可显示的开发者信息。')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂无更多可显示的开发者信息。')));
       return;
     }
 
@@ -291,8 +291,11 @@ class _SettingsPageState extends State<SettingsPage> {
         usedKeys.add(userId.key);
       }
 
-      final realName =
-          _pickStringEntry(user, ['real_name', 'realname', 'realName']);
+      final realName = _pickStringEntry(user, [
+        'real_name',
+        'realname',
+        'realName',
+      ]);
       if (realName != null) {
         items.add(_InfoItem('真实姓名', realName.value));
         usedKeys.add(realName.key);
@@ -352,21 +355,19 @@ class _SettingsPageState extends State<SettingsPage> {
         usedKeys.add(cardNo.key);
       }
 
-      final enterpriseApplying =
-          _pickStringEntry(user, ['is_enterprise_applying']);
+      final enterpriseApplying = _pickStringEntry(user, [
+        'is_enterprise_applying',
+      ]);
       if (enterpriseApplying != null) {
-        items.add(
-          _InfoItem('企业认证申请中', _formatBool(enterpriseApplying.value)),
-        );
+        items.add(_InfoItem('企业认证申请中', _formatBool(enterpriseApplying.value)));
         usedKeys.add(enterpriseApplying.key);
       }
 
-      final enterpriseExpired =
-          _pickStringEntry(user, ['is_enterprise_expired']);
+      final enterpriseExpired = _pickStringEntry(user, [
+        'is_enterprise_expired',
+      ]);
       if (enterpriseExpired != null) {
-        items.add(
-          _InfoItem('企业认证已过期', _formatBool(enterpriseExpired.value)),
-        );
+        items.add(_InfoItem('企业认证已过期', _formatBool(enterpriseExpired.value)));
         usedKeys.add(enterpriseExpired.key);
       }
 
@@ -376,8 +377,9 @@ class _SettingsPageState extends State<SettingsPage> {
         usedKeys.add(needEnterprise.key);
       }
 
-      final enterpriseDeadline =
-          _pickStringEntry(user, ['enterprise_deadline']);
+      final enterpriseDeadline = _pickStringEntry(user, [
+        'enterprise_deadline',
+      ]);
       if (enterpriseDeadline != null) {
         items.add(_InfoItem('企业认证到期', enterpriseDeadline.value));
         usedKeys.add(enterpriseDeadline.key);
@@ -517,9 +519,7 @@ class _SettingsPageState extends State<SettingsPage> {
   double _choiceButtonWidth(BuildContext context, List<String> labels) {
     final ore = OreTheme.of(context);
     final style = ore.typography.label;
-    final painter = TextPainter(
-      textDirection: Directionality.of(context),
-    );
+    final painter = TextPainter(textDirection: Directionality.of(context));
     var maxWidth = 0.0;
     for (final label in labels) {
       painter.text = TextSpan(text: label, style: style);
@@ -528,8 +528,7 @@ class _SettingsPageState extends State<SettingsPage> {
         maxWidth = painter.width;
       }
     }
-    final horizontalPadding =
-        ore.borderWidth * OreTokens.buttonPadMdHUnits * 2;
+    final horizontalPadding = ore.borderWidth * OreTokens.buttonPadMdHUnits * 2;
     final extraGap = OreTokens.gapSm * 2;
     return maxWidth + horizontalPadding + extraGap;
   }
@@ -550,8 +549,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final devItems = _developerProfile == null
         ? null
         : _buildDeveloperInfoItems(_developerProfile!);
-    final nicknameItem =
-        devItems == null ? null : _findItem(devItems, '昵称');
+    final nicknameItem = devItems == null ? null : _findItem(devItems, '昵称');
     final bioItem = devItems == null ? null : _findItem(devItems, '简介');
 
     return SafeArea(
@@ -568,8 +566,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text('主题模式', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 8),
                   OreChoiceButtons(
-                    items:
-                        themeLabels.map((label) => Text(label)).toList(),
+                    items: themeLabels.map((label) => Text(label)).toList(),
                     selectedIndex: themeIndex,
                     onChanged: (value) {
                       final next = _themeModeFromIndex(value);
@@ -616,9 +613,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     runSpacing: 8,
                     children: [
                       ElevatedButton.icon(
-                        onPressed: _loading ? null : _openLoginWebView,
+                        onPressed: _loading ? null : _openLoginPage,
                         icon: const Icon(Icons.login),
-                        label: const Text('WebView 登录'),
+                        label: const Text('登录'),
                         width: actionButtonWidth,
                       ),
                       OutlinedButton.icon(
@@ -732,8 +729,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       OutlinedButton.icon(
                         onPressed: _devLoading ? null : _loadDeveloperProfile,
                         icon: const Icon(Icons.person_search),
-                        label:
-                            Text(_developerProfile == null ? '加载信息' : '刷新信息'),
+                        label: Text(
+                          _developerProfile == null ? '加载信息' : '刷新信息',
+                        ),
                         width: actionButtonWidth,
                       ),
                       ElevatedButton.icon(

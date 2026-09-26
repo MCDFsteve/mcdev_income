@@ -219,6 +219,148 @@ class DeveloperProfile {
   final Map<String, dynamic>? userRaw;
 }
 
+enum LoginSessionKind { domestic, oversea }
+
+class LoginSession {
+  const LoginSession({
+    required this.email,
+    required this.kind,
+    required this.expiresAt,
+    this.token = '',
+    this.cookies = const {},
+    this.savedPassword,
+  });
+
+  final String email;
+  final LoginSessionKind kind;
+  final String token;
+  final Map<String, String> cookies;
+  final DateTime expiresAt;
+  final String? savedPassword;
+
+  bool get canRefresh => savedPassword != null && savedPassword!.isNotEmpty;
+}
+
+class ResourceCategory {
+  const ResourceCategory({
+    required this.value,
+    required this.label,
+    required this.uploadLabel,
+  });
+
+  final String value;
+  final String label;
+  final String uploadLabel;
+}
+
+class ResourceItem {
+  ResourceItem({
+    required this.category,
+    required this.id,
+    required this.name,
+    required this.raw,
+    this.price,
+    this.priceType,
+    this.status,
+    this.weakOffline,
+    this.updatedAt,
+    this.createdAt,
+    this.iconUrl,
+    this.brief,
+  });
+
+  final String category;
+  final String id;
+  final String name;
+  final Map<String, dynamic> raw;
+  final int? price;
+  final String? priceType;
+  final String? status;
+  final bool? weakOffline;
+  final DateTime? updatedAt;
+  final DateTime? createdAt;
+  final String? iconUrl;
+  final String? brief;
+
+  static int? _parseInt(dynamic value) {
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value != null) {
+      return int.tryParse(value.toString());
+    }
+    return null;
+  }
+
+  static bool? _parseBool(dynamic value) {
+    if (value is bool) {
+      return value;
+    }
+    if (value is num) {
+      return value != 0;
+    }
+    if (value is String) {
+      final normalized = value.toLowerCase().trim();
+      if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
+        return true;
+      }
+      if (normalized == 'false' || normalized == '0' || normalized == 'no') {
+        return false;
+      }
+    }
+    return null;
+  }
+
+  static String? _pickString(Map<String, dynamic> raw, List<String> keys) {
+    for (final key in keys) {
+      final value = raw[key];
+      if (value == null) {
+        continue;
+      }
+      final text = value.toString().trim();
+      if (text.isNotEmpty) {
+        return text;
+      }
+    }
+    return null;
+  }
+
+  factory ResourceItem.fromJson(String category, Map<String, dynamic> raw) {
+    final id = _pickString(raw, ['item_id', 'id', '_id', 'resource_id']) ?? '';
+    final name = _pickString(raw, ['item_name', 'name', 'title']) ?? id;
+    final updatedAt = _parseModReleaseAt(
+      raw['update_time'] ??
+          raw['updated_at'] ??
+          raw['modify_time'] ??
+          raw['online_time'],
+    );
+    final createdAt = _parseModReleaseAt(
+      raw['create_time'] ?? raw['created_at'],
+    );
+    return ResourceItem(
+      category: category,
+      id: id,
+      name: name,
+      raw: raw,
+      price: _parseInt(raw['price']),
+      priceType: raw['price_type']?.toString(),
+      status: raw['status']?.toString(),
+      weakOffline: _parseBool(raw['weak_offline']),
+      updatedAt: updatedAt,
+      createdAt: createdAt,
+      iconUrl: _pickString(raw, ['icon_url', 'cover', 'cover_url', 'head_img']),
+      brief: _pickString(raw, ['brief', 'description', 'desc']),
+    );
+  }
+}
+
+class ResourceListPage {
+  ResourceListPage({required this.items, required this.total});
+
+  final List<ResourceItem> items;
+  final int total;
+}
+
 class McDevException implements Exception {
   McDevException(this.message, this.uri);
 

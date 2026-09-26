@@ -10,11 +10,12 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['主页', '收益汇总', 'Mod 列表', '设置'];
+  static const _titles = ['主页', '收益汇总', 'Mod 列表', '资源管理', '设置'];
   static const _navEntries = [
     (Icons.home, '主页'),
     (Icons.query_stats, '收益'),
     (Icons.view_list, 'Mod'),
+    (Icons.inventory_2, '资源'),
     (Icons.settings, '设置'),
   ];
 
@@ -22,6 +23,7 @@ class _HomeShellState extends State<HomeShell> {
     HomePage(),
     IncomePage(),
     ModsPage(),
+    ResourceManagementPage(),
     SettingsPage(),
   ];
 
@@ -35,10 +37,7 @@ class _HomeShellState extends State<HomeShell> {
     return painter.width;
   }
 
-  bool _canShowNavLabels(
-    BuildContext context,
-    double? buttonWidth,
-  ) {
+  bool _canShowNavLabels(BuildContext context, double? buttonWidth) {
     if (buttonWidth == null) {
       return true;
     }
@@ -53,29 +52,22 @@ class _HomeShellState extends State<HomeShell> {
     return buttonWidth >= neededWidth;
   }
 
-  List<Widget> _buildNavItems(
-    BuildContext context, {
-    double? buttonWidth,
-  }) {
+  List<Widget> _buildNavItems(BuildContext context, {double? buttonWidth}) {
     final showLabels = _canShowNavLabels(context, buttonWidth);
-    return _navEntries
-        .map(
-          (entry) {
-            final icon = OrePixelIcon(icon: entry.$1, size: 16);
-            if (!showLabels) {
-              return icon;
-            }
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                icon,
-                const SizedBox(width: OreTokens.gapXs),
-                Text(entry.$2),
-              ],
-            );
-          },
-        )
-        .toList();
+    return _navEntries.map((entry) {
+      final icon = OrePixelIcon(icon: entry.$1, size: 16);
+      if (!showLabels) {
+        return icon;
+      }
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          icon,
+          const SizedBox(width: OreTokens.gapXs),
+          Text(entry.$2),
+        ],
+      );
+    }).toList();
   }
 
   @override
@@ -85,8 +77,7 @@ class _HomeShellState extends State<HomeShell> {
     final ore = OreTheme.of(context);
     final navCount = _navEntries.length;
     final overlap = ore.borderWidth;
-    final mobileButtonWidth =
-        (width + overlap * (navCount - 1)) / navCount;
+    final mobileButtonWidth = (width + overlap * (navCount - 1)) / navCount;
     final railButtonWidth = OreTokens.controlHeightMd * 3;
     final navPalette = _fixedBarPalette();
     final navItems = _buildNavItems(

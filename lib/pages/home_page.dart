@@ -35,7 +35,7 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _stats = null;
         _loading = false;
-        _error = '请先到“设置”里通过 WebView 登录。';
+        _error = '请先到“设置”里登录。';
       });
       return;
     }
@@ -168,11 +168,9 @@ class _HomePageState extends State<HomePage> {
   }) {
     final theme = Theme.of(context);
     final isUp = diff > 0;
-    final diffText =
-        diff == 0 ? '0' : '${isUp ? '+' : ''}${_formatInt(diff)}';
+    final diffText = diff == 0 ? '0' : '${isUp ? '+' : ''}${_formatInt(diff)}';
     final diffColor = diff == 0
-        ? (theme.textTheme.bodySmall?.color ??
-            theme.colorScheme.onSurface)
+        ? (theme.textTheme.bodySmall?.color ?? theme.colorScheme.onSurface)
         : (isUp ? Colors.red : Colors.green);
     return OreCard(
       padding: const EdgeInsets.all(12),
@@ -283,62 +281,57 @@ class _HomePageState extends State<HomePage> {
             child: _loading && stats == null
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? _buildError(theme)
-                    : stats == null
-                        ? const Center(child: Text('暂无数据'))
-                        : GridView.count(
-                            padding: EdgeInsets.zero,
-                            crossAxisCount: columns,
-                            mainAxisSpacing: 0,
-                            crossAxisSpacing: 0,
-                            childAspectRatio: columns >= 3 ? 1.6 : 2.4,
-                            children: [
-                              _buildPairCard(
-                                context,
-                                title: '本月钻石收益',
-                                mainValue: _formatInt(stats.thisMonthDiamond),
-                                subtitleLabel: '上月整月',
-                                subtitleValue:
-                                    _formatInt(stats.lastMonthDiamond),
-                                diff: stats.thisMonthDiamond -
-                                    stats.lastMonthDiamond,
-                                iconAsset: _diamondAsset,
-                              ),
-                              _buildPairCard(
-                                context,
-                                title: '昨日钻石收益',
-                                mainValue: _formatInt(stats.yesterdayDiamond),
-                                subtitleLabel: '14天日均',
-                                subtitleValue:
-                                    _formatInt(stats.days14AverageDiamond),
-                                diff: stats.yesterdayDiamond -
-                                    stats.days14AverageDiamond,
-                                iconAsset: _diamondAsset,
-                              ),
-                              _buildPairCard(
-                                context,
-                                title: '本月资源下载数',
-                                mainValue: _formatInt(stats.thisMonthDownload),
-                                subtitleLabel: '上月整月',
-                                subtitleValue:
-                                    _formatInt(stats.lastMonthDownload),
-                                diff: stats.thisMonthDownload -
-                                    stats.lastMonthDownload,
-                                iconAsset: _downloadAsset,
-                              ),
-                              _buildPairCard(
-                                context,
-                                title: '昨日资源下载数',
-                                mainValue: _formatInt(stats.yesterdayDownload),
-                                subtitleLabel: '14天日均',
-                                subtitleValue:
-                                    _formatInt(stats.days14AverageDownload),
-                                diff: stats.yesterdayDownload -
-                                    stats.days14AverageDownload,
-                                iconAsset: _downloadAsset,
-                              ),
-                            ],
-                          ),
+                ? _buildError(theme)
+                : stats == null
+                ? const Center(child: Text('暂无数据'))
+                : GridView.count(
+                    padding: EdgeInsets.zero,
+                    crossAxisCount: columns,
+                    mainAxisSpacing: 0,
+                    crossAxisSpacing: 0,
+                    childAspectRatio: columns >= 3 ? 1.6 : 2.4,
+                    children: [
+                      _buildPairCard(
+                        context,
+                        title: '本月钻石收益',
+                        mainValue: _formatInt(stats.thisMonthDiamond),
+                        subtitleLabel: '上月整月',
+                        subtitleValue: _formatInt(stats.lastMonthDiamond),
+                        diff: stats.thisMonthDiamond - stats.lastMonthDiamond,
+                        iconAsset: _diamondAsset,
+                      ),
+                      _buildPairCard(
+                        context,
+                        title: '昨日钻石收益',
+                        mainValue: _formatInt(stats.yesterdayDiamond),
+                        subtitleLabel: '14天日均',
+                        subtitleValue: _formatInt(stats.days14AverageDiamond),
+                        diff:
+                            stats.yesterdayDiamond - stats.days14AverageDiamond,
+                        iconAsset: _diamondAsset,
+                      ),
+                      _buildPairCard(
+                        context,
+                        title: '本月资源下载数',
+                        mainValue: _formatInt(stats.thisMonthDownload),
+                        subtitleLabel: '上月整月',
+                        subtitleValue: _formatInt(stats.lastMonthDownload),
+                        diff: stats.thisMonthDownload - stats.lastMonthDownload,
+                        iconAsset: _downloadAsset,
+                      ),
+                      _buildPairCard(
+                        context,
+                        title: '昨日资源下载数',
+                        mainValue: _formatInt(stats.yesterdayDownload),
+                        subtitleLabel: '14天日均',
+                        subtitleValue: _formatInt(stats.days14AverageDownload),
+                        diff:
+                            stats.yesterdayDownload -
+                            stats.days14AverageDownload,
+                        iconAsset: _downloadAsset,
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),

@@ -57,7 +57,7 @@ class _ModsPageState extends State<ModsPage> {
       setState(() {
         _mods = [];
         _loading = false;
-        _error = '请先到“设置”里通过 WebView 登录。';
+        _error = '请先到“设置”里登录。';
       });
       return;
     }
@@ -295,8 +295,9 @@ class _ModsPageState extends State<ModsPage> {
   Widget _buildModCard(ModItem mod, ThemeData theme) {
     final statusLabel = _statusLabel(mod);
     final statusColor = _statusColor(theme, statusLabel);
-    final releaseText =
-        mod.releaseAt == null ? '上架时间未知' : _dateFormat.format(mod.releaseAt!);
+    final releaseText = mod.releaseAt == null
+        ? '上架时间未知'
+        : _dateFormat.format(mod.releaseAt!);
 
     return OreCard(
       padding: const EdgeInsets.all(12),
@@ -315,10 +316,7 @@ class _ModsPageState extends State<ModsPage> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -350,8 +348,7 @@ class _ModsPageState extends State<ModsPage> {
     final theme = Theme.of(context);
     final segmentButtonWidth = OreTokens.controlHeightMd * 2.5;
     final refreshButtonWidth = _buttonWidthWithIcon(context, '刷新');
-    final actionButtonWidth =
-        max(segmentButtonWidth, refreshButtonWidth);
+    final actionButtonWidth = max(segmentButtonWidth, refreshButtonWidth);
     final width = MediaQuery.of(context).size.width;
     final isWide = width >= 900;
     final filtered = _filteredMods();
@@ -370,14 +367,8 @@ class _ModsPageState extends State<ModsPage> {
                 children: [
                   SegmentedButton<_Category>(
                     segments: const [
-                      ButtonSegment(
-                        value: _Category.pe,
-                        label: Text('PE'),
-                      ),
-                      ButtonSegment(
-                        value: _Category.java,
-                        label: Text('Java'),
-                      ),
+                      ButtonSegment(value: _Category.pe, label: Text('PE')),
+                      ButtonSegment(value: _Category.java, label: Text('Java')),
                     ],
                     selected: {_category},
                     buttonWidth: segmentButtonWidth,
@@ -437,26 +428,25 @@ class _ModsPageState extends State<ModsPage> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? _buildError(theme)
-                    : filtered.isEmpty
-                        ? const Center(child: Text('暂无 Mod'))
-                        : Scrollbar(
-                            controller: _modsScrollController,
-                            child: GridView.builder(
-                              controller: _modsScrollController,
-                              padding: EdgeInsets.zero,
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: isWide ? 2 : 1,
-                                mainAxisSpacing: 0,
-                                crossAxisSpacing: 0,
-                                mainAxisExtent: isWide ? 190 : 210,
-                              ),
-                              itemCount: filtered.length,
-                              itemBuilder: (context, index) =>
-                                  _buildModCard(filtered[index], theme),
-                            ),
-                          ),
+                ? _buildError(theme)
+                : filtered.isEmpty
+                ? const Center(child: Text('暂无 Mod'))
+                : Scrollbar(
+                    controller: _modsScrollController,
+                    child: GridView.builder(
+                      controller: _modsScrollController,
+                      padding: EdgeInsets.zero,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: isWide ? 2 : 1,
+                        mainAxisSpacing: 0,
+                        crossAxisSpacing: 0,
+                        mainAxisExtent: isWide ? 190 : 210,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) =>
+                          _buildModCard(filtered[index], theme),
+                    ),
+                  ),
           ),
         ],
       ),

@@ -182,6 +182,171 @@ class McDevApi {
     return items;
   }
 
+  Future<ResourceListPage> fetchResources({
+    required String resourceCategory,
+    int start = 0,
+    int span = 50,
+    String? keyword,
+  }) async {
+    final params = <String, String>{
+      'is_third_party': 'false',
+      'start': start.toString(),
+      'span': span.toString(),
+    };
+    final query = keyword?.trim();
+    if (query != null && query.isNotEmpty) {
+      params['keyword'] = query;
+      params['item_name'] = query;
+    }
+    final payload = await _getJson(
+      Uri.https(
+        'mc-launcher.webapp.163.com',
+        '/items/categories/$resourceCategory/',
+        params,
+      ),
+    );
+    final data = payload['data'];
+    final items = <ResourceItem>[];
+    var total = 0;
+    if (data is Map<String, dynamic>) {
+      total = (data['count'] as num?)?.toInt() ?? 0;
+      final rawList =
+          data['item'] ??
+          data['items'] ??
+          data['list'] ??
+          data['data'] ??
+          const [];
+      if (rawList is List) {
+        for (final entry in rawList) {
+          if (entry is Map<String, dynamic>) {
+            final item = ResourceItem.fromJson(resourceCategory, entry);
+            if (item.id.isNotEmpty) {
+              items.add(item);
+            }
+          } else if (entry is Map) {
+            final mapped = entry.map(
+              (key, value) => MapEntry(key.toString(), value),
+            );
+            final item = ResourceItem.fromJson(resourceCategory, mapped);
+            if (item.id.isNotEmpty) {
+              items.add(item);
+            }
+          }
+        }
+      }
+    } else if (data is List) {
+      total = data.length;
+      for (final entry in data) {
+        if (entry is Map<String, dynamic>) {
+          final item = ResourceItem.fromJson(resourceCategory, entry);
+          if (item.id.isNotEmpty) {
+            items.add(item);
+          }
+        } else if (entry is Map) {
+          final mapped = entry.map(
+            (key, value) => MapEntry(key.toString(), value),
+          );
+          final item = ResourceItem.fromJson(resourceCategory, mapped);
+          if (item.id.isNotEmpty) {
+            items.add(item);
+          }
+        }
+      }
+    }
+    return ResourceListPage(
+      items: items,
+      total: total > 0 ? total : items.length,
+    );
+  }
+
+  Future<ResourceItem> fetchResourceDetail({
+    required String resourceCategory,
+    required String itemId,
+  }) async {
+    final uri = Uri.https(
+      'mc-launcher.webapp.163.com',
+      '/items/categories/$resourceCategory/$itemId',
+    );
+    final payload = await _getJson(uri);
+    final data = payload['data'];
+    Map<String, dynamic>? detail;
+    if (data is Map<String, dynamic>) {
+      final nested = data['item'] ?? data['detail'] ?? data['data'];
+      detail = nested is Map
+          ? nested.map((key, value) => MapEntry(key.toString(), value))
+          : Map<String, dynamic>.from(data);
+    } else if (data is Map) {
+      detail = data.map((key, value) => MapEntry(key.toString(), value));
+    }
+    if (detail != null) {
+      detail.putIfAbsent('item_id', () => itemId);
+      final item = ResourceItem.fromJson(resourceCategory, detail);
+      if (item.id.isNotEmpty) {
+        return item;
+      }
+    }
+    throw McDevException('资源详情接口返回异常: data 非对象', uri);
+  }
+
+  Future<Map<String, dynamic>> saveResource({
+    required String resourceCategory,
+    required Map<String, dynamic> payload,
+    String? itemId,
+  }) async {
+    final uri = Uri.https(
+      'mc-launcher.webapp.163.com',
+      itemId == null || itemId.isEmpty
+          ? '/items/categories/$resourceCategory/upload'
+          : '/items/categories/$resourceCategory/$itemId/update',
+    );
+    return _postJson(uri, payload);
+  }
+
+  Future<Map<String, dynamic>> changeResourceStatus({
+    required String resourceCategory,
+    required String itemId,
+    required String action,
+    Map<String, dynamic>? payload,
+  }) async {
+    final uri = Uri.https(
+      'mc-launcher.webapp.163.com',
+      '/items/categories/$resourceCategory/$itemId/$action',
+    );
+    return _putJson(uri, payload ?? const {});
+  }
+
+  Future<Map<String, dynamic>> deleteResource({
+    required String resourceCategory,
+    required String itemId,
+  }) async {
+    final uri = Uri.https(
+      'mc-launcher.webapp.163.com',
+      '/items/categories/$resourceCategory/$itemId',
+    );
+    return _deleteJson(uri);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchResourceFeedbacks({
+    required String resourceCategory,
+    required String itemId,
+  }) async {
+    final payload = await _getJson(
+      Uri.https(
+        'mc-launcher.webapp.163.com',
+        '/items/categories/$resourceCategory/$itemId/feedbacks/',
+      ),
+    );
+    final data = payload['data'];
+    final rawList = data is Map ? data['feedbacks'] ?? data['data'] : data;
+    if (rawList is! List) {
+      return const [];
+    }
+    return rawList
+        .whereType<Map>()
+        .map((entry) => entry.map((key, value) => MapEntry('$key', value)))
+        .toList();
+  }
+
   Future<Map<String, int>> fetchSalesTotals({
     required List<String> itemIds,
     required DateTime startDate,
@@ -579,15 +744,58 @@ class McDevApi {
     );
   }
 
+  Map<String, String> _headers({bool json = false}) {
+    final headers = <String, String>{
+      'Cookie': cookie,
+      'Accept': 'application/json',
+      'Origin': 'https://mcdev.webapp.163.com',
+      'Referer': 'https://mcdev.webapp.163.com/',
+    };
+    final overseaToken = LoginCookieHelper.overseaTokenFromCookieHeader(cookie);
+    if (overseaToken != null && overseaToken.isNotEmpty) {
+      headers['ACCOUNT-TOKEN'] = overseaToken;
+    }
+    if (json) {
+      headers['Content-Type'] = 'application/json;charset=UTF-8';
+    }
+    return headers;
+  }
+
   Future<Map<String, dynamic>> _getJson(Uri uri) async {
-    final response = await _client.get(
+    final response = await _client.get(uri, headers: _headers());
+    return _decodeJsonResponse(response, uri);
+  }
+
+  Future<Map<String, dynamic>> _postJson(
+    Uri uri,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _client.post(
       uri,
-      headers: {
-        'Cookie': cookie,
-        'Accept': 'application/json',
-        'Referer': 'https://mcdev.webapp.163.com/',
-      },
+      headers: _headers(json: true),
+      body: jsonEncode(payload),
     );
+    return _decodeJsonResponse(response, uri);
+  }
+
+  Future<Map<String, dynamic>> _putJson(
+    Uri uri,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _client.put(
+      uri,
+      headers: _headers(json: true),
+      body: jsonEncode(payload),
+    );
+    return _decodeJsonResponse(response, uri);
+  }
+
+  Future<Map<String, dynamic>> _deleteJson(Uri uri) async {
+    final response = await _client.delete(uri, headers: _headers());
+    return _decodeJsonResponse(response, uri);
+  }
+
+  Map<String, dynamic> _decodeJsonResponse(http.Response response, Uri uri) {
     if (response.statusCode != 200) {
       final snippet = response.body.length > 300
           ? response.body.substring(0, 300)

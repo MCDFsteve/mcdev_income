@@ -6,7 +6,6 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:mcdev_income/logging/app_logger.dart' as app_logger;
@@ -23,12 +22,13 @@ part 'widgets/placeholder_page.dart';
 part 'app/home_shell.dart';
 part 'pages/home_page.dart';
 part 'pages/mods_page.dart';
+part 'pages/resource_management_page.dart';
 part 'pages/income/income_preset.dart';
 part 'pages/income/income_page_support.dart';
 part 'pages/income/income_page.dart';
 part 'pages/income/income_page_view.dart';
 part 'pages/settings_page.dart';
-part 'pages/login_webview_page.dart';
+part 'pages/login_page.dart';
 
 Future<void> main() async {
   runZonedGuarded(
