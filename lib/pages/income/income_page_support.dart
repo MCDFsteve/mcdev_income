@@ -71,42 +71,50 @@ class _RangePickerPanelState extends State<_RangePickerPanel> {
     final initialDate = _rangeEnd ?? _rangeStart ?? DateTime.now();
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    '选择时间范围',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '选择时间范围',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: Text('开始: $startLabel')),
-                Expanded(child: Text('结束: $endLabel')),
-              ],
-            ),
-            const SizedBox(height: 8),
-            CalendarDatePicker(
-              initialDate: initialDate,
-              firstDate: DateTime(2020, 1, 1),
-              lastDate: DateTime(DateTime.now().year + 1, 12, 31),
-              onDateChanged: _onDateTapped,
-            ),
-            const SizedBox(height: 4),
-            Text('点击起止日期后自动查询', style: Theme.of(context).textTheme.bodySmall),
-          ],
+                  OreIconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: Text('开始: $startLabel')),
+                  Expanded(child: Text('结束: $endLabel')),
+                ],
+              ),
+              const SizedBox(height: 8),
+              OreCalendarDatePicker(
+                initialDate: initialDate,
+                rangeStart: _rangeStart,
+                rangeEnd: _rangeEnd,
+                firstDate: DateTime(2020, 1, 1),
+                lastDate: DateTime(DateTime.now().year + 1, 12, 31),
+                onDateChanged: _onDateTapped,
+              ),
+              const SizedBox(height: 4),
+              Text('点击起止日期后自动查询', style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
         ),
       ),
     );

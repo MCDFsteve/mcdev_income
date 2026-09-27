@@ -12,8 +12,8 @@ class _IncomePageState extends State<IncomePage> {
   static const _presetStorageKey = 'income_presets_v1';
 
   DateTimeRange? _range;
-  _Category _category = _Category.pe;
-  _Category? _modsCategory;
+  ModCategory _category = ModCategory.pe;
+  ModCategory? _modsCategory;
   IncomeScope _scope = IncomeScope.all;
   bool _loading = false;
   bool _exportingCsv = false;
@@ -139,7 +139,7 @@ class _IncomePageState extends State<IncomePage> {
 
   Future<void> _loadPresets() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await AppPreferences.getInstance();
       final raw = prefs.getString(_presetStorageKey);
       if (raw == null || raw.isEmpty) {
         return;
@@ -172,7 +172,7 @@ class _IncomePageState extends State<IncomePage> {
   }
 
   Future<void> _persistPresets() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPreferences.getInstance();
     final payload = _presets.map((preset) => preset.toJson()).toList();
     await prefs.setString(_presetStorageKey, jsonEncode(payload));
   }
@@ -217,24 +217,22 @@ class _IncomePageState extends State<IncomePage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('暂无预设')));
+      showOreToast(context, Text('暂无预设'));
       return;
     }
-    await showModalBottomSheet<void>(
+    await showOreModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
+      showCloseButton: true,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, sheetSetState) {
             return ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _presets.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, __) => const OreDivider(),
               itemBuilder: (context, index) {
                 final preset = _presets[index];
-                return ListTile(
+                return OreListTile(
                   title: Text(preset.name),
                   subtitle: Text(
                     '${_categoryLabel(preset.category)} · ${_scopeLabelForPreset(preset.scope)}',
@@ -242,7 +240,7 @@ class _IncomePageState extends State<IncomePage> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
+                      OreIconButton(
                         icon: const Icon(Icons.edit),
                         tooltip: '重命名',
                         onPressed: () async {
@@ -275,7 +273,7 @@ class _IncomePageState extends State<IncomePage> {
                           await _persistPresets();
                         },
                       ),
-                      IconButton(
+                      OreIconButton(
                         icon: const Icon(Icons.delete_outline),
                         tooltip: '删除',
                         onPressed: () async {
@@ -307,11 +305,11 @@ class _IncomePageState extends State<IncomePage> {
     String? initial,
   }) async {
     final controller = TextEditingController(text: initial ?? '');
-    final result = await showDialog<String>(
+    final result = await showOreDialog<String>(
       context: context,
       builder: (context) {
         final dialogButtonWidth = OreTokens.controlHeightMd * 3;
-        return AlertDialog(
+        return OreAlertDialog(
           title: Text(title),
           content: TextField(
             controller: controller,
@@ -503,9 +501,7 @@ class _IncomePageState extends State<IncomePage> {
     _syncRatioControllers();
 
     if (missing.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已忽略 ${missing.length} 个不存在的 Mod')),
-      );
+      showOreToast(context, Text('已忽略 ${missing.length} 个不存在的 Mod'));
     }
   }
 
@@ -533,7 +529,7 @@ class _IncomePageState extends State<IncomePage> {
 
     final api = McDevApi(
       cookie: cookieHeader,
-      category: _categoryValue(_category),
+      category: modCategoryValue(_category),
     );
     try {
       final mods = await api.fetchMods(onlyPriced: false, onlyPublished: false);
@@ -914,32 +910,11 @@ class _IncomePageState extends State<IncomePage> {
     if (!mounted) {
       return;
     }
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger != null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
-      );
-      return;
-    }
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('CSV导出'),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('知道了'),
-            ),
-          ],
-        );
-      },
-    );
+    showOreToast(context, Text(message), duration: const Duration(seconds: 6));
   }
 
-  String _analysisCategory(_Category category) {
-    return category == _Category.pe ? 'pe' : 'pc';
+  String _analysisCategory(ModCategory category) {
+    return category == ModCategory.pe ? 'pe' : 'pc';
   }
 
   Future<Map<String, int>> _fetchDownloadsInBatches({
@@ -1042,8 +1017,8 @@ class _IncomePageState extends State<IncomePage> {
     }
   }
 
-  String _categoryLabel(_Category category) {
-    return category == _Category.pe ? 'PE' : 'Java';
+  String _categoryLabel(ModCategory category) {
+    return category == ModCategory.pe ? 'PE' : 'Java';
   }
 
   String _scopeLabelForPreset(IncomeScope scope) {
@@ -1066,10 +1041,10 @@ class _IncomePageState extends State<IncomePage> {
 
     DateTimeRange? picked;
     if (isWide) {
-      picked = await showDialog<DateTimeRange>(
+      picked = await showOreDialog<DateTimeRange>(
         context: context,
         builder: (context) {
-          return Dialog(
+          return OreDialog(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: _RangePickerPanel(
@@ -1081,12 +1056,9 @@ class _IncomePageState extends State<IncomePage> {
         },
       );
     } else {
-      picked = await showModalBottomSheet<DateTimeRange>(
+      picked = await showOreModalBottomSheet<DateTimeRange>(
         context: context,
         isScrollControlled: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
         builder: (context) {
           return Padding(
             padding: EdgeInsets.only(
@@ -1191,7 +1163,7 @@ class _IncomePageState extends State<IncomePage> {
 
     final api = McDevApi(
       cookie: cookieHeader,
-      category: _categoryValue(_category),
+      category: modCategoryValue(_category),
     );
 
     try {
@@ -1237,7 +1209,7 @@ class _IncomePageState extends State<IncomePage> {
           min(i + batchSize, targetMods.length),
         );
         final results = await Future.wait(
-          batch.map((mod) => api.fetchIncomeWithRetry(mod, range)),
+          batch.map((mod) => api.fetchIncomeWithRetry(mod, IncomeDateRange(start: range.start, end: range.end))),
         );
         if (!mounted) {
           return;
@@ -1262,15 +1234,15 @@ class _IncomePageState extends State<IncomePage> {
             refundOther += summary.refundOtherCount;
             final sourceMod = modById[summary.itemId];
             if ((sourceMod?.price ?? 0) > 0) {
-              final kind = _priceKind(summary.priceType);
+              final kind = priceKind(summary.priceType);
               switch (kind) {
-                case _PriceKind.diamond:
+                case PriceKind.diamond:
                   diamondPriced += 1;
                   break;
-                case _PriceKind.emerald:
+                case PriceKind.emerald:
                   emeraldPriced += 1;
                   break;
-                case _PriceKind.other:
+                case PriceKind.other:
                   otherPriced += 1;
                   break;
               }

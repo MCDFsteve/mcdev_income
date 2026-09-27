@@ -107,10 +107,10 @@ extension _IncomePageView on _IncomePageState {
           children: [
             Text('类别', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),
-            SegmentedButton<_Category>(
+            SegmentedButton<ModCategory>(
               segments: const [
-                ButtonSegment(value: _Category.pe, label: Text('PE')),
-                ButtonSegment(value: _Category.java, label: Text('Java')),
+                ButtonSegment(value: ModCategory.pe, label: Text('PE')),
+                ButtonSegment(value: ModCategory.java, label: Text('Java')),
               ],
               selected: {_category},
               showSelectedIcon: false,
@@ -211,19 +211,19 @@ extension _IncomePageView on _IncomePageState {
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton(
+                OreIconButton(
                   tooltip: '保存为新预设',
                   onPressed: _saveNewPreset,
                   icon: const Icon(Icons.bookmark_add_outlined),
                 ),
-                IconButton(
+                OreIconButton(
                   tooltip: '更新当前预设',
                   onPressed: _selectedPresetId == null
                       ? null
                       : _updateSelectedPreset,
                   icon: const Icon(Icons.save_outlined),
                 ),
-                IconButton(
+                OreIconButton(
                   tooltip: '管理预设',
                   onPressed: _showPresetManager,
                   icon: const Icon(Icons.manage_accounts_outlined),
@@ -255,7 +255,7 @@ extension _IncomePageView on _IncomePageState {
                 ),
                 if (_modsLoading) ...[
                   const SizedBox(height: 8),
-                  const LinearProgressIndicator(),
+                  const OreProgressBar(),
                 ],
                 if (_modsError != null) ...[
                   const SizedBox(height: 8),
@@ -315,12 +315,12 @@ extension _IncomePageView on _IncomePageState {
                         )
                       : ListView.separated(
                           itemCount: filteredMods.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          separatorBuilder: (_, __) => const OreDivider(),
                           itemBuilder: (context, index) {
                             final mod = filteredMods[index];
                             if (_scope == IncomeScope.multiple) {
                               final selected = _selectedModIds.contains(mod.id);
-                              return CheckboxListTile(
+                              return OreCheckboxListTile(
                                 value: selected,
                                 dense: true,
                                 title: Text(mod.name),
@@ -331,7 +331,7 @@ extension _IncomePageView on _IncomePageState {
                                 ),
                               );
                             }
-                            return RadioListTile<String>(
+                            return OreRadioListTile<String>(
                               value: mod.id,
                               groupValue: _singleModId,
                               dense: true,
@@ -462,7 +462,7 @@ extension _IncomePageView on _IncomePageState {
       ),
       const SizedBox(height: 12),
       if (_loading) ...[
-        const LinearProgressIndicator(),
+        const OreProgressBar(),
         const SizedBox(height: 8),
         Text('已处理 $_processed / $_totalMods'),
       ],
@@ -713,7 +713,7 @@ extension _IncomePageView on _IncomePageState {
               Expanded(
                 child: Text('按 Mod 明细', style: theme.textTheme.titleMedium),
               ),
-              IconButton(
+              OreIconButton(
                 tooltip: '导出CSV',
                 onPressed: _loading || _exportingCsv
                     ? null
@@ -745,7 +745,7 @@ extension _IncomePageView on _IncomePageState {
                   ],
                 ),
               ),
-              IconButton(
+              OreIconButton(
                 tooltip: _summarySortAscending ? '升序' : '降序',
                 icon: Icon(
                   _summarySortAscending
@@ -868,7 +868,7 @@ extension _IncomePageView on _IncomePageState {
                                     style: theme.textTheme.titleMedium,
                                   ),
                                 ),
-                                IconButton(
+                                OreIconButton(
                                   tooltip: '导出CSV',
                                   onPressed: _loading || _exportingCsv
                                       ? null
@@ -900,7 +900,7 @@ extension _IncomePageView on _IncomePageState {
                                     ],
                                   ),
                                 ),
-                                IconButton(
+                                OreIconButton(
                                   tooltip: _summarySortAscending ? '升序' : '降序',
                                   icon: Icon(
                                     _summarySortAscending

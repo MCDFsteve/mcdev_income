@@ -147,23 +147,21 @@ class _LoginPageState extends State<LoginPage> {
             onSubmitted: (_) => _loading ? null : _login(),
           ),
           const SizedBox(height: 8),
-          CheckboxListTile(
+          OreCheckboxListTile(
             value: _agree,
             onChanged: _loading
                 ? null
                 : (value) => setState(() => _agree = value ?? false),
             dense: true,
-            controlAffinity: ListTileControlAffinity.leading,
             contentPadding: EdgeInsets.zero,
             title: const Text('我已经同意《隐私协议》和《用户协议》'),
           ),
-          CheckboxListTile(
+          OreCheckboxListTile(
             value: _rememberPassword,
             onChanged: _loading
                 ? null
                 : (value) => setState(() => _rememberPassword = value ?? false),
             dense: true,
-            controlAffinity: ListTileControlAffinity.leading,
             contentPadding: EdgeInsets.zero,
             title: const Text('保存密码用于自动刷新凭证'),
           ),
@@ -182,7 +180,7 @@ class _LoginPageState extends State<LoginPage> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: OreLoadingIndicator(size: 16),
                       )
                     : const Icon(Icons.login),
                 label: const Text('登录'),

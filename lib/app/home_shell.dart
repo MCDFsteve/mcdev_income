@@ -87,7 +87,11 @@ class _HomeShellState extends State<HomeShell> {
 
     if (isWide) {
       return Scaffold(
-        appBar: buildOreAppBar(context, title: _titles[_index]),
+        appBar: buildOreAppBar(
+          context,
+          title: _titles[_index],
+          actions: [MailboxButton(refreshToken: _index)],
+        ),
         body: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -122,7 +126,11 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     return Scaffold(
-      appBar: buildOreAppBar(context, title: _titles[_index]),
+      appBar: buildOreAppBar(
+        context,
+        title: _titles[_index],
+        actions: [MailboxButton(refreshToken: _index)],
+      ),
       body: IndexedStack(index: _index, children: _pages),
       bottomNavigationBar: SafeArea(
         top: false,

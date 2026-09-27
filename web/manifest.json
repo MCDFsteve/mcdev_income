@@ -1,11 +1,11 @@
 {
-    "name": "Cons Melt",
-    "short_name": "Cons Melt",
+    "name": "我的世界开发者管理",
+    "short_name": "我的世界开发者管理",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Cons Melt",
+    "description": "我的世界开发者管理",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

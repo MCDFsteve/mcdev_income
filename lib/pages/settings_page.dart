@@ -80,9 +80,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     final profile = _developerProfile;
     if (profile == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('未获取到开发者信息，请稍后重试。')));
+      showOreToast(context, Text('未获取到开发者信息，请稍后重试。'));
       return;
     }
 
@@ -91,18 +89,16 @@ class _SettingsPageState extends State<SettingsPage> {
     ).where((item) => item.label != '昵称' && item.label != '简介').toList();
 
     if (detailItems.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('暂无更多可显示的开发者信息。')));
+      showOreToast(context, Text('暂无更多可显示的开发者信息。'));
       return;
     }
 
     final isWide = MediaQuery.of(context).size.width >= 900;
     if (isWide) {
-      await showDialog<void>(
+      await showOreDialog<void>(
         context: context,
         builder: (context) {
-          return Dialog(
+          return OreDialog(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520, maxHeight: 520),
               child: Padding(
@@ -121,8 +117,9 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ),
                         ),
-                        IconButton(
+                        OreIconButton(
                           icon: const Icon(Icons.close),
+                          tooltip: '关闭',
                           onPressed: () => Navigator.of(context).pop(),
                         ),
                       ],
@@ -131,10 +128,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     Expanded(
                       child: ListView.separated(
                         itemCount: detailItems.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        separatorBuilder: (_, __) => const OreDivider(),
                         itemBuilder: (context, index) {
                           final item = detailItems[index];
-                          return ListTile(
+                          return OreListTile(
                             dense: true,
                             title: Text(item.label),
                             subtitle: Text(item.value),
@@ -150,12 +147,9 @@ class _SettingsPageState extends State<SettingsPage> {
         },
       );
     } else {
-      await showModalBottomSheet<void>(
+      await showOreModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
         builder: (context) {
           return SafeArea(
             child: Padding(
@@ -174,8 +168,9 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                       ),
-                      IconButton(
+                      OreIconButton(
                         icon: const Icon(Icons.close),
+                        tooltip: '关闭',
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                     ],
@@ -185,10 +180,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: detailItems.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      separatorBuilder: (_, __) => const OreDivider(),
                       itemBuilder: (context, index) {
                         final item = detailItems[index];
-                        return ListTile(
+                        return OreListTile(
                           dense: true,
                           title: Text(item.label),
                           subtitle: Text(item.value),
@@ -598,7 +593,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: OreLoadingIndicator(size: 16),
                         ),
                     ],
                   ),
@@ -656,7 +651,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: OreLoadingIndicator(size: 16),
                         ),
                     ],
                   ),

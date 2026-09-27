@@ -1,4 +1,4 @@
-part of mcdev_income_app;
+part of '../core.dart';
 
 class McDevApi {
   McDevApi({required this.cookie, required this.category, http.Client? client})
@@ -12,9 +12,7 @@ class McDevApi {
   static const int _refundStatusDone = 310;
 
   void _logRefund(String message) {
-    if (kDebugMode) {
-      debugPrint('[refund] $message');
-    }
+    CoreRuntime.log('[refund] $message');
   }
 
   void close() {
@@ -187,6 +185,7 @@ class McDevApi {
     int start = 0,
     int span = 50,
     String? keyword,
+    String? status,
   }) async {
     final params = <String, String>{
       'is_third_party': 'false',
@@ -195,9 +194,9 @@ class McDevApi {
     };
     final query = keyword?.trim();
     if (query != null && query.isNotEmpty) {
-      params['keyword'] = query;
-      params['item_name'] = query;
+      params['fuzzy_key'] = query;
     }
+    if (status != null && status.isNotEmpty) params['status'] = status;
     final payload = await _getJson(
       Uri.https(
         'mc-launcher.webapp.163.com',
@@ -333,11 +332,13 @@ class McDevApi {
     final payload = await _getJson(
       Uri.https(
         'mc-launcher.webapp.163.com',
-        '/items/categories/$resourceCategory/$itemId/feedbacks/',
+        '/items/categories/$resourceCategory/$itemId/feedback',
       ),
     );
     final data = payload['data'];
-    final rawList = data is Map ? data['feedbacks'] ?? data['data'] : data;
+    final rawList = data is Map
+        ? (data['feedbacks'] is List ? data['feedbacks'] : [data])
+        : data;
     if (rawList is! List) {
       return const [];
     }
@@ -571,7 +572,7 @@ class McDevApi {
     );
   }
 
-  Future<IncomeSummary> fetchIncome(ModItem mod, DateTimeRange range) async {
+  Future<IncomeSummary> fetchIncome(ModItem mod, IncomeDateRange range) async {
     final beginUtc = _startOfDay(range.start).toUtc().toIso8601String();
     final endUtc = _endOfDay(range.end).toUtc().toIso8601String();
     final uri = Uri.https(
@@ -678,7 +679,7 @@ class McDevApi {
 
   Future<int> _fetchRefundCount(
     ModItem mod,
-    DateTimeRange range,
+    IncomeDateRange range,
     int refundStatus,
   ) async {
     final beginUtc = _startOfDay(range.start).toUtc().toIso8601String();
@@ -714,7 +715,7 @@ class McDevApi {
 
   Future<IncomeSummary> fetchIncomeWithRetry(
     ModItem mod,
-    DateTimeRange range,
+    IncomeDateRange range,
   ) async {
     const maxRetries = 2;
     Object? lastError;
@@ -751,7 +752,7 @@ class McDevApi {
       'Origin': 'https://mcdev.webapp.163.com',
       'Referer': 'https://mcdev.webapp.163.com/',
     };
-    final overseaToken = LoginCookieHelper.overseaTokenFromCookieHeader(cookie);
+    final overseaToken = LoginService.overseaTokenFromCookieHeader(cookie);
     if (overseaToken != null && overseaToken.isNotEmpty) {
       headers['ACCOUNT-TOKEN'] = overseaToken;
     }
@@ -762,59 +763,102 @@ class McDevApi {
   }
 
   Future<Map<String, dynamic>> _getJson(Uri uri) async {
-    final response = await _client.get(uri, headers: _headers());
+    final response = await _client
+        .get(uri, headers: _headers())
+        .timeout(const Duration(seconds: 45));
     return _decodeJsonResponse(response, uri);
   }
 
   Future<Map<String, dynamic>> _postJson(
     Uri uri,
     Map<String, dynamic> payload,
-  ) async {
-    final response = await _client.post(
-      uri,
-      headers: _headers(json: true),
-      body: jsonEncode(payload),
-    );
-    return _decodeJsonResponse(response, uri);
-  }
+  ) => _mutationRequest(
+    uri,
+    () => _client
+        .post(uri, headers: _headers(json: true), body: jsonEncode(payload))
+        .timeout(const Duration(seconds: 60)),
+  );
 
   Future<Map<String, dynamic>> _putJson(
     Uri uri,
     Map<String, dynamic> payload,
+  ) => _mutationRequest(
+    uri,
+    () => _client
+        .put(uri, headers: _headers(json: true), body: jsonEncode(payload))
+        .timeout(const Duration(seconds: 60)),
+  );
+
+  Future<Map<String, dynamic>> _deleteJson(Uri uri) => _mutationRequest(
+    uri,
+    () => _client
+        .delete(uri, headers: _headers())
+        .timeout(const Duration(seconds: 45)),
+  );
+
+  Future<Map<String, dynamic>> _mutationRequest(
+    Uri uri,
+    Future<http.Response> Function() request,
   ) async {
-    final response = await _client.put(
-      uri,
-      headers: _headers(json: true),
-      body: jsonEncode(payload),
-    );
-    return _decodeJsonResponse(response, uri);
+    try {
+      return _decodeJsonResponse(await request(), uri, mutation: true);
+    } on TimeoutException {
+      throw McDevException(
+        '写入请求超时，结果不明，请先核对平台结果再重试',
+        uri,
+        outcomeUnknown: true,
+      );
+    } on http.ClientException {
+      throw McDevException(
+        '写入连接中断，结果不明，请先核对平台结果再重试',
+        uri,
+        outcomeUnknown: true,
+      );
+    }
   }
 
-  Future<Map<String, dynamic>> _deleteJson(Uri uri) async {
-    final response = await _client.delete(uri, headers: _headers());
-    return _decodeJsonResponse(response, uri);
-  }
-
-  Map<String, dynamic> _decodeJsonResponse(http.Response response, Uri uri) {
-    if (response.statusCode != 200) {
-      final snippet = response.body.length > 300
-          ? response.body.substring(0, 300)
-          : response.body;
-      throw McDevException('请求失败: ${response.statusCode} $snippet', uri);
+  Map<String, dynamic> _decodeJsonResponse(
+    http.Response response,
+    Uri uri, {
+    bool mutation = false,
+  }) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw McDevException(
+        response.statusCode == 401 || response.statusCode == 403
+            ? '登录已过期或没有此操作权限，请重新登录后重试'
+            : '请求失败: HTTP ${response.statusCode}',
+        uri,
+        outcomeUnknown: mutation && response.statusCode >= 500,
+        statusCode: response.statusCode,
+      );
     }
     dynamic decoded;
     try {
-      decoded = jsonDecode(response.body);
+      decoded = jsonDecode(utf8.decode(response.bodyBytes));
     } catch (_) {
-      final snippet = response.body.length > 300
-          ? response.body.substring(0, 300)
-          : response.body;
-      throw McDevException('响应不是 JSON: $snippet', uri);
+      throw McDevException(
+        '服务器返回了非 JSON 内容，请检查登录状态后重试',
+        uri,
+        outcomeUnknown: mutation,
+      );
     }
     if (decoded is Map<String, dynamic>) {
+      final status = decoded['status'];
+      if (status != null && status != 'ok') {
+        final data = decoded['data'];
+        final message =
+            decoded['msg'] ??
+            decoded['message'] ??
+            decoded['error'] ??
+            (data is Map
+                ? data['msg'] ?? data['message'] ?? data['error']
+                : null) ??
+            status;
+        throw McDevException('平台拒绝请求：$message', uri);
+      }
       return decoded;
     }
-    throw McDevException('响应不是 JSON 对象', uri);
+    throw McDevException('响应不是 JSON 对象', uri, outcomeUnknown: mutation);
   }
 
   DateTime _startOfDay(DateTime value) {

@@ -1,9 +1,12 @@
 #include <flutter/dart_project.h>
+#include <flutter/flutter_engine.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
 #include <dbghelp.h>
 #include <filesystem>
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <system_error>
 
@@ -79,12 +82,39 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
+  const bool headless = !command_line_arguments.empty() &&
+                        command_line_arguments.front() == "--headless";
+
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
+
+  if (headless) {
+    flutter::FlutterEngine engine(project);
+    if (!engine.Run()) {
+      ::CoUninitialize();
+      return EXIT_FAILURE;
+    }
+    // Dart exits the process after writing the CLI result. Keep the platform
+    // thread pumping messages while asynchronous Dart work is in progress.
+    for (;;) {
+      const auto delay = engine.ProcessMessages();
+      const auto milliseconds =
+          std::chrono::duration_cast<std::chrono::milliseconds>(delay).count();
+      const DWORD timeout = static_cast<DWORD>(
+          std::min<int64_t>(std::max<int64_t>(milliseconds, 0), 100));
+      ::MsgWaitForMultipleObjectsEx(0, nullptr, timeout, QS_ALLINPUT,
+                                    MWMO_INPUTAVAILABLE);
+      ::MSG msg;
+      while (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+        ::TranslateMessage(&msg);
+        ::DispatchMessage(&msg);
+      }
+    }
+  }
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"Cons Melt", origin, size)) {
+  if (!window.Create(L"我的世界开发者管理", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

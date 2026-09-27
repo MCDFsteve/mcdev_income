@@ -8,8 +8,9 @@ class McDevIncomeApp extends StatefulWidget {
 }
 
 class _McDevIncomeAppState extends State<McDevIncomeApp> {
-  final ValueNotifier<ThemeMode> _themeModeNotifier =
-      ValueNotifier<ThemeMode>(ThemeMode.system);
+  final ValueNotifier<ThemeMode> _themeModeNotifier = ValueNotifier<ThemeMode>(
+    ThemeMode.system,
+  );
 
   @override
   void initState() {
@@ -39,30 +40,12 @@ class _McDevIncomeAppState extends State<McDevIncomeApp> {
         valueListenable: _themeModeNotifier,
         builder: (context, themeMode, _) {
           return MaterialApp(
-            title: 'MC开发者收益助手',
+            title: '我的世界开发者管理',
+            debugShowCheckedModeBanner: false,
             themeMode: themeMode,
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-              scaffoldBackgroundColor: OreColors.light().background,
-              canvasColor: OreColors.light().background,
-              useMaterial3: true,
-              extensions: <ThemeExtension<dynamic>>[
-                OreThemeData.light(),
-              ],
-            ),
-            darkTheme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.deepPurple,
-                brightness: Brightness.dark,
-              ),
-              brightness: Brightness.dark,
-              scaffoldBackgroundColor: OreColors.dark().background,
-              canvasColor: OreColors.dark().background,
-              useMaterial3: true,
-              extensions: <ThemeExtension<dynamic>>[
-                OreThemeData.dark(),
-              ],
-            ),
+            theme: oreAppTheme(),
+            darkTheme: oreAppTheme(brightness: Brightness.dark),
+            scrollBehavior: const OreScrollBehavior(),
             home: const HomeShell(),
           );
         },
@@ -79,8 +62,8 @@ class AppThemeController extends InheritedNotifier<ValueNotifier<ThemeMode>> {
   }) : super(notifier: notifier);
 
   static ValueNotifier<ThemeMode> of(BuildContext context) {
-    final widget =
-        context.dependOnInheritedWidgetOfExactType<AppThemeController>();
+    final widget = context
+        .dependOnInheritedWidgetOfExactType<AppThemeController>();
     assert(widget != null, 'AppThemeController not found in context.');
     return widget!.notifier!;
   }
@@ -115,12 +98,12 @@ class ThemeModeStore {
   }
 
   static Future<ThemeMode> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPreferences.getInstance();
     return _parse(prefs.getString(_key));
   }
 
   static Future<void> save(ThemeMode mode) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPreferences.getInstance();
     await prefs.setString(_key, _serialize(mode));
   }
 }

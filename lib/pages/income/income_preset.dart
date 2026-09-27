@@ -21,7 +21,7 @@ class IncomePreset {
 
   final String id;
   final String name;
-  final _Category category;
+  final ModCategory category;
   final IncomeScope scope;
   final List<String> modIds;
   final Map<String, double> internalRatios;
@@ -35,7 +35,7 @@ class IncomePreset {
     return {
       'id': id,
       'name': name,
-      'category': _categoryValue(category),
+      'category': modCategoryValue(category),
       'scope': scope.name,
       'modIds': modIds,
       'internalRatios': internalRatios,
@@ -65,7 +65,7 @@ class IncomePreset {
     return IncomePreset(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '未命名预设',
-      category: _categoryFromValue(rawCategory),
+      category: modCategoryFromValue(rawCategory),
       scope: IncomeScope.values.firstWhere(
         (scope) => scope.name == rawScope,
         orElse: () => IncomeScope.all,

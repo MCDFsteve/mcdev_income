@@ -13,6 +13,26 @@ import 'package:flutter/material.dart'
         Scrollbar,
         TextField,
         SegmentedButton,
+        CircularProgressIndicator,
+        LinearProgressIndicator,
+        IconButton,
+        CheckboxListTile,
+        RadioListTile,
+        ListTile,
+        Divider,
+        Dialog,
+        AlertDialog,
+        showDialog,
+        showModalBottomSheet,
+        SnackBar,
+        SelectionArea,
+        SelectableText,
+        CalendarDatePicker,
+        Tooltip,
+        Checkbox,
+        Radio,
+        Switch,
+        Slider,
         ButtonSegment;
 import 'package:oreui_flutter/oreui_flutter.dart';
 
@@ -29,33 +49,28 @@ export 'package:flutter/material.dart'
         Scrollbar,
         TextField,
         SegmentedButton,
+        CircularProgressIndicator,
+        LinearProgressIndicator,
+        IconButton,
+        CheckboxListTile,
+        RadioListTile,
+        ListTile,
+        Divider,
+        Dialog,
+        AlertDialog,
+        showDialog,
+        showModalBottomSheet,
+        SnackBar,
+        SelectionArea,
+        SelectableText,
+        CalendarDatePicker,
+        Tooltip,
+        Checkbox,
+        Radio,
+        Switch,
+        Slider,
         ButtonSegment;
-export 'package:oreui_flutter/oreui_flutter.dart'
-    show
-        OreButton,
-        OreButtonSize,
-        OreButtonVariant,
-        OreCard,
-        OreChoiceButtons,
-        OreChoiceDescription,
-        OreChoiceDock,
-        OreColors,
-        OreDropdownButton,
-        OreDropdownItem,
-        OrePixelIcon,
-        OreScrollbar,
-        OreSurface,
-        resolveControlColors,
-        OreStrip,
-        OreStripTone,
-        OreTheme,
-        OreThemeBuilder,
-        OreThemeController,
-        OreThemeData,
-        OreThemeProvider,
-        OreTextField,
-        OreTokens,
-        OreTypography;
+export 'package:oreui_flutter/oreui_flutter.dart';
 
 class Scrollbar extends StatelessWidget {
   const Scrollbar({
@@ -99,11 +114,7 @@ class Scrollbar extends StatelessWidget {
 }
 
 class DropdownMenuItem<T> extends StatelessWidget {
-  const DropdownMenuItem({
-    super.key,
-    required this.value,
-    required this.child,
-  });
+  const DropdownMenuItem({super.key, required this.value, required this.child});
 
   final T value;
   final Widget child;
@@ -133,10 +144,7 @@ class DropdownButton<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final oreItems = (items ?? <DropdownMenuItem<T>>[])
-        .map((item) => OreDropdownItem<T>(
-              value: item.value,
-              child: item.child,
-            ))
+        .map((item) => OreDropdownItem<T>(value: item.value, child: item.child))
         .toList();
     return OreDropdownButton<T>(
       items: oreItems,
@@ -468,11 +476,7 @@ class _OreButtonAdapter extends StatelessWidget {
 
 @immutable
 class ButtonSegment<T> {
-  const ButtonSegment({
-    required this.value,
-    required this.label,
-    this.icon,
-  });
+  const ButtonSegment({required this.value, required this.label, this.icon});
 
   final T value;
   final Widget label;

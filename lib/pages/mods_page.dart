@@ -11,7 +11,7 @@ class _ModsPageState extends State<ModsPage> {
   final _dateFormat = DateFormat('yyyy-MM-dd');
   final _numberFormat = NumberFormat.decimalPattern();
   final ScrollController _modsScrollController = ScrollController();
-  _Category _category = _Category.pe;
+  ModCategory _category = ModCategory.pe;
   bool _loading = false;
   String? _error;
   List<ModItem> _mods = [];
@@ -71,7 +71,7 @@ class _ModsPageState extends State<ModsPage> {
 
     final api = McDevApi(
       cookie: cookieHeader,
-      category: _categoryValue(_category),
+      category: modCategoryValue(_category),
     );
     try {
       final mods = await api.fetchMods(onlyPriced: false, onlyPublished: false);
@@ -101,8 +101,8 @@ class _ModsPageState extends State<ModsPage> {
     }
   }
 
-  String _analysisCategory(_Category category) {
-    return category == _Category.pe ? 'pe' : 'pc';
+  String _analysisCategory(ModCategory category) {
+    return category == ModCategory.pe ? 'pe' : 'pc';
   }
 
   Future<Map<String, int>> _fetchSalesInBatches(
@@ -152,7 +152,7 @@ class _ModsPageState extends State<ModsPage> {
 
     final api = McDevApi(
       cookie: cookieHeader,
-      category: _categoryValue(_category),
+      category: modCategoryValue(_category),
     );
     try {
       final ids = mods.map((mod) => mod.id).toList();
@@ -248,13 +248,13 @@ class _ModsPageState extends State<ModsPage> {
       return '免费';
     }
     final priceText = _numberFormat.format(price);
-    final kind = _priceKind(mod.priceType);
+    final kind = priceKind(mod.priceType);
     switch (kind) {
-      case _PriceKind.diamond:
+      case PriceKind.diamond:
         return '$priceText 钻石';
-      case _PriceKind.emerald:
+      case PriceKind.emerald:
         return '$priceText 绿宝石';
-      case _PriceKind.other:
+      case PriceKind.other:
         return priceText;
     }
   }
@@ -365,10 +365,10 @@ class _ModsPageState extends State<ModsPage> {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  SegmentedButton<_Category>(
+                  SegmentedButton<ModCategory>(
                     segments: const [
-                      ButtonSegment(value: _Category.pe, label: Text('PE')),
-                      ButtonSegment(value: _Category.java, label: Text('Java')),
+                      ButtonSegment(value: ModCategory.pe, label: Text('PE')),
+                      ButtonSegment(value: ModCategory.java, label: Text('Java')),
                     ],
                     selected: {_category},
                     buttonWidth: segmentButtonWidth,
@@ -426,7 +426,7 @@ class _ModsPageState extends State<ModsPage> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: OreLoadingIndicator())
                 : _error != null
                 ? _buildError(theme)
                 : filtered.isEmpty

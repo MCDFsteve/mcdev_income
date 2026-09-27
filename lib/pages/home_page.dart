@@ -1,7 +1,8 @@
-part of mcdev_income_app;
+part of '../main.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.apiFactory});
+  final McDevApi Function()? apiFactory;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -20,57 +21,105 @@ class _HomePageState extends State<HomePage> {
   OverviewStats? _stats;
   DateTime? _updatedAt;
 
+  String _rankType = 'pe_hot';
+  String _kind = 'mods';
+  bool? _canAdvancedRanks;
+  bool _rankLoading = true;
+  String? _rankError;
+  LeaderboardPage? _ranking;
+  int _rankStart = 0, _rankRequest = 0;
+  final _rankHeader = GlobalKey();
+  final _scroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _loadOverview();
+    _loadRanking();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<McDevApi> _openApi() async {
+    if (widget.apiFactory != null) return widget.apiFactory!();
+    final cookie = await LoginCookieHelper.buildCookieHeader();
+    if (cookie.isEmpty) throw StateError('请先到“设置”里登录。');
+    return McDevApi(cookie: cookie, category: 'pe');
   }
 
   Future<void> _loadOverview() async {
-    final cookieHeader = await LoginCookieHelper.buildCookieHeader();
-    if (cookieHeader.isEmpty) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _stats = null;
-        _loading = false;
-        _error = '请先到“设置”里登录。';
-      });
-      return;
-    }
-
-    if (mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
-
-    final api = McDevApi(
-      cookie: cookieHeader,
-      category: _categoryValue(_Category.pe),
-    );
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    McDevApi? api;
     try {
+      api = await _openApi();
       final stats = await api.fetchOverview();
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       setState(() {
         _stats = stats;
         _updatedAt = DateTime.now();
-        _loading = false;
       });
     } catch (error) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = error.toString();
-        });
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      api?.close();
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadRanking() async {
+    final request = ++_rankRequest;
+    setState(() {
+      _rankLoading = true;
+      _rankError = null;
+    });
+    McDevApi? api;
+    try {
+      api = await _openApi();
+      if (_canAdvancedRanks == null) {
+        final profile = await api.fetchDeveloperProfile();
+        if (!mounted || request != _rankRequest) return;
+        _canAdvancedRanks = profile.userRaw?['can_us_rank'] == true;
+        if (_canAdvancedRanks == false &&
+            ['pe_hot', 'hot_search'].contains(_rankType)) {
+          setState(() {
+            _rankType = 'pe_download';
+            _rankStart = 0;
+          });
+        }
+      }
+      final result = await api.fetchLeaderboard(
+        type: _rankType,
+        kind: _kind,
+        start: _rankStart,
+      );
+      if (mounted && request == _rankRequest) setState(() => _ranking = result);
+    } catch (error) {
+      if (mounted && request == _rankRequest) {
+        setState(() => _rankError = error.toString());
       }
     } finally {
-      api.close();
+      api?.close();
+      if (mounted && request == _rankRequest) {
+        setState(() => _rankLoading = false);
+      }
     }
+  }
+
+  void _selectRank({String? type, String? kind, int start = 0}) {
+    setState(() {
+      _rankType = type ?? _rankType;
+      _kind = kind ?? _kind;
+      _rankStart = start;
+      _ranking = null;
+    });
+    _loadRanking();
   }
 
   String _formatInt(int value) => _numberFormat.format(value);
@@ -120,39 +169,16 @@ class _HomePageState extends State<HomePage> {
       return text;
     }
     final targetHeight = style?.fontSize ?? 18;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _pixelAsset(iconAsset, targetHeight: targetHeight),
-        const SizedBox(width: 6),
-        text,
-      ],
-    );
-  }
-
-  Widget _buildSimpleCard(
-    BuildContext context, {
-    required String title,
-    required String value,
-    String? subtitle,
-  }) {
-    final theme = Theme.of(context);
-    return OreCard(
-      padding: const EdgeInsets.all(12),
-      child: Padding(
-        padding: EdgeInsets.zero,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: theme.textTheme.bodySmall),
-            const SizedBox(height: 6),
-            Text(value, style: _numberStyle(theme.textTheme.titleLarge)),
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              Text(subtitle, style: theme.textTheme.bodySmall),
-            ],
-          ],
-        ),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _pixelAsset(iconAsset, targetHeight: targetHeight),
+          const SizedBox(width: 6),
+          text,
+        ],
       ),
     );
   }
@@ -237,104 +263,376 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final width = MediaQuery.of(context).size.width;
-    final stats = _stats;
-    final columns = width >= 1200 ? 4 : (width >= 900 ? 3 : 1);
-
-    return SafeArea(
+  Widget _rankingControls() => OreStrip(
+    key: _rankHeader,
+    tone: OreStripTone.dark,
+    child: Padding(
+      padding: const EdgeInsets.all(12),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OreStrip(
-            tone: OreStripTone.dark,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '排行榜',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              OreIconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: '刷新排行榜',
+                onPressed: _rankLoading ? null : _loadRanking,
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final entry in leaderboardTypes.entries)
+                if (_canAdvancedRanks != false ||
+                    !['pe_hot', 'hot_search'].contains(entry.key))
+                  OreButton(
+                    key: ValueKey('rank-type-${entry.key}'),
+                    size: OreButtonSize.sm,
+                    variant: _rankType == entry.key
+                        ? OreButtonVariant.primary
+                        : OreButtonVariant.secondary,
+                    onPressed: () => _selectRank(type: entry.key),
+                    child: Text(entry.value),
+                  ),
+            ],
+          ),
+          if (_rankType != 'hot_search') ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final entry in leaderboardKinds.entries)
+                  OreButton(
+                    key: ValueKey('rank-kind-${entry.key}'),
+                    size: OreButtonSize.sm,
+                    variant: _kind == entry.key
+                        ? OreButtonVariant.primary
+                        : OreButtonVariant.secondary,
+                    onPressed: () => _selectRank(kind: entry.key),
+                    child: Text(entry.value),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+
+  Widget _rankTile(LeaderboardEntry entry) {
+    final colors = OreTheme.of(context).colors;
+    final change = entry.change;
+    final movement = entry.isNew
+        ? '新上榜'
+        : change == null || change == 0
+        ? ''
+        : '${change < 0 ? '↑' : '↓'} ${change.abs()}';
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: colors.border.withValues(alpha: .3)),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 26, 10),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 38,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '${entry.rank}',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: _numberStyle(Theme.of(context).textTheme.titleLarge)
+                      .copyWith(
+                        color: entry.rank <= 3
+                            ? colors.success
+                            : colors.textMuted,
+                      ),
+                ),
+              ),
+            ),
+            if (entry.icon?.isNotEmpty == true) ...[
+              Image.network(
+                entry.icon!,
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) => progress == null
+                    ? child
+                    : const SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: Center(child: OreLoadingIndicator(size: 20)),
+                      ),
+                errorBuilder: (_, _, _) => const SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(Icons.extension_outlined),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Text(
+                    entry.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (entry.author.isNotEmpty || entry.metric.isNotEmpty)
+                    Text(
+                      [
+                        entry.author,
+                        entry.metric,
+                      ].where((s) => s.isNotEmpty).join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              ),
+            ),
+            if (movement.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                movement,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: change != null && change > 0
+                      ? colors.danger
+                      : colors.success,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statCards(OverviewStats stats, double width) {
+    final columns = width >= 1200
+        ? 4
+        : width >= 650
+        ? 2
+        : 1;
+    final tiles = [
+      _buildPairCard(
+        context,
+        title: '本月钻石收益',
+        mainValue: _formatInt(stats.thisMonthDiamond),
+        subtitleLabel: '上月整月',
+        subtitleValue: _formatInt(stats.lastMonthDiamond),
+        diff: stats.thisMonthDiamond - stats.lastMonthDiamond,
+        iconAsset: _diamondAsset,
+      ),
+      _buildPairCard(
+        context,
+        title: '昨日钻石收益',
+        mainValue: _formatInt(stats.yesterdayDiamond),
+        subtitleLabel: '14天日均',
+        subtitleValue: _formatInt(stats.days14AverageDiamond),
+        diff: stats.yesterdayDiamond - stats.days14AverageDiamond,
+        iconAsset: _diamondAsset,
+      ),
+      _buildPairCard(
+        context,
+        title: '本月资源下载数',
+        mainValue: _formatInt(stats.thisMonthDownload),
+        subtitleLabel: '上月整月',
+        subtitleValue: _formatInt(stats.lastMonthDownload),
+        diff: stats.thisMonthDownload - stats.lastMonthDownload,
+        iconAsset: _downloadAsset,
+      ),
+      _buildPairCard(
+        context,
+        title: '昨日资源下载数',
+        mainValue: _formatInt(stats.yesterdayDownload),
+        subtitleLabel: '14天日均',
+        subtitleValue: _formatInt(stats.days14AverageDownload),
+        diff: stats.yesterdayDownload - stats.days14AverageDownload,
+        iconAsset: _downloadAsset,
+      ),
+    ];
+    return Wrap(
+      children: [
+        for (final tile in tiles) SizedBox(width: width / columns, child: tile),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final theme = Theme.of(context), ranking = _ranking, stats = _stats;
+        final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final rankColumns = constraints.maxWidth >= 1400 * scale
+            ? 3
+            : constraints.maxWidth >= 850 * scale
+            ? 2
+            : 1;
+        return Scrollbar(
+          controller: _scroll,
+          child: CustomScrollView(
+            controller: _scroll,
+            slivers: [
+              SliverToBoxAdapter(
+                child: OreStrip(
+                  tone: OreStripTone.dark,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
                       children: [
-                        Text('数据概览', style: theme.textTheme.titleMedium),
-                        const SizedBox(height: 4),
-                        Text(
-                          _updatedAt == null
-                              ? '尚未更新'
-                              : '最近更新 ${_dateTimeFormat.format(_updatedAt!)}',
-                          style: theme.textTheme.bodySmall,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('数据概览', style: theme.textTheme.titleMedium),
+                              Text(
+                                _updatedAt == null
+                                    ? '尚未更新'
+                                    : '最近更新 ${_dateTimeFormat.format(_updatedAt!)}',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        OreIconButton(
+                          icon: const Icon(Icons.refresh),
+                          tooltip: '刷新首页',
+                          onPressed: _loading || _rankLoading
+                              ? null
+                              : () {
+                                  _canAdvancedRanks = null;
+                                  _loadOverview();
+                                  _loadRanking();
+                                },
                         ),
                       ],
                     ),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _loading ? null : _loadOverview,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('刷新'),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-          Expanded(
-            child: _loading && stats == null
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                ? _buildError(theme)
-                : stats == null
-                ? const Center(child: Text('暂无数据'))
-                : GridView.count(
-                    padding: EdgeInsets.zero,
-                    crossAxisCount: columns,
-                    mainAxisSpacing: 0,
-                    crossAxisSpacing: 0,
-                    childAspectRatio: columns >= 3 ? 1.6 : 2.4,
-                    children: [
-                      _buildPairCard(
-                        context,
-                        title: '本月钻石收益',
-                        mainValue: _formatInt(stats.thisMonthDiamond),
-                        subtitleLabel: '上月整月',
-                        subtitleValue: _formatInt(stats.lastMonthDiamond),
-                        diff: stats.thisMonthDiamond - stats.lastMonthDiamond,
-                        iconAsset: _diamondAsset,
-                      ),
-                      _buildPairCard(
-                        context,
-                        title: '昨日钻石收益',
-                        mainValue: _formatInt(stats.yesterdayDiamond),
-                        subtitleLabel: '14天日均',
-                        subtitleValue: _formatInt(stats.days14AverageDiamond),
-                        diff:
-                            stats.yesterdayDiamond - stats.days14AverageDiamond,
-                        iconAsset: _diamondAsset,
-                      ),
-                      _buildPairCard(
-                        context,
-                        title: '本月资源下载数',
-                        mainValue: _formatInt(stats.thisMonthDownload),
-                        subtitleLabel: '上月整月',
-                        subtitleValue: _formatInt(stats.lastMonthDownload),
-                        diff: stats.thisMonthDownload - stats.lastMonthDownload,
-                        iconAsset: _downloadAsset,
-                      ),
-                      _buildPairCard(
-                        context,
-                        title: '昨日资源下载数',
-                        mainValue: _formatInt(stats.yesterdayDownload),
-                        subtitleLabel: '14天日均',
-                        subtitleValue: _formatInt(stats.days14AverageDownload),
-                        diff:
-                            stats.yesterdayDownload -
-                            stats.days14AverageDownload,
-                        iconAsset: _downloadAsset,
-                      ),
-                    ],
+              SliverToBoxAdapter(
+                child: _loading && stats == null
+                    ? const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(child: OreLoadingIndicator()),
+                      )
+                    : _error != null
+                    ? _buildError(theme)
+                    : stats == null
+                    ? const SizedBox.shrink()
+                    : _statCards(stats, constraints.maxWidth),
+              ),
+              SliverToBoxAdapter(child: _rankingControls()),
+              if (_rankLoading)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Center(child: OreLoadingIndicator()),
                   ),
+                )
+              else if (_rankError != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        Text(
+                          _rankError!,
+                          style: TextStyle(color: theme.colorScheme.error),
+                        ),
+                        const SizedBox(height: 12),
+                        OreButton(
+                          onPressed: _loadRanking,
+                          child: const Text('重试排行榜'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (ranking == null || ranking.items.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Center(child: Text('暂无排行数据')),
+                  ),
+                )
+              else ...[
+                SliverGrid(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _rankTile(ranking.items[index]),
+                    childCount: ranking.items.length,
+                  ),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: rankColumns,
+                    mainAxisExtent: 94 * scale,
+                    crossAxisSpacing: 12,
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          '${_rankStart + 1}–${_rankStart + ranking.items.length} / ${ranking.total}',
+                        ),
+                        OreButton(
+                          size: OreButtonSize.sm,
+                          onPressed: _rankStart > 0
+                              ? () => _rankPage(-50)
+                              : null,
+                          child: const Text('上一页'),
+                        ),
+                        OreButton(
+                          size: OreButtonSize.sm,
+                          onPressed:
+                              _rankStart + ranking.items.length < ranking.total
+                              ? () => _rankPage(50)
+                              : null,
+                          child: const Text('下一页'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
-        ],
-      ),
-    );
+        );
+      },
+    ),
+  );
+
+  void _rankPage(int delta) {
+    _selectRank(start: max(0, _rankStart + delta));
+    final context = _rankHeader.currentContext;
+    if (context != null) {
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 180),
+      );
+    }
   }
 }

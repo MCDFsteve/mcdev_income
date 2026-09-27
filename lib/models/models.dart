@@ -1,43 +1,43 @@
-part of mcdev_income_app;
+part of '../core.dart';
 
-enum _PriceKind { diamond, emerald, other }
+enum PriceKind { diamond, emerald, other }
 
-_PriceKind _priceKind(String? raw) {
+PriceKind priceKind(String? raw) {
   if (raw == null || raw.isEmpty) {
-    return _PriceKind.other;
+    return PriceKind.other;
   }
   final value = raw.toLowerCase();
   if (value.contains('diamond') || value.contains('钻石')) {
-    return _PriceKind.diamond;
+    return PriceKind.diamond;
   }
   if (value.contains('emerald') ||
       value.contains('绿宝石') ||
       value.contains('point')) {
-    return _PriceKind.emerald;
+    return PriceKind.emerald;
   }
-  return _PriceKind.other;
+  return PriceKind.other;
 }
 
-enum _Category { pe, java }
+enum ModCategory { pe, java }
 
-String _categoryValue(_Category category) {
+String modCategoryValue(ModCategory category) {
   switch (category) {
-    case _Category.pe:
+    case ModCategory.pe:
       return 'pe';
-    case _Category.java:
+    case ModCategory.java:
       return 'java';
   }
 }
 
-_Category _categoryFromValue(String? raw) {
+ModCategory modCategoryFromValue(String? raw) {
   if (raw == null) {
-    return _Category.pe;
+    return ModCategory.pe;
   }
   final value = raw.toLowerCase();
   if (value == 'java') {
-    return _Category.java;
+    return ModCategory.java;
   }
-  return _Category.pe;
+  return ModCategory.pe;
 }
 
 DateTime? _parseModReleaseAt(Object? raw) {
@@ -362,10 +362,17 @@ class ResourceListPage {
 }
 
 class McDevException implements Exception {
-  McDevException(this.message, this.uri);
+  McDevException(
+    this.message,
+    this.uri, {
+    this.outcomeUnknown = false,
+    this.statusCode,
+  });
 
   final String message;
   final Uri uri;
+  final bool outcomeUnknown;
+  final int? statusCode;
 
   @override
   String toString() => '$message (${uri.toString()})';

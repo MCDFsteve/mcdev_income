@@ -1,5 +1,5 @@
 name: mcdev_income
-description: "A new Flutter project."
+description: "我的世界开发者管理"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -37,10 +37,16 @@ dependencies:
   file_picker:
     path: third_party/file_picker
   http: ^1.2.2
+  args: ^2.7.0
+  image: ^4.8.0
+  crypto: ^3.0.6
+  html: ^0.15.6
   intl: ^0.20.2
   oreui_flutter:
-    path: third_party/oreui_flutter
+    path: ../oreui_flutter
   shared_preferences: ^2.2.3
+  flutter_widget_from_html_core: ^0.17.4
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -80,28 +86,28 @@ icons_launcher:
 
 package_rename_config:
   android:
-    app_name: "Cons Melt"
+    app_name: "我的世界开发者管理"
     package_name: "com.aimessoft.consmelt"
     override_old_package: "com.example.mcdev_income"
     lang: "kotlin"
   ios:
-    app_name: "Cons Melt"
-    bundle_name: "Cons Melt"
+    app_name: "我的世界开发者管理"
+    bundle_name: "我的世界开发者管理"
     package_name: "com.aimessoft.consmelt"
   macos:
-    app_name: "Cons Melt"
+    app_name: "我的世界开发者管理"
     package_name: "com.aimessoft.consmelt"
   linux:
-    app_name: "Cons Melt"
+    app_name: "我的世界开发者管理"
     package_name: "com.aimessoft.consmelt"
-    exe_name: "cons_melt"
+    exe_name: "minecraft_developer_manager"
   web:
-    app_name: "Cons Melt"
-    short_app_name: "Cons Melt"
-    description: "Cons Melt"
+    app_name: "我的世界开发者管理"
+    short_app_name: "我的世界开发者管理"
+    description: "我的世界开发者管理"
   windows:
-    app_name: "Cons Melt"
-    exe_name: "cons_melt"
+    app_name: "我的世界开发者管理"
+    exe_name: "minecraft_developer_manager"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
