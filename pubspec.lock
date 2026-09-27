@@ -274,10 +274,11 @@ packages:
   oreui_flutter:
     dependency: "direct main"
     description:
-      path: "../oreui_flutter"
-      relative: true
-    source: path
-    version: "0.0.2"
+      name: oreui_flutter
+      sha256: "1f8990029f95469729449042960c8cf3bc749d5bbbe513f0c17d5a872063236a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.3"
   package_rename:
     dependency: "direct dev"
     description:

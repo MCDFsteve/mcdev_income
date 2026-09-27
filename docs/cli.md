@@ -19,18 +19,18 @@ mcdev() { "$APP" --headless "$@"; }
 ```
 
 ```sh
-./mcdev --help
-./mcdev schema                          # 完整命令、参数、状态和冲突类型，JSON
-./mcdev auth status --check             # 与桌面端共用会话
-./mcdev list -q 背包                    # 作品搜索
-./mcdev show 作品编号                    # 详情，包含完整平台字段
-./mcdev upload work.json --dry-run      # 先校验并预览裁剪方案
-./mcdev upload work.json --submit       # 上传、保存、提交审核
-./mcdev edit 作品编号 --name 新名字       # 局部修改，其余字段保留
-./mcdev submit 作品编号 --notes 修复说明
+mcdev --help
+mcdev schema                          # 完整命令、参数、状态和冲突类型，JSON
+mcdev auth status --check             # 与桌面端共用会话
+mcdev list -q 背包                    # 作品搜索
+mcdev show 作品编号                    # 详情，包含完整平台字段
+mcdev upload work.json --dry-run      # 先校验并预览裁剪方案
+mcdev upload work.json --submit       # 上传、保存、提交审核
+mcdev edit 作品编号 --name 新名字       # 局部修改，其余字段保留
+mcdev submit 作品编号 --notes 修复说明
 ```
 
-所有普通命令只向 stdout 输出一个 JSON 文档；`--verbose` 进度写入 stderr。`--pretty` 格式化 JSON。`--help` 默认输出文本，配合 `--json` 可输出机器可读帮助。全局选项可以放在命令前后。没有交互式确认弹窗；命令参数表达操作意图。
+所有普通命令只向 stdout 输出一个 JSON 文档；`--verbose` 进度写入 stderr，Flutter 运行时诊断也可能写入 stderr。`--pretty` 格式化 JSON。`--help` 默认输出文本，配合 `--json` 可输出机器可读帮助。全局选项可以放在命令前后。没有交互式确认弹窗；命令参数表达操作意图。
 
 ## 构建和登录
 
@@ -43,7 +43,7 @@ flutter build macos --release   # 或 flutter build windows/linux --release
 
 首次升级后打开一次桌面端，会自动迁移原会话、主题、本机草稿和收益预设。之后 GUI 与 CLI 共用状态，新登录、退出和本机草稿都可以互通。已打开的 GUI 页面需要重新进入或刷新；主题重启生效。
 
-无 GUI 的机器可直接登录：
+无需打开 GUI 即可直接登录：
 
 ```sh
 mcdev auth login name@example.com --password-stdin < /secure/password.txt

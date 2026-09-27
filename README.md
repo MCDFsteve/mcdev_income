@@ -21,7 +21,7 @@
 应用图标取自 [Minecraft 官方 X 账号头像](https://x.com/Minecraft)（2026-09-27），原始图片保存在 [`assets/minecraft_x_avatar.jpg`](assets/minecraft_x_avatar.jpg)。
 
 ## 快速开始
-OreUI 使用相邻的本地项目 `../oreui_flutter`，该项目需与本仓库放在同一级目录。按钮文字裁切修复与滚动条修复维护在本地 OreUI 项目中。
+OreUI 使用 pub.dev 上的 `oreui_flutter` 版本，包含按钮文字裁切和滚动条修复。
 
 1. 安装 Flutter（确保已配置好开发环境）
 2. 获取依赖
@@ -61,7 +61,7 @@ Windows 使用发布目录中的 `minecraft_developer_manager.exe`，Linux 使�
 ## 目录结构（核心）
 - `lib/main.dart`：应用入口与库声明
 - `lib/core.dart`：GUI / CLI 共享的纯 Dart 业务核心
-- `lib/cli/`、`bin/mcdev.dart`：无头命令行与 Agent 输出协议
+- `lib/cli/`：桌面可执行文件的无头命令行与 Agent 输出协议
 - `lib/storage/`：桌面共享状态与跨进程锁
 - `lib/app/`：应用壳与导航
 - `lib/pages/`：页面实现

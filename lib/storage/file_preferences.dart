@@ -29,8 +29,47 @@ Future<PreferenceStore?> openDesktopPreferences(
     return null;
   }
   final store = await FilePreferences.open(mcdevHome());
-  await store.migrateGui(seed);
+  if (store._values['gui_migrated_v1'] != true) {
+    // The macOS desktop bundle is no longer sandboxed so --headless can access
+    // command paths. Recover preferences from the old container once.
+    final legacy = await _legacyMacPreferences();
+    await store.migrateGui({...legacy, ...seed});
+  }
   return store;
+}
+
+Future<Map<String, Object>> _legacyMacPreferences() async {
+  if (!Platform.isMacOS) return {};
+  final home = Platform.environment['HOME'];
+  if (home == null) return {};
+  const container = '/Library/Containers/com.aimessoft.consmelt/Data';
+  final base = home.endsWith(container) ? home : '$home$container';
+  final file = File('$base/Library/Preferences/com.aimessoft.consmelt.plist');
+  if (!await file.exists()) return {};
+  final result = await Process.run('/usr/bin/plutil', [
+    '-convert',
+    'json',
+    '-o',
+    '-',
+    file.path,
+  ]);
+  if (result.exitCode != 0) return {};
+  try {
+    final values = jsonDecode(result.stdout as String);
+    if (values is! Map<String, dynamic>) return {};
+    return {
+      for (final entry in values.entries)
+        if (entry.key.startsWith('flutter.') &&
+            (entry.key.substring(8).startsWith('login_') ||
+                entry.key.substring(8).startsWith('resource_draft_v1:') ||
+                entry.key == 'flutter.theme_mode' ||
+                entry.key == 'flutter.income_presets_v1') &&
+            (entry.value is String || entry.value is int))
+          entry.key.substring(8): entry.value as Object,
+    };
+  } on FormatException {
+    return {};
+  }
 }
 
 /// Atomic, permission-restricted state with a cross-process writer lock.

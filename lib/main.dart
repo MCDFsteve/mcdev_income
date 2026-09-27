@@ -6,7 +6,8 @@ import 'dart:math';
 import 'core.dart';
 export 'core.dart';
 import 'cli/unsupported_entry.dart'
-    if (dart.library.io) 'cli/desktop_entry.dart' as desktop_cli;
+    if (dart.library.io) 'cli/desktop_entry.dart'
+    as desktop_cli;
 import 'storage/app_preferences.dart';
 
 import 'package:file_picker/file_picker.dart';
