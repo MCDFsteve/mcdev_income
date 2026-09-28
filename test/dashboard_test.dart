@@ -14,6 +14,7 @@ import 'resource_workflow_test.dart' as fixtures;
 class DashboardBackend {
   final requests = <Uri>[];
   bool advanced = true, failOverview = false, failDetail = false;
+  int rankTotal = 51;
   int unread = 2;
   final read = <String>{};
   Completer<void>? slowRank, slowDetail;
@@ -40,7 +41,7 @@ class DashboardBackend {
         if (q['type'] == 'pe_sell') await slowRank?.future;
         final offset = int.parse(q['start']!);
         return fixtures.ok({
-          'count': 51,
+          'count': rankTotal,
           'data': [
             {
               'rank': offset + 1,
@@ -174,6 +175,73 @@ void main() {
   });
 
   test(
+    'leaderboard CSV fetches every selected page and preserves raw fields',
+    () async {
+      final requests = <Uri>[];
+      final client = McDevApi(
+        cookie: 'test',
+        category: 'pe',
+        client: MockClient((request) async {
+          requests.add(request.url);
+          final query = request.url.queryParameters;
+          final start = int.parse(query['start']!);
+          final isSearch = query['type'] == 'hot_search';
+          final total = isSearch ? 1 : 101;
+          return fixtures.ok({
+            'count': total,
+            'data': [
+              for (
+                var index = start;
+                index < total && index < start + 100;
+                index++
+              )
+                {
+                  'rank': index + 1,
+                  'item_id': 'id$index',
+                  'item_name': index == 0 ? '中文,"名称' : '名称$index',
+                  'developer_name': '作者',
+                  'extra': {
+                    'tags': ['a', 'b'],
+                  },
+                },
+            ],
+          });
+        }),
+      );
+      addTearDown(client.close);
+      final progress = <String>[];
+      final rows = await fetchLeaderboardExportRows(
+        api: client,
+        types: {'pe_download', 'hot_search'},
+        kinds: {'mods', 'maps'},
+        onProgress: (done, total) => progress.add('$done/$total'),
+      );
+
+      expect(rows, hasLength(203));
+      expect(progress, ['1/3', '2/3', '3/3']);
+      expect(requests, hasLength(5));
+      expect(requests.map((uri) => uri.queryParameters['start']), [
+        '0',
+        '0',
+        '100',
+        '0',
+        '100',
+      ]);
+      expect(
+        requests.where((uri) => uri.queryParameters['type'] == 'hot_search'),
+        hasLength(1),
+      );
+      final csv = buildLeaderboardCsv(rows);
+      expect(csv, startsWith('\ufeff"榜单","类别","排名"'));
+      expect(csv, contains('"中文,""名称"'));
+      expect(csv, contains('"原始字段:extra"'));
+      expect(csv, contains('"{""tags"":[""a"",""b""]}"'));
+      expect(csv, contains('"热搜榜","全部"'));
+      expect(csv.split('\r\n'), hasLength(205));
+    },
+  );
+
+  test(
     'mail filters omit defaults; detail validates IDs and response shape',
     () async {
       final backend = DashboardBackend(), api = DashboardBackend().api();
@@ -277,6 +345,54 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('rank-type-pe_hot')), findsNothing);
     expect(find.text('pe_download-2-0'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home CSV dialog applies leaderboard and kind selection', (
+    tester,
+  ) async {
+    viewport(tester, const Size(1280, 900));
+    final backend = DashboardBackend()..rankTotal = 1;
+    String? savedCsv;
+    await tester.pumpWidget(
+      host(
+        HomePage(
+          apiFactory: backend.api,
+          csvSaver: ({required fileName, required content}) async {
+            expect(fileName, endsWith('.csv'));
+            savedCsv = content;
+            return '/tmp/ranks.csv';
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    backend.requests.clear();
+
+    await tester.tap(find.byKey(const ValueKey('export-rank-csv')));
+    await tester.pumpAndSettle();
+    expect(find.text('导出排行榜数据'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('export-rank-type-pe_hot')));
+    await tester.pump();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('export-rank-kind-mods')),
+    );
+    await tester.tap(find.byKey(const ValueKey('export-rank-kind-mods')));
+    await tester.pump();
+    await tester.tap(find.text('导出CSV').last);
+    await tester.pumpAndSettle();
+
+    expect(savedCsv, isNotNull);
+    expect(savedCsv, isNot(contains('手游热门飙升')));
+    expect(savedCsv, isNot(contains('"模组"')));
+    final rankRequests = backend.requests
+        .where((uri) => uri.path.startsWith('/square/'))
+        .toList();
+    expect(rankRequests, hasLength(13));
+    expect(
+      rankRequests.any((uri) => uri.queryParameters['type'] == 'pe_hot'),
+      isFalse,
+    );
     expect(tester.takeException(), isNull);
   });
 

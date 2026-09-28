@@ -1,8 +1,13 @@
 part of '../main.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.apiFactory});
+  const HomePage({super.key, this.apiFactory, this.csvSaver});
   final McDevApi Function()? apiFactory;
+  final Future<String?> Function({
+    required String fileName,
+    required String content,
+  })?
+  csvSaver;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -27,6 +32,8 @@ class _HomePageState extends State<HomePage> {
   bool _rankLoading = true;
   String? _rankError;
   LeaderboardPage? _ranking;
+  bool _exportingRanks = false;
+  String? _exportProgress;
   int _rankStart = 0, _rankRequest = 0;
   final _rankHeader = GlobalKey();
   final _scroll = ScrollController();
@@ -120,6 +127,135 @@ class _HomePageState extends State<HomePage> {
       _ranking = null;
     });
     _loadRanking();
+  }
+
+  Future<void> _exportRanks() async {
+    final selectedTypes = leaderboardTypes.keys
+        .where(
+          (type) =>
+              _canAdvancedRanks != false ||
+              !['pe_hot', 'hot_search'].contains(type),
+        )
+        .toSet();
+    final selectedKinds = leaderboardKinds.keys.toSet();
+    final selection =
+        await showOreDialog<({Set<String> types, Set<String> kinds})>(
+          context: context,
+          builder: (ctx) => StatefulBuilder(
+            builder: (ctx, update) => OreAlertDialog(
+              title: const Text('导出排行榜数据'),
+              content: SizedBox(
+                width: min(380, MediaQuery.sizeOf(ctx).width - 100),
+                height: min(450, MediaQuery.sizeOf(ctx).height * .55),
+                child: ListView(
+                  children: [
+                    const Text('选择榜单'),
+                    for (final entry in leaderboardTypes.entries)
+                      if (_canAdvancedRanks != false ||
+                          !['pe_hot', 'hot_search'].contains(entry.key))
+                        OreCheckboxListTile(
+                          key: ValueKey('export-rank-type-${entry.key}'),
+                          value: selectedTypes.contains(entry.key),
+                          dense: true,
+                          title: Text(entry.value),
+                          onChanged: (value) => update(() {
+                            value == true
+                                ? selectedTypes.add(entry.key)
+                                : selectedTypes.remove(entry.key);
+                          }),
+                        ),
+                    const SizedBox(height: 8),
+                    const Text('选择资源类别（热搜榜不区分类别）'),
+                    for (final entry in leaderboardKinds.entries)
+                      OreCheckboxListTile(
+                        key: ValueKey('export-rank-kind-${entry.key}'),
+                        value: selectedKinds.contains(entry.key),
+                        dense: true,
+                        title: Text(entry.value),
+                        onChanged: (value) => update(() {
+                          value == true
+                              ? selectedKinds.add(entry.key)
+                              : selectedKinds.remove(entry.key);
+                        }),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                ElevatedButton(
+                  onPressed:
+                      selectedTypes.isEmpty ||
+                          (selectedKinds.isEmpty &&
+                              selectedTypes.any((type) => type != 'hot_search'))
+                      ? null
+                      : () => Navigator.pop(ctx, (
+                          types: {...selectedTypes},
+                          kinds: {...selectedKinds},
+                        )),
+                  child: const Text('导出CSV'),
+                ),
+              ],
+            ),
+          ),
+        );
+    if (!mounted || selection == null) return;
+
+    setState(() {
+      _exportingRanks = true;
+      _exportProgress = '正在获取排行榜…';
+    });
+    McDevApi? api;
+    try {
+      api = await _openApi();
+      final rows = await fetchLeaderboardExportRows(
+        api: api,
+        types: selection.types,
+        kinds: selection.kinds,
+        onProgress: (completed, total) {
+          if (mounted) {
+            setState(() => _exportProgress = '正在获取排行榜 $completed/$total');
+          }
+        },
+      );
+      if (!mounted) return;
+      if (rows.isEmpty) {
+        showOreToast(context, const Text('所选排行榜暂无数据'));
+        return;
+      }
+      setState(() => _exportProgress = '正在保存CSV…');
+      final fileName =
+          'leaderboards_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv';
+      final path = await (widget.csvSaver ?? csv_file_saver.saveCsvToFile)(
+        fileName: fileName,
+        content: buildLeaderboardCsv(rows),
+      );
+      if (!mounted) return;
+      showOreToast(
+        context,
+        Text(path == null ? '已取消保存' : '已导出 ${rows.length} 条排行榜数据：$path'),
+        duration: const Duration(seconds: 6),
+      );
+    } catch (error) {
+      if (mounted) {
+        showOreToast(
+          context,
+          Text('导出排行榜失败：$error'),
+          duration: const Duration(seconds: 6),
+        );
+      }
+    } finally {
+      api?.close();
+      if (mounted) {
+        setState(() {
+          _exportingRanks = false;
+          _exportProgress = null;
+        });
+      }
+    }
   }
 
   String _formatInt(int value) => _numberFormat.format(value);
@@ -278,6 +414,14 @@ class _HomePageState extends State<HomePage> {
                   '排行榜',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
+              ),
+              OreButton(
+                key: const ValueKey('export-rank-csv'),
+                size: OreButtonSize.sm,
+                onPressed: _rankLoading || _exportingRanks
+                    ? null
+                    : _exportRanks,
+                child: Text(_exportProgress ?? '导出CSV'),
               ),
               OreIconButton(
                 icon: const Icon(Icons.refresh),

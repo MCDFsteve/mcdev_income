@@ -15,6 +15,7 @@ part 'models/dashboard.dart';
 part 'models/resource_workflow.dart';
 part 'services/mcdev_api.dart';
 part 'services/dashboard_api.dart';
+part 'services/leaderboard_export.dart';
 part 'services/resource_api.dart';
 part 'core/login_service.dart';
 
