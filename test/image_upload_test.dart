@@ -41,6 +41,7 @@ class _UploadApi {
   final Map<String, dynamic> resource;
   final uploads = <({String name, String type, int length, Uint8List bytes})>[];
   final tokenTypes = <String>[];
+  Map<String, dynamic>? savedPayload;
   late final api = McDevApi(
     cookie: '',
     category: 'pe',
@@ -81,6 +82,10 @@ class _UploadApi {
             'x-ntes-signature': 'test-signature',
           },
         );
+      }
+      if (request.url.path.endsWith('/update')) {
+        savedPayload = jsonDecode(request.body) as Map<String, dynamic>;
+        return fixtures.ok({'item_id': '123'});
       }
       return fixtures.ok(resource);
     }),
@@ -186,7 +191,10 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final resource = fixtures.testResource()
         ..['pri_type'] = 4
-        ..['sub_type'] = 13;
+        ..['sub_type'] = 13
+        ..['body_type'] = 'normal';
+      (resource['res'] as List).first['cdn_info'] = {'res_size': 30};
+      (resource['res'] as List).first['cdn_url'] = 'old-cdn-url';
       final api = _UploadApi(resource);
       await tester.pumpWidget(
         host(
@@ -209,6 +217,24 @@ void main() {
       expect(api.uploads.single.type, 'png');
       expect(api.uploads.single.name, 'test.png');
       expect(api.uploads.single.bytes, bytes);
+      await tester.tap(find.text('保存本机草稿'));
+      await tester.pumpAndSettle();
+      final prefs = await SharedPreferences.getInstance();
+      final saved = jsonDecode(
+        prefs.getString('resource_draft_v1:test:pe:123')!,
+      );
+      final replacement = saved['res'][0] as Map;
+      expect(replacement.containsKey('res_id'), false);
+      expect(replacement['res_url']['sign'], 'test-signature');
+      expect(replacement['res_info'], {'res_size': 25});
+      expect(replacement['cdn_info'], {'res_size': 30});
+      expect(replacement['cdn_url'], 'old-cdn-url');
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存到平台'));
+      await tester.pumpAndSettle();
+      expect(api.savedPayload, isNotNull);
+      expect(api.savedPayload!['res'][0].containsKey('res_id'), false);
       expect(tester.takeException(), isNull);
     },
   );

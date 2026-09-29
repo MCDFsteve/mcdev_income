@@ -457,6 +457,28 @@ void main() {
     },
   );
 
+  test('old local drafts drop res_id only for newly signed package URLs', () {
+    final draft = ResourceDraft(category: 'pe', source: testResource());
+    draft.set('res', [
+      {
+        'res_id': 7,
+        'res_name': 'replacement.zip',
+        'res_url': {
+          'body': '{"url": "new-file"}',
+          'file_type': 'zip_package',
+          'sign': 'proof',
+        },
+        'res_info': {'res_size': 25},
+      },
+      {'res_id': 8, 'res_name': 'unchanged.zip', 'res_url': 'old-file'},
+    ]);
+    final resources = draft.toPayload()['res'] as List;
+    expect(resources[0].containsKey('res_id'), false);
+    expect(resources[0]['res_info'], {'res_size': 25});
+    expect(resources[1]['res_id'], 8);
+    expect(draft.entries('res').first['res_id'], 7);
+  });
+
   test('validation uses special skin channels and typed price constraints', () {
     final options = ResourceOptions(testOptions);
     final draft = ResourceDraft(category: 'pe', source: testResource());

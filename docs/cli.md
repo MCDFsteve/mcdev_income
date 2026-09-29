@@ -114,7 +114,7 @@ mcdev upload work.json --dry-run --options options.json  # 使用配置快照离
 
 | 字段 | 用途 |
 | --- | --- |
-| `packages` | 字符串路径数组，或 `{ "path": "mod.jar", "replace": 0, "mc_version": ["1.20.1"], "java_version": "17" }` 数组。`replace` 为原资源文件零起始下标；省略则追加。替换保留 `res_id` 等已有元数据 |
+| `packages` | 字符串路径数组，或 `{ "path": "mod.jar", "replace": 0, "mc_version": ["1.20.1"], "java_version": "17" }` 数组。`replace` 为原资源文件零起始下标；省略则追加。替换保留原文件元数据，提交新文件时不携带旧 `res_id` |
 | `images` | 渠道编号或渠道标题 → 图片路径，替换对应渠道 |
 | `description_images` | 上传图片后追加带签名的 `<img>` 到介绍 HTML |
 | `proof` | 非原创授权证明图片路径，代替 `is_original: true` |

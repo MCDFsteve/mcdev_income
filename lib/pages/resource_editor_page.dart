@@ -501,15 +501,10 @@ class _ResourceEditorPageState extends State<ResourceEditorPage> {
     final previous = replaceIndex == null
         ? <String, dynamic>{}
         : entries[replaceIndex];
-    final resource = <String, dynamic>{
-      if (previous['res_id'] != null) 'res_id': previous['res_id'],
-      'res_name': file.name,
-      'res_url': file.signedValue,
-      'mc_version': previous['mc_version'] ?? _draft.strings('mc_version'),
-      'add_version': true,
-      if (previous['java_version'] != null)
-        'java_version': previous['java_version'],
-    };
+    final resource = file.packageEntry(
+      previous: previous,
+      mcVersion: previous['mc_version'] ?? _draft.strings('mc_version'),
+    );
     if (replaceIndex == null) {
       entries.add(resource);
     } else {

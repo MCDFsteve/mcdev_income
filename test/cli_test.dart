@@ -297,9 +297,11 @@ void main() {
     },
   );
   test(
-    'partial edit merges server fields and replaces package while keeping res_id',
+    'partial edit replaces package without sending the previous res_id',
     () async {
       backend.resource['future_field'] = {'retain': 42};
+      (backend.resource['res'] as List).first['cdn_info'] = {'res_size': 30};
+      (backend.resource['res'] as List).first['cdn_url'] = 'old-cdn-url';
       await File('${temp.path}/new.zip').writeAsBytes([3, 2, 1]);
       final result = await backend.uploader(temp.path).execute({
         'fields': {'item_name': '更新后'},
@@ -309,7 +311,10 @@ void main() {
       }, itemId: '123');
       expect(result['item_id'], '123');
       expect(backend.payload!['future_field'], {'retain': 42});
-      expect(backend.payload!['res'][0]['res_id'], 7);
+      expect(backend.payload!['res'][0].containsKey('res_id'), false);
+      expect(backend.payload!['res'][0]['res_info'], {'res_size': 25});
+      expect(backend.payload!['res'][0]['cdn_info'], {'res_size': 30});
+      expect(backend.payload!['res'][0]['cdn_url'], 'old-cdn-url');
       expect(backend.payload!['res'][0]['res_url']['sign'], 'signature-1');
       expect(backend.payload!.containsKey('status'), false);
     },

@@ -52,6 +52,25 @@ class UploadedResourceFile {
     'file_type': fileType,
     'sign': signature,
   };
+
+  /// The website treats a newly uploaded file as a new resource entry even
+  /// when it replaces an existing entry in the editor. Its old res_id must
+  /// not accompany the new signed URL.
+  Map<String, dynamic> packageEntry({
+    Map<String, dynamic> previous = const {},
+    required dynamic mcVersion,
+    dynamic javaVersion,
+  }) => {
+    'res_name': name,
+    'res_url': signedValue,
+    if (previous['res_info'] != null) 'res_info': previous['res_info'],
+    if (previous['cdn_info'] != null) 'cdn_info': previous['cdn_info'],
+    if (previous['cdn_url'] != null) 'cdn_url': previous['cdn_url'],
+    'mc_version': mcVersion,
+    if ((javaVersion ?? previous['java_version']) != null)
+      'java_version': javaVersion ?? previous['java_version'],
+    'add_version': true,
+  };
 }
 
 class ResourcePriceSettings {
@@ -214,6 +233,12 @@ class ResourceDraft {
       result.remove('pre_review_video');
     }
     if (result['mc_version'] is! List) result['mc_version'] = <String>[];
+    // Older local drafts may have kept the original res_id beside a newly
+    // uploaded signed URL. The platform editor omits that ID on replacement.
+    result['res'] = ResourceOptions.maps(result['res']).map((resource) {
+      if (resource['res_url'] is Map) resource.remove('res_id');
+      return resource;
+    }).toList();
     if (category == 'pe') {
       result['prerequisite_item_ids'] = entries(
         'prerequisite_items',

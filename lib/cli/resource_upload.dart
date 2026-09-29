@@ -574,18 +574,14 @@ class ResourceUpload {
         final resources = draft.entries('res');
         final index = task['replace'] as int?;
         final previous = index == null ? <String, dynamic>{} : resources[index];
-        final resource = {
-          ...previous,
-          'res_name': file.name,
-          'res_url': file.signedValue,
-          'add_version': true,
-          'mc_version':
+        final resource = file.packageEntry(
+          previous: previous,
+          mcVersion:
               task['mc_version'] ??
               previous['mc_version'] ??
               draft.strings('mc_version'),
-          if (task['java_version'] != null)
-            'java_version': task['java_version'],
-        };
+          javaVersion: task['java_version'],
+        );
         if (index == null) {
           resources.add(resource);
         } else {
