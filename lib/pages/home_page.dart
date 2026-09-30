@@ -486,84 +486,102 @@ class _HomePageState extends State<HomePage> {
           bottom: BorderSide(color: colors.border.withValues(alpha: .3)),
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 26, 10),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 38,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${entry.rank}',
-                  maxLines: 1,
-                  softWrap: false,
-                  style: _numberStyle(Theme.of(context).textTheme.titleLarge)
-                      .copyWith(
-                        color: entry.rank <= 3
-                            ? colors.success
-                            : colors.textMuted,
-                      ),
+      child: Semantics(
+        button: entry.hasResourceDetails,
+        hint: entry.hasResourceDetails ? '查看资源详情' : null,
+        child: OreListTile(
+          key: ValueKey('rank-entry-${entry.type}-${entry.rank}'),
+          onTap: entry.hasResourceDetails
+              ? () => showOreDialog<void>(
+                  context: context,
+                  builder: (_) => LeaderboardResourceDialog(
+                    entry: entry,
+                    apiFactory: widget.apiFactory,
+                  ),
+                )
+              : null,
+          contentPadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          title: Row(
+            children: [
+              SizedBox(
+                width: 38,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '${entry.rank}',
+                    maxLines: 1,
+                    softWrap: false,
+                    style: _numberStyle(Theme.of(context).textTheme.titleLarge)
+                        .copyWith(
+                          color: entry.rank <= 3
+                              ? colors.success
+                              : colors.textMuted,
+                        ),
+                  ),
                 ),
               ),
-            ),
-            if (entry.icon?.isNotEmpty == true) ...[
-              Image.network(
-                entry.icon!,
-                width: 44,
-                height: 44,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) => progress == null
-                    ? child
-                    : const SizedBox(
-                        width: 44,
-                        height: 44,
-                        child: Center(child: OreLoadingIndicator(size: 20)),
-                      ),
-                errorBuilder: (_, _, _) => const SizedBox(
+              if (entry.icon?.isNotEmpty == true) ...[
+                Image.network(
+                  entry.icon!,
                   width: 44,
                   height: 44,
-                  child: Icon(Icons.extension_outlined),
-                ),
-              ),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) => progress == null
+                      ? child
+                      : const SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: Center(child: OreLoadingIndicator(size: 20)),
+                        ),
+                  errorBuilder: (_, _, _) => const SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(Icons.extension_outlined),
                   ),
-                  if (entry.author.isNotEmpty || entry.metric.isNotEmpty)
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      [
-                        entry.author,
-                        entry.metric,
-                      ].where((s) => s.isNotEmpty).join(' · '),
-                      maxLines: 1,
+                      entry.name,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                ],
-              ),
-            ),
-            if (movement.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Text(
-                movement,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: change != null && change > 0
-                      ? colors.danger
-                      : colors.success,
+                    if (entry.author.isNotEmpty || entry.metric.isNotEmpty)
+                      Text(
+                        [
+                          entry.author,
+                          entry.metric,
+                        ].where((s) => s.isNotEmpty).join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
                 ),
               ),
+              if (movement.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  movement,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: change != null && change > 0
+                        ? colors.danger
+                        : colors.success,
+                  ),
+                ),
+              ],
+              if (entry.hasResourceDetails) ...[
+                const SizedBox(width: 6),
+                Icon(Icons.chevron_right, size: 18, color: colors.textMuted),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

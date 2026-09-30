@@ -32,6 +32,10 @@ class LeaderboardEntry {
   String get name =>
       '${raw['res_name'] ?? raw['item_name'] ?? raw['content'] ?? '未命名'}';
   String get id => '${raw['iid'] ?? raw['item_id'] ?? ''}';
+  bool get hasResourceDetails =>
+      leaderboardTypes.containsKey(type) &&
+      RegExp(r'^[1-9]\d{0,31}$').hasMatch(id);
+  bool get isDesktop => type.startsWith('pc_');
   String? get icon => raw['icon_url'] as String?;
   String get author => '${raw['developer_name'] ?? ''}';
   String get metric {

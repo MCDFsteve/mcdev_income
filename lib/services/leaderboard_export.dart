@@ -45,7 +45,8 @@ Future<List<LeaderboardExportRow>> fetchLeaderboardExportRows({
         type: type,
         kind: kind,
         start: start,
-        span: 100,
+        // Match the website's page size; advanced ranks reject span=100.
+        span: 50,
       );
       if (page.items.isEmpty && start < page.total) {
         throw StateError('${leaderboardTypes[type]}在第 ${start + 1} 条后返回空页');

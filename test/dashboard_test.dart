@@ -185,6 +185,13 @@ void main() {
           requests.add(request.url);
           final query = request.url.queryParameters;
           final start = int.parse(query['start']!);
+          final span = int.parse(query['span']!);
+          if (span > 50) {
+            return http.Response(
+              '{"status":"error","msg":"params error"}',
+              200,
+            );
+          }
           final isSearch = query['type'] == 'hot_search';
           final total = isSearch ? 1 : 101;
           return fixtures.ok({
@@ -192,7 +199,7 @@ void main() {
             'data': [
               for (
                 var index = start;
-                index < total && index < start + 100;
+                index < total && index < start + span;
                 index++
               )
                 {
@@ -212,21 +219,22 @@ void main() {
       final progress = <String>[];
       final rows = await fetchLeaderboardExportRows(
         api: client,
-        types: {'pe_download', 'hot_search'},
+        types: {'pe_hot', 'pe_download', 'hot_search'},
         kinds: {'mods', 'maps'},
         onProgress: (done, total) => progress.add('$done/$total'),
       );
 
-      expect(rows, hasLength(203));
-      expect(progress, ['1/3', '2/3', '3/3']);
-      expect(requests, hasLength(5));
-      expect(requests.map((uri) => uri.queryParameters['start']), [
-        '0',
-        '0',
-        '100',
-        '0',
-        '100',
-      ]);
+      expect(rows, hasLength(405));
+      expect(progress, ['1/5', '2/5', '3/5', '4/5', '5/5']);
+      expect(requests, hasLength(13));
+      for (final type in ['pe_hot', 'pe_download']) {
+        expect(
+          requests
+              .where((uri) => uri.queryParameters['type'] == type)
+              .map((uri) => uri.queryParameters['start']),
+          ['0', '50', '100', '0', '50', '100'],
+        );
+      }
       expect(
         requests.where((uri) => uri.queryParameters['type'] == 'hot_search'),
         hasLength(1),
@@ -237,7 +245,7 @@ void main() {
       expect(csv, contains('"原始字段:extra"'));
       expect(csv, contains('"{""tags"":[""a"",""b""]}"'));
       expect(csv, contains('"热搜榜","全部"'));
-      expect(csv.split('\r\n'), hasLength(205));
+      expect(csv.split('\r\n'), hasLength(407));
     },
   );
 

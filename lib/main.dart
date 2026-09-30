@@ -26,6 +26,7 @@ part 'services/login_cookie_helper.dart';
 part 'app/app.dart';
 part 'widgets/ore_app_bar.dart';
 part 'widgets/resource_dialog.dart';
+part 'widgets/leaderboard_resource_dialog.dart';
 part 'widgets/placeholder_page.dart';
 part 'app/home_shell.dart';
 part 'pages/home_page.dart';
