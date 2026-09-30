@@ -9,6 +9,8 @@ import 'cli/unsupported_entry.dart'
     if (dart.library.io) 'cli/desktop_entry.dart'
     as desktop_cli;
 import 'storage/app_preferences.dart';
+import 'development/development_storage.dart';
+import 'development/development_panel.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
@@ -42,6 +44,7 @@ part 'pages/income/income_page_support.dart';
 part 'pages/income/income_page.dart';
 part 'pages/income/income_page_view.dart';
 part 'pages/settings_page.dart';
+part 'pages/development_page.dart';
 part 'pages/login_page.dart';
 
 Future<void> main(List<String> arguments) async {

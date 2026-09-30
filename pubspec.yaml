@@ -40,6 +40,9 @@ dependencies:
   args: ^2.7.0
   image: ^4.8.0
   crypto: ^3.0.6
+  path: ^1.9.1
+  archive: ^4.0.9
+  pointycastle: ^4.0.0
   html: ^0.15.6
   intl: ^0.20.2
   oreui_flutter: ^0.0.3
