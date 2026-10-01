@@ -126,6 +126,8 @@ flutter:
   assets:
     - assets/diamond.png
     - assets/free_download.png
+    - assets/development/graphics-patch.dll
+    - assets/development/performance-inject.exe
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -72,8 +72,10 @@ class _DevelopmentVersionDialogState extends State<DevelopmentVersionDialog> {
     String version,
     GameArchitecture architecture,
     List<GameChannel> channels,
+    GameClientType clientType,
   ) => [
     if (architecture != GameArchitecture.unknown) architecture.label,
+    if (clientType == GameClientType.haldra) '渲染龙客户端',
     channels.isEmpty
         ? '其他版本'
         : channels.map((channel) => channel.label).join(' / '),
@@ -90,6 +92,7 @@ class _DevelopmentVersionDialogState extends State<DevelopmentVersionDialog> {
         game.version,
         package?.architecture ?? game.architecture,
         package?.channels ?? game.channels,
+        package?.clientType ?? game.clientType,
       ),
       installed: true,
     );
@@ -259,6 +262,7 @@ class _DevelopmentVersionDialogState extends State<DevelopmentVersionDialog> {
                                   package.version,
                                   package.architecture,
                                   package.channels,
+                                  package.clientType,
                                 ),
                                 if (package.size > 0)
                                   '清单大小 ${(package.size / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB',

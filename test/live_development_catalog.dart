@@ -24,6 +24,25 @@ void main() {
           await LoginService.buildCookieHeader(allowCache: false),
         );
         final catalog = await api.catalog();
+        final publicPath = Platform.environment['MCDEV_PUBLIC_CATALOG_OUTPUT'];
+        if (publicPath != null) {
+          await File(publicPath).writeAsString(
+            jsonEncode([
+              for (final package in catalog.packages)
+                {
+                  'version': package.version,
+                  'patch_url': package.patchUrl.toString(),
+                  'patch_md5': package.patchMd5,
+                  'architecture': package.architecture.name,
+                  'client_type': package.clientType.name,
+                  'channels': package.channels
+                      .map((channel) => channel.name)
+                      .toList(),
+                  'size': package.size,
+                },
+            ]),
+          );
+        }
         print(
           jsonEncode({
             'versions': catalog.packages.length,

@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:pointycastle/export.dart';
 import 'development_storage.dart';
+import 'game_graphics.dart';
 
 // Product protocol constants recovered from MCS 1.1.50.33254, never account secrets.
 const _keys = [
@@ -175,6 +176,7 @@ class GamePackage {
     required this.patchMd5,
     this.architecture = GameArchitecture.unknown,
     this.channels = const [],
+    this.clientType = GameClientType.openGL,
     this.size = 0,
   });
   final String version;
@@ -182,6 +184,7 @@ class GamePackage {
   final String patchMd5;
   final GameArchitecture architecture;
   final List<GameChannel> channels;
+  final GameClientType clientType;
 
   /// Official catalog size, not assumed to be the archive Content-Length.
   final int size;
@@ -245,7 +248,11 @@ class GameCatalog {
       }
       final is64 =
           uri.path.contains('Win64') ||
-          channels.keys.any((key) => catalog['${key}_x64'] == version);
+          channels.keys.any(
+            (key) =>
+                catalog['${key}_x64'] == version ||
+                catalog['${key}_haldra_x64'] == version,
+          );
       final is32 =
           uri.path.contains('Win32') ||
           channels.keys.any((key) => catalog[key] == version);
@@ -264,12 +271,24 @@ class GameCatalog {
           patchUrl: uri,
           patchMd5: data['md5'].toLowerCase(),
           architecture: architecture,
+          clientType:
+              channels.keys.any(
+                    (key) => catalog['${key}_haldra_x64'] == version,
+                  ) ||
+                  RegExp(
+                    r'haldra|renderdragon',
+                    caseSensitive: false,
+                  ).hasMatch(uri.path)
+              ? GameClientType.haldra
+              : GameClientType.openGL,
           channels: List.unmodifiable([
             for (final channel in channels.entries)
               if (catalog[architecture == GameArchitecture.x64
-                      ? '${channel.key}_x64'
-                      : channel.key] ==
-                  version)
+                          ? '${channel.key}_x64'
+                          : channel.key] ==
+                      version ||
+                  (architecture == GameArchitecture.x64 &&
+                      catalog['${channel.key}_haldra_x64'] == version))
                 channel.value,
           ]),
           size: data['size'] is int && data['size'] > 0 ? data['size'] : 0,

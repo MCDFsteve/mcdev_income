@@ -392,34 +392,127 @@ class _DevelopmentEnvironmentPanelState
           final blocked = _launcher!.busy || _launcher!.running || _picking;
           return OreAlertDialog(
             title: const Text('测试设置'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                OreTextField(
-                  controller: _world,
-                  enabled: !blocked,
-                  hintText: '测试世界名称',
-                ),
-                const SizedBox(height: 12),
-                OreChoiceButtons(
-                  items: const [Text('生存'), Text('创造')],
-                  selectedIndex: _creative ? 1 : 0,
-                  onChanged: blocked
-                      ? null
-                      : (value) => update(() => _creative = value == 1),
-                ),
-                const SizedBox(height: 8),
-                OreCheckboxListTile(
-                  value: _menuOnly,
-                  onChanged: blocked
-                      ? null
-                      : (value) => update(() => _menuOnly = value ?? false),
-                  title: const Text('仅打开游戏主菜单'),
-                ),
-                const SizedBox(height: 8),
-                _hint('重开同一个测试存档；请在游戏内保存并退出。'),
-              ],
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OreTextField(
+                    controller: _world,
+                    enabled: !blocked,
+                    hintText: '测试世界名称',
+                  ),
+                  const SizedBox(height: 12),
+                  OreChoiceButtons(
+                    items: const [Text('生存'), Text('创造')],
+                    selectedIndex: _creative ? 1 : 0,
+                    onChanged: blocked
+                        ? null
+                        : (value) => update(() => _creative = value == 1),
+                  ),
+                  const SizedBox(height: 8),
+                  OreCheckboxListTile(
+                    value: _menuOnly,
+                    onChanged: blocked
+                        ? null
+                        : (value) => update(() => _menuOnly = value ?? false),
+                    title: const Text('仅打开游戏主菜单'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('渲染器', style: OreTheme.of(context).typography.label),
+                  const SizedBox(height: 6),
+                  OreChoiceButtons(
+                    items: const [Text('OpenGL'), Text('渲染龙')],
+                    selectedIndex: _menuOnly
+                        ? 0
+                        : _launcher!.effectiveRenderer.index,
+                    onChanged:
+                        blocked ||
+                            !_launcher!.rendererSwitchSupported ||
+                            _menuOnly
+                        ? null
+                        : (index) async {
+                            try {
+                              await _launcher!.chooseRenderer(
+                                GameRenderer.values[index],
+                              );
+                              if (context.mounted) {
+                                update(() {});
+                              }
+                            } catch (error) {
+                              if (mounted) {
+                                setState(() => _error = error.toString());
+                              }
+                            }
+                          },
+                  ),
+                  _hint(
+                    !_launcher!.rendererSwitchSupported
+                        ? '此版本使用 OpenGL；3.9 及以上可切换渲染器。'
+                        : _menuOnly
+                        ? '渲染器选择用于测试世界；主菜单沿用游戏默认渲染器。'
+                        : '按当前游戏版本保存，重启游戏后生效。',
+                  ),
+                  if (!_menuOnly &&
+                      _launcher!.effectiveRenderer == GameRenderer.renderDragon)
+                    _hint(
+                      _launcher!.selectedVersion == '3.10.0.420447'
+                          ? '此版本的渲染龙目前存在 Wine 兼容问题，建议使用 OpenGL。'
+                          : '渲染龙的 Wine 兼容性随版本而异；若无法启动，可切回 OpenGL。',
+                    ),
+                  const SizedBox(height: 8),
+                  OreCheckboxListTile(
+                    value:
+                        _launcher!.performanceOptimization &&
+                        _launcher!.performanceOptimizationSupported,
+                    onChanged:
+                        blocked || !_launcher!.performanceOptimizationSupported
+                        ? null
+                        : (value) async {
+                            try {
+                              await _launcher!.choosePerformanceOptimization(
+                                value ?? false,
+                              );
+                              if (context.mounted) {
+                                update(() {});
+                              }
+                            } catch (error) {
+                              if (mounted) {
+                                setState(() => _error = error.toString());
+                              }
+                            }
+                          },
+                    title: const Text('图形性能优化'),
+                  ),
+                  _hint(
+                    _launcher!.performanceOptimizationSupported
+                        ? '实验性补丁；关闭后重启即可回退。请保留原画质进行对比。'
+                        : '上传优化补丁目前适配 3.8.0.313229 的 OpenGL 路径。',
+                  ),
+                  const SizedBox(height: 8),
+                  OreCheckboxListTile(
+                    value: _launcher!.limit60Fps,
+                    onChanged: blocked
+                        ? null
+                        : (value) async {
+                            try {
+                              await _launcher!.chooseFrameLimit(value ?? false);
+                              if (context.mounted) {
+                                update(() {});
+                              }
+                            } catch (error) {
+                              if (mounted) {
+                                setState(() => _error = error.toString());
+                              }
+                            }
+                          },
+                    title: const Text('限制 60 帧'),
+                  ),
+                  _hint('关闭后不设帧率上限，图形优化仍可启用。重启游戏后生效。'),
+                  const SizedBox(height: 8),
+                  _hint('重开同一个测试存档；请在游戏内保存并退出。'),
+                ],
+              ),
             ),
             actions: [_button('完成', () => Navigator.of(dialogContext).pop())],
           );

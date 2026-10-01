@@ -13,6 +13,8 @@ import 'download_io.dart';
 import 'launcher_service.dart';
 import 'mcs_api.dart';
 import 'wine_patch_io.dart';
+import 'performance_patch_io.dart';
+import 'game_graphics.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -39,6 +41,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   }) : api = McsApi(client: client),
        _cookieProvider = cookieProvider ?? (() async => '') {
     selectedVersion = preferences.getString(_versionKey);
+    performanceOptimization = preferences.getInt(_performanceKey) != 0;
+    limit60Fps = preferences.getInt(_frameLimitKey) != 0;
+    _restoreRenderer();
   }
   final Future<String> Function() _cookieProvider;
   String? _accountFingerprint;
@@ -46,6 +51,18 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   final PreferenceStore preferences;
   final McsApi api;
   static const _versionKey = 'development_game_version_v1';
+  static const _performanceKey = 'development_performance_patch_v1';
+  static const _frameLimitKey = 'development_frame_limit_60_v1';
+  String get _rendererKey => 'development_renderer_v1_$selectedVersion';
+
+  void _restoreRenderer() {
+    renderer =
+        GameRenderer.values
+            .where((value) => value.name == preferences.getString(_rendererKey))
+            .firstOrNull ??
+        GameRenderer.openGL;
+  }
+
   bool _disposed = false;
   DownloadControl? _control;
   Process? _game;
@@ -58,6 +75,45 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   String get gamePrefix => p.join(storage.paths.prefixes, 'game');
   String get _lock => storage.lockPath;
   String get _projectsFile => p.join(storage.paths.root, 'projects.json');
+  @override
+  Future<void> choosePerformanceOptimization(bool enabled) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改性能优化设置。');
+    }
+    if (!await preferences.setInt(_performanceKey, enabled ? 1 : 0)) {
+      throw const DevelopmentStorageException('无法保存性能优化设置。');
+    }
+    performanceOptimization = enabled;
+    _notify();
+  }
+
+  @override
+  Future<void> chooseFrameLimit(bool enabled) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改帧率上限。');
+    }
+    if (!await preferences.setInt(_frameLimitKey, enabled ? 1 : 0)) {
+      throw const DevelopmentStorageException('无法保存帧率上限。');
+    }
+    limit60Fps = enabled;
+    _notify();
+  }
+
+  @override
+  Future<void> chooseRenderer(GameRenderer value) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后切换渲染器。');
+    }
+    if (!rendererSwitchSupported) {
+      throw const DevelopmentStorageException('此游戏版本不支持切换渲染器，请选择 3.9 或更新版本。');
+    }
+    if (!await preferences.setString(_rendererKey, value.name)) {
+      throw const DevelopmentStorageException('无法保存渲染器选择。');
+    }
+    renderer = value;
+    _notify();
+  }
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -143,6 +199,11 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
                     (metadata['channels'] as List).contains(value.name))
                   value,
             ],
+            clientType:
+                GameClientType.values
+                    .where((value) => value.name == metadata['client_type'])
+                    .firstOrNull ??
+                GameClientType.openGL,
           ),
         );
       }
@@ -156,6 +217,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         throw const DevelopmentStorageException('无法保存游戏版本选择。');
       }
     }
+    _restoreRenderer();
     final manifest = File(_projectsFile);
     final loaded = <ModPack>[];
     final selected = <String>{};
@@ -214,6 +276,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       throw const DevelopmentStorageException('无法保存游戏版本选择。');
     }
     selectedVersion = version;
+    _restoreRenderer();
   });
 
   @override
@@ -524,6 +587,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'patch_md5': package.patchMd5,
         'architecture': package.architecture.name,
         'channels': package.channels.map((channel) => channel.name).toList(),
+        'client_type': package.clientType.name,
         'installed_at': DateTime.now().toUtc().toIso8601String(),
       });
       await Directory(gameRoot).rename(destination.path);
@@ -707,8 +771,36 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         .where((game) => game.version == selectedVersion)
         .firstOrNull;
     if (game == null) throw const DevelopmentStorageException('请先下载或导入游戏。');
+    Directory? performanceFiles;
+    final executable = p.join(game.directory, 'Minecraft.Windows.exe');
+    if (performanceOptimization && performanceOptimizationSupported) {
+      _update(const StorageMigrationProgress('校验性能补丁'));
+      await validatePerformanceGame(game.version, File(executable));
+      performanceFiles = await preparePerformancePatch(storage.paths.runtimes);
+    }
     await _connectAccount();
     await _ensurePrefix(gamePrefix);
+    final options = File(
+      p.join(
+        await _roaming(),
+        'MinecraftPE_Netease',
+        'minecraftpe',
+        'options.txt',
+      ),
+    );
+    await options.parent.create(recursive: true);
+    final originalOptions = await options.exists()
+        ? await options.readAsString()
+        : '';
+    final stagingOptions = File('${options.path}.mcdev-tmp');
+    await stagingOptions.writeAsString(
+      mergeGameOptions(
+        originalOptions,
+        frameLimitOptions(limit60Fps, nativePacing: performanceFiles != null),
+      ),
+      flush: true,
+    );
+    await stagingOptions.rename(options.path);
     final chosen = packs
         .where((pack) => selectedPacks.contains(pack.uuid))
         .toList();
@@ -788,6 +880,15 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       if (!menuOnly) {
         await _saveJson(config, {
           'version': game.version,
+          if (rendererSwitchSupported)
+            ...rendererConfig(
+              effectiveRenderer,
+              catalog?.packages
+                      .where((package) => package.version == game.version)
+                      .firstOrNull
+                      ?.clientType ??
+                  game.clientType,
+            ),
           'MainComponentId': '',
           'LocalComponentPathsDict': {},
           'path': _winPath(config.path),
@@ -892,14 +993,28 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'AssertCacheDir': _winPath(assertDir.path),
       });
       output = File(logPath!).openWrite();
+      final performanceLog = p.join(
+        storage.paths.logs,
+        'performance-$stamp.log',
+      );
       _game = await Process.start(
         wine,
-        [_winPath(p.join(game.directory, 'Minecraft.Windows.exe')), ...args],
+        [_winPath(executable), ...args],
         workingDirectory: game.directory,
-        environment: _env(gamePrefix),
+        environment: _env(
+          gamePrefix,
+          overrides: {
+            if (performanceFiles != null) ...{
+              'MCDEV_PERFORMANCE_LOG': _winPath(performanceLog),
+              'MCDEV_PERFORMANCE_LIMIT': limit60Fps ? '1' : '0',
+            },
+          },
+        ),
       );
       running = true;
-      notice = '测试游戏已启动。';
+      final actualRenderer = menuOnly ? GameRenderer.openGL : effectiveRenderer;
+      notice =
+          '测试游戏已启动（${actualRenderer.label} · ${limit60Fps ? '60 帧上限' : '不限帧'}）。';
       _notify();
       final drains = <Future<void>>[];
       for (final stream in [_game!.stdout, _game!.stderr]) {
@@ -923,6 +1038,16 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         drained.then<void>((_) {}, onError: (Object _, StackTrace _) {}),
       );
       progress = null;
+      if (performanceFiles != null) {
+        unawaited(
+          _activatePerformance(
+            performanceFiles,
+            executable,
+            performanceLog,
+            _game!,
+          ),
+        );
+      }
       final code = await _game!.exitCode;
       try {
         await drained.timeout(const Duration(seconds: 10));
@@ -949,6 +1074,61 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       }
     }
   });
+
+  Future<void> _activatePerformance(
+    Directory files,
+    String executable,
+    String log,
+    Process target,
+  ) async {
+    bool current() => running && identical(_game, target);
+    String fallbackNotice(String detail) =>
+        limit60Fps
+            ? '$detail 本次 60 帧上限也未生效；请退出后关闭图形优化再启动。'
+            : detail;
+    try {
+      final loaded = await injectPerformancePatch(
+        wine: wine,
+        environment: _env(gamePrefix),
+        helper: _winPath(p.join(files.path, 'performance-inject.exe')),
+        dll: _winPath(p.join(files.path, 'graphics-patch.dll')),
+        executable: _winPath(executable),
+        cancelWhen: target.exitCode.then<void>((_) {}),
+      );
+      if (!loaded) {
+        if (current()) {
+          notice = fallbackNotice('游戏已启动，性能补丁未能加载；本次使用正常渲染。');
+          _notify();
+        }
+        return;
+      }
+      for (var attempt = 0; attempt < 190 && current(); attempt++) {
+        final file = File(log);
+        if (await file.exists()) {
+          final text = await file.readAsString();
+          if (!current()) return;
+          if (text.contains('"performance_patch":"active"')) {
+            notice = limit60Fps
+                ? '测试游戏已启动，图形优化与 60 帧上限已生效。'
+                : '测试游戏已启动，图形优化已生效，帧率不设上限。';
+            _notify();
+            return;
+          }
+          if (text.contains('failed') || text.contains('unsupported')) break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      if (current()) {
+        notice = fallbackNotice('性能补丁未激活；游戏继续使用正常渲染，请查看性能日志。');
+        _notify();
+      }
+    } catch (_) {
+      if (current()) {
+        notice = fallbackNotice('游戏继续运行，性能补丁加载失败；可在退出后重试。');
+        _notify();
+      }
+    }
+  }
 
   Future<void> _closeRpc() async {
     for (final socket in [..._connections]) {

@@ -3,6 +3,9 @@ import 'package:path/path.dart' as p;
 import '../core/preferences.dart';
 import 'development_storage.dart';
 import 'mcs_api.dart';
+import 'performance_patch.dart';
+import 'game_graphics.dart';
+export 'game_graphics.dart' show GameRenderer, GameClientType;
 import 'launcher_stub.dart' if (dart.library.io) 'launcher_io.dart' as backend;
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
@@ -21,11 +24,13 @@ class LocalGame {
     this.directory, {
     this.architecture = GameArchitecture.unknown,
     this.channels = const [],
+    this.clientType = GameClientType.openGL,
   });
   final String version;
   final String directory;
   final GameArchitecture architecture;
   final List<GameChannel> channels;
+  final GameClientType clientType;
 }
 
 class ModPack {
@@ -124,6 +129,15 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   List<LocalGame> games = [];
   List<ModPack> packs = [];
   String? selectedVersion;
+  bool performanceOptimization = false;
+  bool limit60Fps = true;
+  GameRenderer renderer = GameRenderer.openGL;
+  bool get rendererSwitchSupported => supportsRendererSwitch(selectedVersion);
+  GameRenderer get effectiveRenderer =>
+      rendererSwitchSupported ? renderer : GameRenderer.openGL;
+  bool get performanceOptimizationSupported =>
+      effectiveRenderer == GameRenderer.openGL &&
+      supportsPerformancePatch(selectedVersion);
   final Set<String> selectedPacks = {};
   List<ModProject> get projects => groupModProjects(packs);
 
@@ -143,6 +157,21 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   });
   Future<void> stopGame();
   void cancel();
+  Future<void> choosePerformanceOptimization(bool enabled) async {
+    performanceOptimization = enabled;
+    notifyListeners();
+  }
+
+  Future<void> chooseFrameLimit(bool enabled) async {
+    limit60Fps = enabled;
+    notifyListeners();
+  }
+
+  Future<void> chooseRenderer(GameRenderer value) async {
+    renderer = value;
+    notifyListeners();
+  }
+
   Future<void> chooseVersion(String version) async {
     selectedVersion = version;
     notifyListeners();
