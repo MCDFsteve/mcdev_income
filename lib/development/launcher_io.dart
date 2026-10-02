@@ -294,13 +294,14 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     if (await manifest.exists()) {
       for (final row in jsonDecode(await manifest.readAsString()) as List) {
         if (row['selected'] == true) selected.add(row['uuid']);
+        final directory = _expandProject(row['path']);
         loaded.add(
           ModPack(
-            name: row['name'],
+            name: await _readModPackTitle(directory, row['name']),
             uuid: row['uuid'],
             version: (row['version'] as List).cast<int>(),
             type: row['type'],
-            directory: _expandProject(row['path']),
+            directory: directory,
             projectRoot: row['projectRoot'] is String
                 ? _expandProject(row['projectRoot'])
                 : null,
@@ -1487,6 +1488,22 @@ Future<void> rejectTreeLinks(String root) async {
       throw const DevelopmentStorageException('游戏或模组文件包含符号链接，请使用完整的实际文件。');
     }
   }
+}
+
+Future<String> _readModPackTitle(String directory, String fallback) async {
+  try {
+    final manifest = jsonDecode(
+      await File(p.join(directory, 'manifest.json')).readAsString(),
+    );
+    final header = manifest is Map ? manifest['header'] : null;
+    final name = header is Map ? header['name'] : null;
+    if (name is String && modDisplayName(name).isNotEmpty) return name;
+  } on FileSystemException {
+    // Keep registered projects visible if their source is temporarily offline.
+  } on FormatException {
+    // A manifest being edited should not prevent the project list from loading.
+  }
+  return fallback;
 }
 
 Future<List<ModPack>> discoverModPacks(String root) async {

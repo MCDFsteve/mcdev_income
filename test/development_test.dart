@@ -438,9 +438,21 @@ void main() {
       expect(projects.first.selection({}), false);
       expect(projects.first.selection({'bp'}), isNull);
       expect(projects.first.selection({'bp', 'rp'}), true);
+      final paired = groupModProjects([
+        pack(
+          'Textures',
+          'textures',
+          '/project/RP',
+          'resources',
+          root: '/project',
+        ),
+        pack('§bLogic  ', 'logic', '/project/BP', 'data', root: '/project'),
+      ]);
+      expect(paired.length, 1);
+      expect(paired.single.name, 'Logic');
       expect(
         groupModProjects([
-          pack('Logic', 'logic', '/project/BP', 'data', root: '/project'),
+          pack(' ', 'logic', '/project/BP', 'data', root: '/project'),
           pack(
             'Textures',
             'textures',
@@ -448,8 +460,8 @@ void main() {
             'resources',
             root: '/project',
           ),
-        ]).length,
-        1,
+        ]).single.name,
+        'Textures',
       );
     },
   );
@@ -482,6 +494,7 @@ void main() {
       await first.importMods(root.path);
       expect(first.error, isNull);
       expect(first.projects.single.packs.length, 2);
+      expect(first.projects.single.name, 'Logic');
       final uuids = first.projects.single.uuids.toList();
       await first.togglePacks(uuids, false);
       first.dispose();
@@ -489,6 +502,7 @@ void main() {
       final second = NativeDevelopmentLauncher(storage, preferences);
       await second.refresh();
       expect(second.projects.single.packs.length, 2);
+      expect(second.projects.single.name, 'Logic');
       expect(
         second.projects.single.packs.first.projectRoot,
         p.join(storage.paths.root, 'projects', 'addon'),
@@ -498,6 +512,19 @@ void main() {
       second.dispose();
       final third = NativeDevelopmentLauncher(storage, preferences);
       await third.refresh();
+      expect(third.selectedPacks, uuids.toSet());
+      final behaviorManifest = File(
+        p.join(storage.paths.root, 'projects', 'addon', 'BP', 'manifest.json'),
+      );
+      final metadata = jsonDecode(await behaviorManifest.readAsString());
+      metadata['header']['name'] = '§a新的项目标题';
+      await behaviorManifest.writeAsString(jsonEncode(metadata));
+      await third.refresh();
+      expect(third.projects.single.name, '新的项目标题');
+      expect(third.selectedPacks, uuids.toSet());
+      await behaviorManifest.writeAsString('{');
+      await third.refresh();
+      expect(third.projects.single.name, 'Logic');
       expect(third.selectedPacks, uuids.toSet());
       await third.removePacks(uuids);
       expect(third.error, isNull);

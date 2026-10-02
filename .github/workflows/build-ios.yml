@@ -12,10 +12,14 @@ jobs:
     name: Build iOS (no codesign)
     runs-on: macos-latest
     outputs:
-      artifact-name: ios-app
+      artifact-name: ${{ steps.metadata.outputs.basename }}-ios-arm64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Read release metadata
+        id: metadata
+        uses: ./.github/actions/release-metadata
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -30,12 +34,18 @@ jobs:
         run: flutter build ios --release --no-codesign
 
       - name: Package iOS app
+        env:
+          RELEASE_BASENAME: ${{ steps.metadata.outputs.basename }}
         run: |
+          set -euo pipefail
           cd build/ios/iphoneos
-          zip -r ios-app.zip Runner.app
+          APP_DIR=$(find . -maxdepth 1 -type d -name '*.app' | head -n 1)
+          test -n "$APP_DIR"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$RELEASE_BASENAME-ios-arm64.zip"
 
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ios-app
-          path: build/ios/iphoneos/ios-app.zip
+          name: ${{ steps.metadata.outputs.basename }}-ios-arm64
+          path: build/ios/iphoneos/${{ steps.metadata.outputs.basename }}-ios-arm64.zip
+          if-no-files-found: error

@@ -12,10 +12,14 @@ jobs:
     name: Build macOS
     runs-on: macos-latest
     outputs:
-      artifact-name: macos-app
+      artifact-name: ${{ steps.package.outputs.artifact-name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Read release metadata
+        id: metadata
+        uses: ./.github/actions/release-metadata
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -30,6 +34,9 @@ jobs:
         run: flutter build macos --release
 
       - name: Package macOS app
+        id: package
+        env:
+          RELEASE_BASENAME: ${{ steps.metadata.outputs.basename }}
         run: |
           set -euo pipefail
           RELEASE_DIR="build/macos/Build/Products/Release"
@@ -40,11 +47,26 @@ jobs:
             exit 1
           fi
           APP_NAME=$(basename "$APP_DIR")
+          EXECUTABLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_DIR/Contents/Info.plist")
+          ARCHS=$(lipo -archs "$APP_DIR/Contents/MacOS/$EXECUTABLE")
+          if [[ "$ARCHS" == *arm64* && "$ARCHS" == *x86_64* ]]; then
+            ARCH="arm64-x86_64"
+          elif [[ "$ARCHS" == "arm64" || "$ARCHS" == "x86_64" ]]; then
+            ARCH="$ARCHS"
+          else
+            echo "Unsupported macOS architectures: $ARCHS" >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict "$APP_DIR"
+          ARTIFACT="$RELEASE_BASENAME-macos-$ARCH"
+          echo "artifact-name=$ARTIFACT" >> "$GITHUB_OUTPUT"
+          echo "path=$RELEASE_DIR/$ARTIFACT.zip" >> "$GITHUB_OUTPUT"
           cd "$RELEASE_DIR"
-          zip -r macos-app.zip "$APP_NAME"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" "$ARTIFACT.zip"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-app
-          path: build/macos/Build/Products/Release/macos-app.zip
+          name: ${{ steps.package.outputs.artifact-name }}
+          path: ${{ steps.package.outputs.path }}
+          if-no-files-found: error

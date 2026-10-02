@@ -12,10 +12,14 @@ jobs:
     name: Build Windows
     runs-on: windows-latest
     outputs:
-      artifact-name: windows-release
+      artifact-name: ${{ steps.metadata.outputs.basename }}-windows-x86_64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Read release metadata
+        id: metadata
+        uses: ./.github/actions/release-metadata
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -31,13 +35,16 @@ jobs:
 
       - name: Package Windows build
         shell: pwsh
+        env:
+          RELEASE_BASENAME: ${{ steps.metadata.outputs.basename }}
         run: |
           $source = "build/windows/x64/runner/Release/*"
-          $dest = "windows-release.zip"
+          $dest = "${env:RELEASE_BASENAME}-windows-x86_64.zip"
           Compress-Archive -Path $source -DestinationPath $dest
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-release
-          path: windows-release.zip
+          name: ${{ steps.metadata.outputs.basename }}-windows-x86_64
+          path: ${{ steps.metadata.outputs.basename }}-windows-x86_64.zip
+          if-no-files-found: error

@@ -200,13 +200,15 @@ void main() {
             version: [1, 0, 0],
             type: 'data',
             directory: '/project/BP',
+            projectRoot: '/project',
           ),
           const ModPack(
-            name: '§bProject ',
+            name: '§bProject textures ',
             uuid: 'rp',
             version: [1, 0, 0],
             type: 'resources',
             directory: '/project/RP',
+            projectRoot: '/project',
           ),
           for (var i = 0; i < 30; i++)
             ModPack(

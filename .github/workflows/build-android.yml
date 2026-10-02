@@ -12,10 +12,14 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
     outputs:
-      artifact-name: android-apk
+      artifact-name: ${{ steps.metadata.outputs.basename }}-android
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Read release metadata
+        id: metadata
+        uses: ./.github/actions/release-metadata
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -27,10 +31,22 @@ jobs:
         run: flutter pub get
 
       - name: Build APK (release)
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
+
+      - name: Name APKs by version and architecture
+        env:
+          RELEASE_BASENAME: ${{ steps.metadata.outputs.basename }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for ARCH in armeabi-v7a arm64-v8a x86_64; do
+            cp "build/app/outputs/flutter-apk/app-$ARCH-release.apk" \
+              "dist/$RELEASE_BASENAME-android-$ARCH.apk"
+          done
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: ${{ steps.metadata.outputs.basename }}-android
+          path: dist/*.apk
+          if-no-files-found: error

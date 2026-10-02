@@ -12,10 +12,14 @@ jobs:
     name: Build Linux
     runs-on: ubuntu-latest
     outputs:
-      artifact-name: linux-release
+      artifact-name: ${{ steps.metadata.outputs.basename }}-linux-x86_64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Read release metadata
+        id: metadata
+        uses: ./.github/actions/release-metadata
 
       - name: Install Linux dependencies
         run: |
@@ -41,11 +45,15 @@ jobs:
         run: flutter build linux --release
 
       - name: Package Linux build
+        env:
+          RELEASE_BASENAME: ${{ steps.metadata.outputs.basename }}
         run: |
-          tar -czf linux-release.tar.gz -C build/linux/x64/release bundle
+          set -euo pipefail
+          tar -czf "$RELEASE_BASENAME-linux-x86_64.tar.gz" -C build/linux/x64/release bundle
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-release
-          path: linux-release.tar.gz
+          name: ${{ steps.metadata.outputs.basename }}-linux-x86_64
+          path: ${{ steps.metadata.outputs.basename }}-linux-x86_64.tar.gz
+          if-no-files-found: error

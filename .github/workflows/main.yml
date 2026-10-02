@@ -24,20 +24,24 @@ jobs:
       - name: Check commit/PR title for build trigger
         id: check
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
           echo "build=false" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           msg=""
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            msg="${{ github.event.head_commit.message }}"
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            msg="${{ github.event.pull_request.title }}"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            msg="$COMMIT_MESSAGE"
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            msg="$PR_TITLE"
           fi
 
           if echo "$msg" | grep -Eq "\\[build\\]"; then
@@ -93,15 +97,7 @@ jobs:
 
       - name: Read app version
         id: version
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
-          if [ -z "$VERSION" ]; then
-            echo "version is empty"
-            exit 1
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/release-metadata
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -117,6 +113,9 @@ jobs:
         with:
           tag: v${{ steps.version.outputs.version }}
           name: Release v${{ steps.version.outputs.version }}
+          commit: ${{ github.sha }}
+          bodyFile: ${{ steps.version.outputs.notes-file }}
+          generateReleaseNotes: ${{ steps.version.outputs.notes-file == '' }}
           allowUpdates: true
           replacesArtifacts: true
           artifacts: dist/*

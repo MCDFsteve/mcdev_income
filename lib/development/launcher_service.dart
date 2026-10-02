@@ -75,6 +75,19 @@ class ModPack {
 String modDisplayName(String name) =>
     name.replaceAll(RegExp(r'§[0-9a-fk-or]', caseSensitive: false), '').trim();
 
+String _projectDisplayName(List<ModPack> packs) {
+  // A paired resource pack can have a different title. Prefer the behavior
+  // pack's manifest title rather than replacing both with the folder name.
+  for (final pack in [
+    ...packs.where((pack) => pack.type == 'data'),
+    ...packs.where((pack) => pack.type != 'data'),
+  ]) {
+    final name = modDisplayName(pack.name);
+    if (name.isNotEmpty) return name;
+  }
+  return p.basename(packs.first.projectRoot ?? packs.first.directory);
+}
+
 class ModProject {
   const ModProject({required this.id, required this.name, required this.packs});
   final String id;
@@ -118,17 +131,7 @@ List<ModProject> groupModProjects(Iterable<ModPack> packs) {
     for (final entry in groups.entries)
       ModProject(
         id: entry.key,
-        name:
-            modDisplayName(entry.value.first.name).isEmpty ||
-                entry.value
-                        .map((pack) => modDisplayName(pack.name))
-                        .toSet()
-                        .length >
-                    1
-            ? p.basename(
-                entry.value.first.projectRoot ?? entry.value.first.directory,
-              )
-            : modDisplayName(entry.value.first.name),
+        name: _projectDisplayName(entry.value),
         packs: List.unmodifiable(entry.value),
       ),
   ];
