@@ -128,6 +128,16 @@ flutter:
     - assets/free_download.png
     - assets/development/graphics-patch.dll
     - assets/development/performance-inject.exe
+    - assets/development/renderer-patch.dll
+    - assets/development/renderer-inject.exe
+    - assets/development/winemac-dxmt.so
+    - tools/renderer/build.py
+    - tools/renderer/native/
+    - tools/renderer/wine/
+    - tools/renderer/licenses/
+    - tools/performance/minhook/include/
+    - tools/performance/minhook/src/
+    - tools/performance/minhook/src/hde/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

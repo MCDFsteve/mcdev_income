@@ -456,10 +456,40 @@ class _DevelopmentEnvironmentPanelState
                   if (!_menuOnly &&
                       _launcher!.effectiveRenderer == GameRenderer.renderDragon)
                     _hint(
-                      _launcher!.selectedVersion == '3.10.0.420447'
-                          ? '此版本的渲染龙目前存在 Wine 兼容问题，建议使用 OpenGL。'
+                      _launcher!.renderDragonCompatibilitySupported
+                          ? '此版本使用 Metal 适配；首次启动下载约 18 MB 组件，保存在开发数据目录。'
                           : '渲染龙的 Wine 兼容性随版本而异；若无法启动，可切回 OpenGL。',
                     ),
+                  if (!_menuOnly &&
+                      _launcher!.effectiveRenderer ==
+                          GameRenderer.renderDragon) ...[
+                    const SizedBox(height: 8),
+                    OreCheckboxListTile(
+                      value:
+                          _launcher!.vibrantVisuals &&
+                          _launcher!.vibrantVisualsSupported,
+                      onChanged: blocked || !_launcher!.vibrantVisualsSupported
+                          ? null
+                          : (value) async {
+                              try {
+                                await _launcher!.chooseVibrantVisuals(
+                                  value ?? false,
+                                );
+                                if (context.mounted) update(() {});
+                              } catch (error) {
+                                if (mounted) {
+                                  setState(() => _error = error.toString());
+                                }
+                              }
+                            },
+                      title: const Text('灵动视效（实验性）'),
+                    ),
+                    _hint(
+                      _launcher!.vibrantVisualsSupported
+                          ? '光照、阴影与水面反射；重启生效。当前适配 3.10.0.420447，帧率取决于画质与场景。'
+                          : '当前版本尚未适配灵动视效，请选择 3.10.0.420447 Haldra x64。',
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   OreCheckboxListTile(
                     value:

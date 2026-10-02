@@ -5,6 +5,7 @@ import 'development_storage.dart';
 import 'mcs_api.dart';
 import 'performance_patch.dart';
 import 'game_graphics.dart';
+import 'render_dragon.dart';
 export 'game_graphics.dart' show GameRenderer, GameClientType;
 import 'launcher_stub.dart' if (dart.library.io) 'launcher_io.dart' as backend;
 
@@ -131,6 +132,7 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   String? selectedVersion;
   bool performanceOptimization = false;
   bool limit60Fps = true;
+  bool vibrantVisuals = false;
   GameRenderer renderer = GameRenderer.openGL;
   bool get rendererSwitchSupported => supportsRendererSwitch(selectedVersion);
   GameRenderer get effectiveRenderer =>
@@ -138,6 +140,11 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   bool get performanceOptimizationSupported =>
       effectiveRenderer == GameRenderer.openGL &&
       supportsPerformancePatch(selectedVersion);
+  bool get renderDragonCompatibilitySupported =>
+      supportsRenderDragonPatch(selectedVersion);
+  bool get vibrantVisualsSupported =>
+      renderDragonCompatibilitySupported &&
+      effectiveRenderer == GameRenderer.renderDragon;
   final Set<String> selectedPacks = {};
   List<ModProject> get projects => groupModProjects(packs);
 
@@ -169,6 +176,11 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
 
   Future<void> chooseRenderer(GameRenderer value) async {
     renderer = value;
+    notifyListeners();
+  }
+
+  Future<void> chooseVibrantVisuals(bool enabled) async {
+    vibrantVisuals = enabled;
     notifyListeners();
   }
 

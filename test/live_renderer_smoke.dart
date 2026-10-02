@@ -2,24 +2,28 @@
 // snapshot, using the launcher's production download and startup paths.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:mcdev_income/core.dart';
 import 'package:mcdev_income/development/development_storage.dart';
 import 'package:mcdev_income/development/launcher_io.dart';
 import 'package:mcdev_income/development/launcher_service.dart';
+import 'package:mcdev_income/development/render_dragon.dart';
 import 'package:mcdev_income/development/storage_backend_io.dart';
 import 'package:mcdev_income/storage/file_preferences.dart';
 import 'live_performance_smoke.dart' show IsolatedGraphicsPreferences;
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
   HttpOverrides.global = null;
   test(
     'current game renderer starts through the isolated production launcher',
     () async {
       final path = Platform.environment['MCDEV_LIVE_PERFORMANCE_ROOT'];
       final version = Platform.environment['MCDEV_LIVE_GAME_VERSION'];
+      final assets = Platform.environment['MCDEV_LIVE_RELEASE_ASSETS'];
       if (path == null || version == null) {
         throw StateError('Explicit isolated root and game version required');
       }
@@ -46,6 +50,23 @@ void main() {
       }
       CoreRuntime.preferences = () async => account;
       CoreRuntime.system = 'Mac';
+      if (assets != null) {
+        binding.defaultBinaryMessenger.setMockMessageHandler('flutter/assets', (
+          message,
+        ) async {
+          if (message == null) return null;
+          final key = utf8.decode(
+            message.buffer.asUint8List(
+              message.offsetInBytes,
+              message.lengthInBytes,
+            ),
+          );
+          final file = File(p.join(assets, key));
+          return await file.exists()
+              ? ByteData.sublistView(await file.readAsBytes())
+              : null;
+        });
+      }
       final prefs = IsolatedGraphicsPreferences(root);
       final storage = NativeDevelopmentStorage(
         preferences: prefs,
@@ -58,6 +79,16 @@ void main() {
         cookieProvider: () => LoginService.buildCookieHeader(allowCache: false),
       );
       Future<void>? launched;
+      final options = File(
+        p.join(
+          prefix,
+          'drive_c/users/dfsteve/AppData/Roaming/MinecraftPE_Netease/minecraftpe/options.txt',
+        ),
+      );
+      final originalOptions = await options.readAsString();
+      final vibrant = Platform.environment['MCDEV_LIVE_VIBRANT'] == '1';
+      String? gameLog;
+      String? rendererLog;
       String? previous;
       launcher.addListener(() {
         final message = launcher.progress?.message ?? launcher.notice;
@@ -75,11 +106,19 @@ void main() {
           }
         }
         await launcher.chooseVersion(version);
-        await launcher.chooseRenderer(
-          Platform.environment['MCDEV_LIVE_RENDERER'] == 'dragon'
-              ? GameRenderer.renderDragon
-              : GameRenderer.openGL,
-        );
+        final requestedRenderer =
+            Platform.environment['MCDEV_LIVE_RENDERER'] == 'dragon'
+            ? GameRenderer.renderDragon
+            : GameRenderer.openGL;
+        if (launcher.rendererSwitchSupported) {
+          await launcher.chooseRenderer(requestedRenderer);
+        } else {
+          expect(requestedRenderer, GameRenderer.openGL);
+          expect(launcher.effectiveRenderer, GameRenderer.openGL);
+        }
+        if (launcher.vibrantVisualsSupported) {
+          await launcher.chooseVibrantVisuals(vibrant);
+        }
         // This is a copied save; user-selected projects and original saves remain untouched.
         launched = launcher.launchTest(
           worldName: '渲染器隔离验证',
@@ -101,25 +140,123 @@ void main() {
                   ).readAsString(),
                 )
                 as Map;
-        expect(config['render_engine'], launcher.effectiveRenderer.configValue);
-        expect(config['client_type'], 1);
+        if (launcher.rendererSwitchSupported) {
+          expect(
+            config['render_engine'],
+            launcher.effectiveRenderer.configValue,
+          );
+          expect(config['client_type'], 1);
+        } else {
+          expect(config.containsKey('render_engine'), false);
+          expect(config.containsKey('client_type'), false);
+        }
         await Future<void>.delayed(const Duration(seconds: 60));
         expect(
           launcher.running,
           isTrue,
           reason: 'Game must stay alive after renderer initialization',
         );
+        expect(
+          launcher.error,
+          isNull,
+          reason: 'Renderer activation must succeed',
+        );
+        // Optional time for direct CUA window capture; keep the same isolated
+        // production launch and exit checks without changing user preferences.
+        final holdSeconds = int.parse(
+          Platform.environment['MCDEV_LIVE_HOLD_SECONDS'] ?? '0',
+        );
+        if (holdSeconds < 0 || holdSeconds > 1800) {
+          throw StateError('Invalid window observation duration');
+        }
+        if (holdSeconds > 0) {
+          stdout.writeln('Isolated game ready for direct window observation');
+          final observationEnd = DateTime.now().add(
+            Duration(seconds: holdSeconds),
+          );
+          final stopPath = Platform.environment['MCDEV_LIVE_STOP_FILE'];
+          while (DateTime.now().isBefore(observationEnd)) {
+            if (stopPath != null && await File(stopPath).exists()) break;
+            await Future<void>.delayed(const Duration(seconds: 1));
+          }
+          expect(launcher.running, isTrue);
+        }
+        gameLog = launcher.logPath;
+        if (launcher.renderDragonCompatibilitySupported &&
+            launcher.effectiveRenderer == GameRenderer.renderDragon) {
+          rendererLog = gameLog!.replaceFirst('test-', 'renderer-');
+          final native = await File(rendererLog).readAsString();
+          expect(native, contains('"renderer_patch":"active"'));
+          expect(native, contains('"backend":2'));
+          expect(native, contains('"vibrant_supported":true'));
+          if (vibrant) {
+            expect(native, contains('"structured_buffer":"ready"'));
+            expect(native, contains('"structured_upload":"default_resource"'));
+            expect(native, isNot(contains('"structured_buffer":"failed"')));
+            expect(
+              native,
+              isNot(contains('"structured_upload":"invalid_range"')),
+            );
+          }
+          expect(
+            await options.readAsString(),
+            contains('graphics_mode:${vibrant ? 2 : 1}'),
+          );
+        }
+        await launcher.stopGame();
+        await launched.timeout(const Duration(seconds: 45));
+        launched = null;
+        expect(launcher.running, isFalse);
+        expect(
+          launcher.error,
+          isNull,
+          reason: 'Requested exit must complete without launcher errors',
+        );
+        final console = utf8.decode(
+          await File(gameLog!).readAsBytes(),
+          allowMalformed: true,
+        );
+        for (final error in [
+          'BGFX: Fatal error',
+          'Assertion failed:',
+          'Unhandled exception',
+          'Failed to create shader',
+          'RefCount is',
+        ]) {
+          expect(
+            console.contains(error),
+            isFalse,
+            reason: 'Renderer failure marker: $error',
+          );
+        }
+        if (rendererLog != null) {
+          final restored = await options.readAsString();
+          for (final key in ['graphics_mode', 'gfx_msaa']) {
+            final pattern = RegExp('^$key:.*', multiLine: true);
+            expect(
+              pattern.firstMatch(restored)?.group(0),
+              pattern.firstMatch(originalOptions)?.group(0),
+            );
+          }
+        }
         final result = {
           'version': version,
           'renderer': launcher.effectiveRenderer.name,
           'limit_60_fps': launcher.limit60Fps,
           'running_after_60_seconds': true,
-          'log_path': launcher.logPath,
+          'vibrant_visuals': vibrant,
+          'requested_exit_complete': true,
+          'renderer_assertions': false,
+          'temporary_options_restored': rendererLog != null,
+          'visual_validation': 'pending_direct_window_capture',
+          'log_path': gameLog,
+          'renderer_log_path': rendererLog,
+          'supported_version': renderDragonPatchVersion,
         };
         await File(
           p.join(
             p.dirname(root),
-            'renderer-${launcher.effectiveRenderer.name}.json',
+            'renderer-${launcher.effectiveRenderer.name}-${vibrant ? "vibrant" : "forward"}.json',
           ),
         ).writeAsString(jsonEncode(result), flush: true);
         stdout.writeln('Isolated renderer result: ${jsonEncode(result)}');

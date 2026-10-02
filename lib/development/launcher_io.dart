@@ -15,6 +15,9 @@ import 'mcs_api.dart';
 import 'wine_patch_io.dart';
 import 'performance_patch_io.dart';
 import 'game_graphics.dart';
+import 'render_dragon.dart';
+import 'render_dragon_io.dart';
+import 'wine_game_app_io.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -54,6 +57,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   static const _performanceKey = 'development_performance_patch_v1';
   static const _frameLimitKey = 'development_frame_limit_60_v1';
   String get _rendererKey => 'development_renderer_v1_$selectedVersion';
+  String get _vibrantKey => 'development_vibrant_visuals_v1_$selectedVersion';
 
   void _restoreRenderer() {
     renderer =
@@ -61,6 +65,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
             .where((value) => value.name == preferences.getString(_rendererKey))
             .firstOrNull ??
         GameRenderer.openGL;
+    vibrantVisuals = preferences.getInt(_vibrantKey) == 1;
   }
 
   bool _disposed = false;
@@ -70,8 +75,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   bool _stopping = false;
   ServerSocket? _rpc;
   final List<Socket> _connections = [];
+  String? _activeWine;
   String get runtime => p.join(storage.paths.runtimes, 'wine-11.0_1-mcs-v1');
-  String get wine => p.join(runtime, 'bin/wine');
+  String get wine => _activeWine ?? p.join(runtime, 'bin/wine');
   String get gamePrefix => p.join(storage.paths.prefixes, 'game');
   String get _lock => storage.lockPath;
   String get _projectsFile => p.join(storage.paths.root, 'projects.json');
@@ -111,6 +117,21 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       throw const DevelopmentStorageException('无法保存渲染器选择。');
     }
     renderer = value;
+    _notify();
+  }
+
+  @override
+  Future<void> chooseVibrantVisuals(bool enabled) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后切换灵动视效。');
+    }
+    if (!vibrantVisualsSupported) {
+      throw const DevelopmentStorageException('灵动视效适配需要 3.10.0.420447 的渲染龙。');
+    }
+    if (!await preferences.setInt(_vibrantKey, enabled ? 1 : 0)) {
+      throw const DevelopmentStorageException('无法保存灵动视效设置。');
+    }
+    vibrantVisuals = enabled;
     _notify();
   }
 
@@ -772,14 +793,36 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         .firstOrNull;
     if (game == null) throw const DevelopmentStorageException('请先下载或导入游戏。');
     Directory? performanceFiles;
+    Directory? rendererFiles;
+    String? dragonRuntime;
+    final adaptedDragon =
+        !menuOnly &&
+        effectiveRenderer == GameRenderer.renderDragon &&
+        renderDragonCompatibilitySupported;
     final executable = p.join(game.directory, 'Minecraft.Windows.exe');
     if (performanceOptimization && performanceOptimizationSupported) {
       _update(const StorageMigrationProgress('校验性能补丁'));
       await validatePerformanceGame(game.version, File(executable));
       performanceFiles = await preparePerformancePatch(storage.paths.runtimes);
     }
+    if (adaptedDragon) {
+      _update(const StorageMigrationProgress('校验渲染龙适配版本'));
+      await validateRenderDragonGame(game.version, File(executable));
+      dragonRuntime = await prepareRenderDragonRuntime(
+        baseRuntime: runtime,
+        runtimes: storage.paths.runtimes,
+        downloads: storage.paths.downloads,
+        client: api.client,
+        control: _control,
+        onProgress: _update,
+      );
+      rendererFiles = await prepareRendererPatch(storage.paths.runtimes);
+    }
     await _connectAccount();
     await _ensurePrefix(gamePrefix);
+    if (dragonRuntime != null) {
+      await prepareWineMetalPrefix(dragonRuntime, gamePrefix);
+    }
     final options = File(
       p.join(
         await _roaming(),
@@ -793,74 +836,77 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         ? await options.readAsString()
         : '';
     final stagingOptions = File('${options.path}.mcdev-tmp');
-    await stagingOptions.writeAsString(
-      mergeGameOptions(
-        originalOptions,
-        frameLimitOptions(limit60Fps, nativePacing: performanceFiles != null),
-      ),
-      flush: true,
-    );
-    await stagingOptions.rename(options.path);
-    final chosen = packs
-        .where((pack) => selectedPacks.contains(pack.uuid))
-        .toList();
-    final dataRoot = p.join(
-      await _roaming(),
-      'MinecraftPE_Netease',
-      'games',
-      'com.netease',
-    );
-    final behavior = <String>[], resources = <String>[];
-    for (final pack in chosen) {
-      _control?.check();
-      final current = (await discoverModPacks(
-        pack.directory,
-      )).where((item) => item.uuid == pack.uuid).firstOrNull;
-      if (current == null) {
-        throw DevelopmentStorageException(
-          '模组 ${pack.name} 的源文件已变化或无法访问，请重新导入。',
-        );
-      }
-      final name = 'mcdev_${pack.uuid}';
-      final target = Directory(
-        p.join(
-          dataRoot,
-          pack.type == 'resources' ? 'resource_packs' : 'behavior_packs',
-          name,
-        ),
-      );
-      await target.parent.create(recursive: true);
-      final staging = await target.parent.createTemp('.pack-');
-      final backup = Directory('${target.path}.previous');
-      try {
-        if ((await Process.run('/usr/bin/ditto', [
-              '--noextattr',
-              '--norsrc',
-              pack.directory,
-              staging.path,
-            ])).exitCode !=
-            0) {
-          throw DevelopmentStorageException('装配模组失败：${pack.name}');
-        }
-        await rejectTreeLinks(staging.path);
-        if (await backup.exists()) await backup.delete(recursive: true);
-        if (await target.exists()) await target.rename(backup.path);
-        try {
-          await staging.rename(target.path);
-        } catch (_) {
-          if (await backup.exists()) await backup.rename(target.path);
-          rethrow;
-        }
-        if (await backup.exists()) await backup.delete(recursive: true);
-      } finally {
-        if (await staging.exists()) await staging.delete(recursive: true);
-      }
-      (pack.type == 'resources' ? resources : behavior).add(name);
-    }
     IOSink? output;
     final subscriptions = <StreamSubscription<List<int>>>[];
     _stopRequested = false;
     try {
+      await stagingOptions.writeAsString(
+        mergeGameOptions(originalOptions, {
+          ...frameLimitOptions(
+            limit60Fps,
+            nativePacing: performanceFiles != null,
+          ),
+          if (adaptedDragon) ...renderDragonOptions(vibrantVisuals),
+        }),
+        flush: true,
+      );
+      await stagingOptions.rename(options.path);
+      final chosen = packs
+          .where((pack) => selectedPacks.contains(pack.uuid))
+          .toList();
+      final dataRoot = p.join(
+        await _roaming(),
+        'MinecraftPE_Netease',
+        'games',
+        'com.netease',
+      );
+      final behavior = <String>[], resources = <String>[];
+      for (final pack in chosen) {
+        _control?.check();
+        final current = (await discoverModPacks(
+          pack.directory,
+        )).where((item) => item.uuid == pack.uuid).firstOrNull;
+        if (current == null) {
+          throw DevelopmentStorageException(
+            '模组 ${pack.name} 的源文件已变化或无法访问，请重新导入。',
+          );
+        }
+        final name = 'mcdev_${pack.uuid}';
+        final target = Directory(
+          p.join(
+            dataRoot,
+            pack.type == 'resources' ? 'resource_packs' : 'behavior_packs',
+            name,
+          ),
+        );
+        await target.parent.create(recursive: true);
+        final staging = await target.parent.createTemp('.pack-');
+        final backup = Directory('${target.path}.previous');
+        try {
+          if ((await Process.run('/usr/bin/ditto', [
+                '--noextattr',
+                '--norsrc',
+                pack.directory,
+                staging.path,
+              ])).exitCode !=
+              0) {
+            throw DevelopmentStorageException('装配模组失败：${pack.name}');
+          }
+          await rejectTreeLinks(staging.path);
+          if (await backup.exists()) await backup.delete(recursive: true);
+          if (await target.exists()) await target.rename(backup.path);
+          try {
+            await staging.rename(target.path);
+          } catch (_) {
+            if (await backup.exists()) await backup.rename(target.path);
+            rethrow;
+          }
+          if (await backup.exists()) await backup.delete(recursive: true);
+        } finally {
+          if (await staging.exists()) await staging.delete(recursive: true);
+        }
+        (pack.type == 'resources' ? resources : behavior).add(name);
+      }
       _rpc = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
       _rpc!.listen((socket) {
         _connections.add(socket);
@@ -997,13 +1043,29 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         storage.paths.logs,
         'performance-$stamp.log',
       );
+      final rendererLog = p.join(storage.paths.logs, 'renderer-$stamp.log');
+      if (dragonRuntime != null) {
+        _activeWine = p.join(dragonRuntime, 'bin/wine');
+      }
+      final gameApplication = Platform.isMacOS
+          ? await prepareWineGameApplication(
+              dragonRuntime ?? runtime,
+              metal: dragonRuntime != null,
+            )
+          : null;
       _game = await Process.start(
-        wine,
+        gameApplication?.loader ?? wine,
         [_winPath(executable), ...args],
         workingDirectory: game.directory,
         environment: _env(
           gamePrefix,
           overrides: {
+            if (gameApplication != null) ...gameApplication.environment,
+            if (rendererFiles != null) ...{
+              ...renderDragonEnvironment,
+              'MCDEV_RENDERER_LOG': _winPath(rendererLog),
+              'MCDEV_VIBRANT': vibrantVisuals ? '1' : '0',
+            },
             if (performanceFiles != null) ...{
               'MCDEV_PERFORMANCE_LOG': _winPath(performanceLog),
               'MCDEV_PERFORMANCE_LIMIT': limit60Fps ? '1' : '0',
@@ -1048,6 +1110,11 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           ),
         );
       }
+      if (rendererFiles != null) {
+        unawaited(
+          _activateRenderer(rendererFiles, executable, rendererLog, _game!),
+        );
+      }
       final code = await _game!.exitCode;
       try {
         await drained.timeout(const Duration(seconds: 10));
@@ -1070,10 +1137,81 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         _game = null;
         _stopping = false;
         await _closeRpc();
+        _activeWine = null;
+        if (adaptedDragon && await options.exists()) {
+          try {
+            // The prefix is shared across versions. Restore only the two
+            // temporary renderer settings; preserve game-written preferences.
+            final text = await options.readAsString();
+            await stagingOptions.writeAsString(
+              restoreRenderDragonOptions(text, originalOptions),
+              flush: true,
+            );
+            await stagingOptions.rename(options.path);
+          } on FileSystemException {
+            error ??= '渲染设置恢复失败，请检查开发目录的写入权限。';
+          }
+        }
         _notify();
       }
     }
   });
+
+  Future<void> _activateRenderer(
+    Directory files,
+    String executable,
+    String log,
+    Process target,
+  ) async {
+    bool current() => running && identical(_game, target);
+    try {
+      final loaded = await injectPerformancePatch(
+        wine: wine,
+        environment: _env(
+          gamePrefix,
+          overrides: {
+            ...renderDragonEnvironment,
+            'MCDEV_RENDERER_LOG': _winPath(log),
+            'MCDEV_VIBRANT': vibrantVisuals ? '1' : '0',
+          },
+        ),
+        helper: _winPath(p.join(files.path, 'renderer-inject.exe')),
+        dll: _winPath(p.join(files.path, 'renderer-patch.dll')),
+        executable: _winPath(executable),
+        cancelWhen: target.exitCode.then<void>((_) {}),
+      );
+      if (loaded) {
+        for (var attempt = 0; attempt < 140 && current(); attempt++) {
+          final file = File(log);
+          if (await file.exists()) {
+            final text = await file.readAsString();
+            if (!current()) return;
+            if (text.contains('"renderer_patch":"active"')) {
+              notice =
+                  vibrantVisuals && text.contains('"vibrant_supported":true')
+                  ? '渲染龙 Metal 适配与灵动视效模式已启用（实验性）。'
+                  : vibrantVisuals
+                  ? '渲染龙已启用，此设备未满足灵动视效能力要求，请查看渲染日志。'
+                  : '渲染龙 Metal 适配已启用。';
+              _notify();
+              return;
+            }
+            if (text.contains('failed') || text.contains('unsupported')) break;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        }
+      }
+      if (current()) {
+        error = '渲染龙适配未能激活，请退出游戏后重试或切回 OpenGL。';
+        _notify();
+      }
+    } catch (_) {
+      if (current()) {
+        error = '渲染龙适配加载失败，请查看日志，或退出后切回 OpenGL。';
+        _notify();
+      }
+    }
+  }
 
   Future<void> _activatePerformance(
     Directory files,
@@ -1083,9 +1221,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   ) async {
     bool current() => running && identical(_game, target);
     String fallbackNotice(String detail) =>
-        limit60Fps
-            ? '$detail 本次 60 帧上限也未生效；请退出后关闭图形优化再启动。'
-            : detail;
+        limit60Fps ? '$detail 本次 60 帧上限也未生效；请退出后关闭图形优化再启动。' : detail;
     try {
       final loaded = await injectPerformancePatch(
         wine: wine,
