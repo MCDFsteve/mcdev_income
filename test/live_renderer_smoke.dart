@@ -106,6 +106,19 @@ void main() {
           }
         }
         await launcher.chooseVersion(version);
+        if (Platform.environment['MCDEV_LIVE_NO_MODS'] == '1') {
+          // In-memory only: isolate built-in skins from player model overrides.
+          // Never save the changed selection to projects.json.
+          launcher.selectedPacks.clear();
+        }
+        await launcher.choosePlayerSkin(
+          Platform.environment['MCDEV_LIVE_SKIN'] == 'alex'
+              ? TestPlayerSkin.alex
+              : TestPlayerSkin.steve,
+        );
+        await launcher.chooseFullscreenShortcut(
+          Platform.environment['MCDEV_LIVE_FULLSCREEN_SHORTCUT'] == '1',
+        );
         final requestedRenderer =
             Platform.environment['MCDEV_LIVE_RENDERER'] == 'dragon'
             ? GameRenderer.renderDragon
@@ -128,7 +141,17 @@ void main() {
         final deadline = DateTime.now().add(const Duration(minutes: 3));
         while (!launcher.running && DateTime.now().isBefore(deadline)) {
           if (launcher.error != null) {
-            throw StateError('Game launch failed (details withheld)');
+            final safeReason = [
+              '开发者登录验证失败，请在设置中重新登录。',
+              '开发者登录无法取得游戏访问权限，请在设置中重新登录。',
+              '请先使用软件现有登录入口登录开发者账号。',
+              'Wine 游戏窗口组件与支持的版本不匹配。',
+              '准备 Wine 游戏窗口组件失败。',
+              '测试游戏图标资源校验失败。',
+            ].where((message) => launcher.error!.contains(message)).firstOrNull;
+            throw StateError(
+              'Game launch failed (${safeReason ?? 'details withheld'})',
+            );
           }
           await Future<void>.delayed(const Duration(milliseconds: 500));
         }
@@ -140,6 +163,20 @@ void main() {
                   ).readAsString(),
                 )
                 as Map;
+        expect(
+          config['skin_info']['slim'],
+          launcher.playerSkin == TestPlayerSkin.alex,
+        );
+        expect(
+          config['skin_info']['skin_iid'],
+          launcher.playerSkin == TestPlayerSkin.alex ? '-2' : '-1',
+        );
+        expect(config['skin_info']['in_package'], isFalse);
+        expect(config['skin_info']['sync'], isTrue);
+        expect(
+          config['skin_info']['skin'],
+          endsWith(launcher.playerSkin.textureFile),
+        );
         if (launcher.rendererSwitchSupported) {
           expect(
             config['render_engine'],
@@ -216,6 +253,14 @@ void main() {
           await File(gameLog!).readAsBytes(),
           allowMalformed: true,
         );
+        final inputGuardLoaded = console.contains(
+          '[MCDev input] Command+Shift fullscreen shortcut disabled',
+        );
+        expect(
+          inputGuardLoaded,
+          !launcher.fullscreenShortcut,
+          reason: 'Only disabled fullscreen shortcuts load the input guard',
+        );
         for (final error in [
           'BGFX: Fatal error',
           'Assertion failed:',
@@ -243,6 +288,8 @@ void main() {
           'version': version,
           'renderer': launcher.effectiveRenderer.name,
           'limit_60_fps': launcher.limit60Fps,
+          'fullscreen_shortcut': launcher.fullscreenShortcut,
+          'input_guard_loaded': inputGuardLoaded,
           'running_after_60_seconds': true,
           'vibrant_visuals': vibrant,
           'requested_exit_complete': true,

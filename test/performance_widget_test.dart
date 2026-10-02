@@ -10,7 +10,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   for (final supported in [true, false]) {
     testWidgets(
-      'performance setting is ${supported ? 'available' : 'disabled'} and fits the desktop dialog',
+      'performance setting is ${supported ? 'available' : 'hidden'} and fits the desktop dialog',
       (tester) async {
         tester.view.physicalSize = const Size(1024, 768);
         tester.view.devicePixelRatio = 1;
@@ -34,15 +34,16 @@ void main() {
         await tester.tap(find.text('测试设置'));
         await tester.pumpAndSettle();
         final setting = find.widgetWithText(OreCheckboxListTile, '图形性能优化');
-        expect(tester.widget<OreCheckboxListTile>(setting).value, isFalse);
         if (supported) {
+          expect(tester.widget<OreCheckboxListTile>(setting).value, isFalse);
           await tester.ensureVisible(setting);
           await tester.tap(find.text('图形性能优化'));
           await tester.pumpAndSettle();
           expect(launcher.performanceOptimization, isTrue);
           expect(tester.widget<OreCheckboxListTile>(setting).value, isTrue);
         } else {
-          expect(tester.widget<OreCheckboxListTile>(setting).onChanged, isNull);
+          expect(setting, findsNothing);
+          expect(find.textContaining('上传优化补丁目前适配'), findsNothing);
         }
         final limit = find.widgetWithText(OreCheckboxListTile, '限制 60 帧');
         expect(tester.widget<OreCheckboxListTile>(limit).value, isTrue);
@@ -80,6 +81,7 @@ void main() {
       await tester.tap(find.text('渲染龙'));
       await tester.pumpAndSettle();
       expect(launcher.renderer, GameRenderer.renderDragon);
+      expect(find.text('图形性能优化'), findsNothing);
       expect(launcher.performanceOptimization, isTrue);
       expect(launcher.limit60Fps, isTrue);
       final limit = find.widgetWithText(OreCheckboxListTile, '限制 60 帧');

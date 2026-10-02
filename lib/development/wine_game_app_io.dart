@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'development_storage.dart';
 
@@ -7,6 +8,9 @@ import 'development_storage.dart';
 // re-executes this outside any app bundle, losing the game's macOS identity.
 const wineGameLoaderSourceHash =
     '61ae8ab79e35f4982d5f6be14a3a26dcc5383578a298d9f767811086b40020d3';
+const wineGameIconHash =
+    'f78d1745f5492194199a40de3469d60a48aff134653cc885ba2c038b3c0f1704';
+const _iconFile = 'MinecraftBedrock.icns';
 
 class WineGameApplication {
   const WineGameApplication(this.path);
@@ -28,8 +32,9 @@ String _info(String identifier) =>
 <key>CFBundleDisplayName</key><string>我的世界测试</string>
 <key>CFBundleIdentifier</key><string>$identifier</string>
 <key>CFBundleExecutable</key><string>wine</string>
+<key>CFBundleIconFile</key><string>$_iconFile</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleVersion</key><string>2</string>
 <key>CFBundleShortVersionString</key><string>1.0</string>
 <key>NSPrincipalClass</key><string>WineApplication</string>
 <key>NSHighResolutionCapable</key><true/>
@@ -49,7 +54,17 @@ Future<bool> _ready(String app, String identifier) async {
         await Link(p.join(app, 'Contents', 'MacOS', 'ntdll.so')).target() !=
             _ntdllLink ||
         !await File(p.join(app, 'Contents', 'MacOS', 'ntdll.so')).exists() ||
-        !await File(p.join(app, 'Contents', 'MacOS', 'wine')).exists()) {
+        !await File(p.join(app, 'Contents', 'MacOS', 'wine')).exists() ||
+        !await File(p.join(app, 'Contents', 'Resources', _iconFile)).exists() ||
+        (await sha256
+                    .bind(
+                      File(
+                        p.join(app, 'Contents', 'Resources', _iconFile),
+                      ).openRead(),
+                    )
+                    .first)
+                .toString() !=
+            wineGameIconHash) {
       return false;
     }
     return (await Process.run('/usr/bin/codesign', [
@@ -74,6 +89,7 @@ Future<bool> _ready(String app, String identifier) async {
 Future<WineGameApplication> prepareWineGameApplication(
   String runtime, {
   required bool metal,
+  AssetBundle? bundle,
 }) async {
   final source = File(p.join(runtime, 'lib/wine/x86_64-unix/wine'));
   final ntdll = File(p.join(runtime, 'lib/wine/x86_64-unix/ntdll.so'));
@@ -98,6 +114,19 @@ Future<WineGameApplication> prepareWineGameApplication(
     await Directory(macos).create(recursive: true);
     await source.copy(p.join(macos, 'wine'));
     await Link(p.join(macos, 'ntdll.so')).create(_ntdllLink);
+    final iconData = await (bundle ?? rootBundle).load(
+      'assets/development/minecraft-bedrock-icon.icns',
+    );
+    final iconBytes = iconData.buffer.asUint8List(
+      iconData.offsetInBytes,
+      iconData.lengthInBytes,
+    );
+    if (sha256.convert(iconBytes).toString() != wineGameIconHash) {
+      throw const DevelopmentStorageException('测试游戏图标资源校验失败。');
+    }
+    final icon = File(p.join(contents, 'Resources', _iconFile));
+    await icon.parent.create(recursive: true);
+    await icon.writeAsBytes(iconBytes, flush: true);
     await File(p.join(contents, 'Info.plist')).writeAsString(_info(identifier));
     await File(p.join(contents, 'PkgInfo')).writeAsString('APPL????');
     final permissions = await Process.run('/bin/chmod', [

@@ -410,6 +410,34 @@ class _DevelopmentEnvironmentPanelState
                         ? null
                         : (value) => update(() => _creative = value == 1),
                   ),
+                  const SizedBox(height: 12),
+                  Text('玩家皮肤', style: OreTheme.of(context).typography.label),
+                  const SizedBox(height: 6),
+                  LayoutBuilder(
+                    builder: (context, constraints) => OreChoiceButtons(
+                      items: const [Text('史蒂夫（粗手臂）'), Text('艾利克斯（细手臂）')],
+                      buttonWidth:
+                          (constraints.maxWidth +
+                              OreTheme.of(context).borderWidth) /
+                          2,
+                      selectedIndex: _launcher!.playerSkin.index,
+                      onChanged: blocked || _menuOnly
+                          ? null
+                          : (index) async {
+                              try {
+                                await _launcher!.choosePlayerSkin(
+                                  TestPlayerSkin.values[index],
+                                );
+                                if (context.mounted) update(() {});
+                              } catch (error) {
+                                if (mounted) {
+                                  setState(() => _error = error.toString());
+                                }
+                              }
+                            },
+                    ),
+                  ),
+                  _hint('用于测试世界，重启游戏后生效。'),
                   const SizedBox(height: 8),
                   OreCheckboxListTile(
                     value: _menuOnly,
@@ -490,35 +518,28 @@ class _DevelopmentEnvironmentPanelState
                           : '当前版本尚未适配灵动视效，请选择 3.10.0.420447 Haldra x64。',
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  OreCheckboxListTile(
-                    value:
-                        _launcher!.performanceOptimization &&
-                        _launcher!.performanceOptimizationSupported,
-                    onChanged:
-                        blocked || !_launcher!.performanceOptimizationSupported
-                        ? null
-                        : (value) async {
-                            try {
-                              await _launcher!.choosePerformanceOptimization(
-                                value ?? false,
-                              );
-                              if (context.mounted) {
-                                update(() {});
+                  if (_launcher!.performanceOptimizationSupported) ...[
+                    const SizedBox(height: 8),
+                    OreCheckboxListTile(
+                      value: _launcher!.performanceOptimization,
+                      onChanged: blocked
+                          ? null
+                          : (value) async {
+                              try {
+                                await _launcher!.choosePerformanceOptimization(
+                                  value ?? false,
+                                );
+                                if (context.mounted) update(() {});
+                              } catch (error) {
+                                if (mounted) {
+                                  setState(() => _error = error.toString());
+                                }
                               }
-                            } catch (error) {
-                              if (mounted) {
-                                setState(() => _error = error.toString());
-                              }
-                            }
-                          },
-                    title: const Text('图形性能优化'),
-                  ),
-                  _hint(
-                    _launcher!.performanceOptimizationSupported
-                        ? '实验性补丁；关闭后重启即可回退。请保留原画质进行对比。'
-                        : '上传优化补丁目前适配 3.8.0.313229 的 OpenGL 路径。',
-                  ),
+                            },
+                      title: const Text('图形性能优化'),
+                    ),
+                    _hint('实验性补丁；关闭后重启即可回退。请保留原画质进行对比。'),
+                  ],
                   const SizedBox(height: 8),
                   OreCheckboxListTile(
                     value: _launcher!.limit60Fps,
@@ -538,7 +559,47 @@ class _DevelopmentEnvironmentPanelState
                           },
                     title: const Text('限制 60 帧'),
                   ),
-                  _hint('关闭后不设帧率上限，图形优化仍可启用。重启游戏后生效。'),
+                  _hint('关闭后不设帧率上限。重启游戏后生效。'),
+                  const SizedBox(height: 8),
+                  OreCheckboxListTile(
+                    value: _launcher!.showDeveloperConsole,
+                    onChanged: blocked
+                        ? null
+                        : (value) async {
+                            try {
+                              await _launcher!.chooseDeveloperConsole(
+                                value ?? false,
+                              );
+                              if (context.mounted) update(() {});
+                            } catch (error) {
+                              if (mounted) {
+                                setState(() => _error = error.toString());
+                              }
+                            }
+                          },
+                    title: const Text('显示开发控制台'),
+                  ),
+                  _hint('与游戏“调试”中的同名选项一致，默认关闭，重启游戏后生效。'),
+                  const SizedBox(height: 8),
+                  OreCheckboxListTile(
+                    value: _launcher!.fullscreenShortcut,
+                    onChanged: blocked
+                        ? null
+                        : (value) async {
+                            try {
+                              await _launcher!.chooseFullscreenShortcut(
+                                value ?? false,
+                              );
+                              if (context.mounted) update(() {});
+                            } catch (error) {
+                              if (mounted) {
+                                setState(() => _error = error.toString());
+                              }
+                            }
+                          },
+                    title: const Text('Shift + Command 切换全屏'),
+                  ),
+                  _hint('默认关闭，避免与 macOS 截图快捷键冲突。重启游戏后生效。'),
                   const SizedBox(height: 8),
                   _hint('重开同一个测试存档；请在游戏内保存并退出。'),
                 ],

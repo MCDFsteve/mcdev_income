@@ -34,6 +34,25 @@ class LocalGame {
   final GameClientType clientType;
 }
 
+enum TestPlayerSkin {
+  steve('steve.png'),
+  alex('alex.png');
+
+  const TestPlayerSkin(this.textureFile);
+  final String textureFile;
+
+  Map<String, Object> skinInfo(String texturePath) => {
+    'skin': texturePath,
+    // Match the MCS PNG-skin path. The game's local-only slots are not
+    // populated consistently by the RenderDragon development client.
+    'sync': true,
+    'in_package': false,
+    'slim': this == TestPlayerSkin.alex,
+    // Keep the built-in IDs used by MCS GetSkinItemId.
+    'skin_iid': this == TestPlayerSkin.alex ? '-2' : '-1',
+  };
+}
+
 class ModPack {
   const ModPack({
     required this.name,
@@ -133,6 +152,9 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   bool performanceOptimization = false;
   bool limit60Fps = true;
   bool vibrantVisuals = false;
+  bool showDeveloperConsole = false;
+  bool fullscreenShortcut = false;
+  TestPlayerSkin playerSkin = TestPlayerSkin.steve;
   GameRenderer renderer = GameRenderer.openGL;
   bool get rendererSwitchSupported => supportsRendererSwitch(selectedVersion);
   GameRenderer get effectiveRenderer =>
@@ -171,6 +193,21 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
 
   Future<void> chooseFrameLimit(bool enabled) async {
     limit60Fps = enabled;
+    notifyListeners();
+  }
+
+  Future<void> chooseDeveloperConsole(bool enabled) async {
+    showDeveloperConsole = enabled;
+    notifyListeners();
+  }
+
+  Future<void> chooseFullscreenShortcut(bool enabled) async {
+    fullscreenShortcut = enabled;
+    notifyListeners();
+  }
+
+  Future<void> choosePlayerSkin(TestPlayerSkin value) async {
+    playerSkin = value;
     notifyListeners();
   }
 

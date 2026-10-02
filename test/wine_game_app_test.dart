@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:mcdev_income/development/development_storage.dart';
 import 'package:mcdev_income/development/wine_game_app_io.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('unsupported Wine loader cannot create a game application', () async {
     final temp = await Directory.systemTemp.createTemp('mcdev-game-app-guard-');
     try {
@@ -43,6 +45,19 @@ void main() {
           ).copy(p.join(lib, name));
         }
         var app = await prepareWineGameApplication(root, metal: true);
+        final icon = File(
+          p.join(app.path, 'Contents/Resources/MinecraftBedrock.icns'),
+        );
+        expect(
+          sha256.convert(await icon.readAsBytes()).toString(),
+          wineGameIconHash,
+        );
+        expect(
+          await File(p.join(app.path, 'Contents/Info.plist')).readAsString(),
+          contains(
+            '<key>CFBundleIconFile</key><string>MinecraftBedrock.icns</string>',
+          ),
+        );
         final ntdll = Link(p.join(app.path, 'Contents/MacOS/ntdll.so'));
         expect(
           await ntdll.resolveSymbolicLinks(),
@@ -51,6 +66,13 @@ void main() {
         final modified = await File(app.loader).lastModified();
         await prepareWineGameApplication(root, metal: true);
         expect(await File(app.loader).lastModified(), modified);
+        await icon.writeAsString('damaged icon');
+        await prepareWineGameApplication(root, metal: true);
+        expect(
+          sha256.convert(await icon.readAsBytes()).toString(),
+          wineGameIconHash,
+        );
+        final repairedModified = await File(app.loader).lastModified();
         root = (await Directory(
           root,
         ).rename(p.join(temp.path, 'Migrated Wine'))).path;
@@ -63,7 +85,7 @@ void main() {
             p.join(root, 'lib/wine/x86_64-unix/ntdll.so'),
           ).resolveSymbolicLinks(),
         );
-        expect(await File(app.loader).lastModified(), modified);
+        expect(await File(app.loader).lastModified(), repairedModified);
         await File(app.loader).writeAsString('damaged cached application');
         app = await prepareWineGameApplication(root, metal: true);
         expect(await File(app.loader).length(), greaterThan(1000));

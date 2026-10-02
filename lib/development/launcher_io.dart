@@ -18,6 +18,7 @@ import 'game_graphics.dart';
 import 'render_dragon.dart';
 import 'render_dragon_io.dart';
 import 'wine_game_app_io.dart';
+import 'input_guard_io.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -46,6 +47,15 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     selectedVersion = preferences.getString(_versionKey);
     performanceOptimization = preferences.getInt(_performanceKey) != 0;
     limit60Fps = preferences.getInt(_frameLimitKey) != 0;
+    showDeveloperConsole = preferences.getInt(_developerConsoleKey) == 1;
+    fullscreenShortcut = preferences.getInt(_fullscreenShortcutKey) == 1;
+    playerSkin =
+        TestPlayerSkin.values
+            .where(
+              (value) => value.name == preferences.getString(_playerSkinKey),
+            )
+            .firstOrNull ??
+        TestPlayerSkin.steve;
     _restoreRenderer();
   }
   final Future<String> Function() _cookieProvider;
@@ -56,6 +66,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   static const _versionKey = 'development_game_version_v1';
   static const _performanceKey = 'development_performance_patch_v1';
   static const _frameLimitKey = 'development_frame_limit_60_v1';
+  static const _developerConsoleKey = 'development_show_developer_console_v1';
+  static const _fullscreenShortcutKey = 'development_fullscreen_shortcut_v1';
+  static const _playerSkinKey = 'development_player_skin_v1';
   String get _rendererKey => 'development_renderer_v1_$selectedVersion';
   String get _vibrantKey => 'development_vibrant_visuals_v1_$selectedVersion';
 
@@ -102,6 +115,42 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       throw const DevelopmentStorageException('无法保存帧率上限。');
     }
     limit60Fps = enabled;
+    _notify();
+  }
+
+  @override
+  Future<void> chooseDeveloperConsole(bool enabled) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改开发控制台设置。');
+    }
+    if (!await preferences.setInt(_developerConsoleKey, enabled ? 1 : 0)) {
+      throw const DevelopmentStorageException('无法保存开发控制台设置。');
+    }
+    showDeveloperConsole = enabled;
+    _notify();
+  }
+
+  @override
+  Future<void> choosePlayerSkin(TestPlayerSkin value) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改玩家皮肤。');
+    }
+    if (!await preferences.setString(_playerSkinKey, value.name)) {
+      throw const DevelopmentStorageException('无法保存玩家皮肤选择。');
+    }
+    playerSkin = value;
+    _notify();
+  }
+
+  @override
+  Future<void> chooseFullscreenShortcut(bool enabled) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改全屏快捷键设置。');
+    }
+    if (!await preferences.setInt(_fullscreenShortcutKey, enabled ? 1 : 0)) {
+      throw const DevelopmentStorageException('无法保存全屏快捷键设置。');
+    }
+    fullscreenShortcut = enabled;
     _notify();
   }
 
@@ -847,6 +896,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
             nativePacing: performanceFiles != null,
           ),
           if (adaptedDragon) ...renderDragonOptions(vibrantVisuals),
+          'dev_showDevConsoleButton': showDeveloperConsole ? '1' : '0',
         }),
         flush: true,
       );
@@ -988,17 +1038,17 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
             'user_name': 'Developer',
             'urs': '',
           },
-          'skin_info': {
-            'skin': _winPath(
+          'skin_info': playerSkin.skinInfo(
+            _winPath(
               p.join(
                 game.directory,
                 'data',
                 'skin_packs',
                 'vanilla',
-                'steve.png',
+                playerSkin.textureFile,
               ),
             ),
-          },
+          ),
           'anti_addiction_info': {
             'enable': false,
             'left_time': 0,
@@ -1053,6 +1103,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
               metal: dragonRuntime != null,
             )
           : null;
+      final inputGuard = Platform.isMacOS && !fullscreenShortcut
+          ? await prepareFullscreenShortcutGuard(storage.paths.runtimes)
+          : null;
       _game = await Process.start(
         gameApplication?.loader ?? wine,
         [_winPath(executable), ...args],
@@ -1061,6 +1114,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           gamePrefix,
           overrides: {
             if (gameApplication != null) ...gameApplication.environment,
+            if (inputGuard != null)
+              ...fullscreenShortcutEnvironment(inputGuard.path),
             if (rendererFiles != null) ...{
               ...renderDragonEnvironment,
               'MCDEV_RENDERER_LOG': _winPath(rendererLog),

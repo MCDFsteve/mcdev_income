@@ -131,6 +131,10 @@ flutter:
     - assets/development/renderer-patch.dll
     - assets/development/renderer-inject.exe
     - assets/development/winemac-dxmt.so
+    - assets/development/fullscreen-shortcut.dylib
+    - assets/development/minecraft-bedrock-icon.icns
+    - tools/input/build.py
+    - tools/input/native/
     - tools/renderer/build.py
     - tools/renderer/native/
     - tools/renderer/wine/
