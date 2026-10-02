@@ -19,6 +19,7 @@ import 'render_dragon.dart';
 import 'render_dragon_io.dart';
 import 'wine_game_app_io.dart';
 import 'input_guard_io.dart';
+import 'wine_network_io.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -1107,6 +1108,21 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       final inputGuard = Platform.isMacOS && !fullscreenShortcut
           ? await prepareFullscreenShortcutGuard(storage.paths.runtimes)
           : null;
+      final networkLibrary = Platform.isMacOS
+          ? await prepareWineNetworkLibrary(storage.paths.runtimes)
+          : null;
+      final nativeEnvironment = <String, String>{
+        if (networkLibrary != null)
+          ...wineNetworkEnvironment(networkLibrary.path),
+      };
+      if (inputGuard != null) {
+        nativeEnvironment.addAll(
+          fullscreenShortcutEnvironment(
+            inputGuard.path,
+            inherited: {...Platform.environment, ...nativeEnvironment},
+          ),
+        );
+      }
       _game = await Process.start(
         gameApplication?.loader ?? wine,
         [_winPath(executable), ...args],
@@ -1115,8 +1131,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           gamePrefix,
           overrides: {
             if (gameApplication != null) ...gameApplication.environment,
-            if (inputGuard != null)
-              ...fullscreenShortcutEnvironment(inputGuard.path),
+            ...nativeEnvironment,
             if (rendererFiles != null) ...{
               ...renderDragonEnvironment,
               'MCDEV_RENDERER_LOG': _winPath(rendererLog),
