@@ -11,6 +11,8 @@ import 'cli/unsupported_entry.dart'
 import 'storage/app_preferences.dart';
 import 'development/development_storage.dart';
 import 'development/development_panel.dart';
+import 'desktop/window_title_bar.dart';
+import 'desktop/game_chrome.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
@@ -46,6 +48,9 @@ part 'pages/income/income_page_view.dart';
 part 'pages/settings_page.dart';
 part 'pages/development_page.dart';
 part 'pages/login_page.dart';
+
+@pragma('vm:entry-point')
+void gameChromeMain(List<String> arguments) => runGameChrome(arguments);
 
 Future<void> main(List<String> arguments) async {
   if (await desktop_cli.runHeadlessIfRequested(arguments)) return;

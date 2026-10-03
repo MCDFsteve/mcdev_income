@@ -2,9 +2,19 @@ import Cocoa
 import FlutterMacOS
 import UniformTypeIdentifiers
 
+private class WindowDragView: NSView {
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+  override func mouseDown(with event: NSEvent) {
+    if event.clickCount == 2 { window?.performZoom(nil) }
+    else { window?.performDrag(with: event) }
+  }
+}
+
 class MainFlutterWindow: NSWindow {
   private var logSaveChannel: FlutterMethodChannel?
   private var logSavePanel: NSSavePanel?
+  private var chromeChannel: FlutterMethodChannel?
+  private let chromeDragView = WindowDragView()
   private var isHeadless: Bool {
     ProcessInfo.processInfo.arguments.dropFirst().first == "--headless"
   }
@@ -19,11 +29,43 @@ class MainFlutterWindow: NSWindow {
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
+    titleVisibility = .hidden
+    titlebarAppearsTransparent = true
+    styleMask.insert(.fullSizeContentView)
+    isMovableByWindowBackground = false
+    if #available(macOS 11.0, *) { titlebarSeparatorStyle = .none }
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     registerLogSavePanel(flutterViewController)
+    registerWindowChrome(flutterViewController)
 
     super.awakeFromNib()
+  }
+
+  private func registerWindowChrome(_ controller: FlutterViewController) {
+    let channel = FlutterMethodChannel(name: "mcdev_income/window_chrome",
+                                       binaryMessenger: controller.engine.binaryMessenger)
+    chromeChannel = channel
+    controller.view.addSubview(chromeDragView)
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let window = self else { result(nil); return }
+      switch call.method {
+      case "setDragRegion":
+        if let rect = call.arguments as? [String: Double],
+           let x = rect["x"], let y = rect["y"],
+           let width = rect["width"], let height = rect["height"] {
+          let view = controller.view
+          window.chromeDragView.frame = NSRect(x: x, y: view.isFlipped ? y : view.bounds.height - y - height,
+                                               width: width, height: height)
+        }
+      case "minimize": window.performMiniaturize(nil)
+      case "zoom": window.performZoom(nil)
+      case "fullscreen": window.toggleFullScreen(nil)
+      case "close": window.performClose(nil)
+      default: result(FlutterMethodNotImplemented); return
+      }
+      result(nil)
+    }
   }
 
   private func registerLogSavePanel(_ controller: FlutterViewController) {

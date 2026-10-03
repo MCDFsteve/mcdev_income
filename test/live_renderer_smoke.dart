@@ -132,11 +132,14 @@ void main() {
         if (launcher.vibrantVisualsSupported) {
           await launcher.chooseVibrantVisuals(vibrant);
         }
+        final newWorld = Platform.environment['MCDEV_LIVE_NEW_WORLD'] == '1';
+        await launcher.chooseNewWorld(newWorld);
         // This is a copied save; user-selected projects and original saves remain untouched.
         launched = launcher.launchTest(
           worldName: '渲染器隔离验证',
           creative: true,
           menuOnly: false,
+          seed: Platform.environment['MCDEV_LIVE_WORLD_SEED'],
         );
         final deadline = DateTime.now().add(const Duration(minutes: 3));
         while (!launcher.running && DateTime.now().isBefore(deadline)) {
@@ -173,9 +176,41 @@ void main() {
         );
         expect(config['skin_info']['in_package'], isFalse);
         expect(config['skin_info']['sync'], isTrue);
+        if (newWorld) {
+          expect(config['world_info']['level_id'], startsWith('mcdev_test_'));
+          expect(
+            config['world_info']['seed'],
+            (Platform.environment['MCDEV_LIVE_WORLD_SEED'] ?? '').trim(),
+          );
+        }
         expect(
           config['skin_info']['skin'],
-          endsWith(launcher.playerSkin.textureFile),
+          p.windows.join(
+            r'C:\MCDevTests\skins',
+            launcher.playerSkin.textureFile,
+          ),
+        );
+        expect(
+          await File(
+            p.join(
+              prefix,
+              'drive_c',
+              'MCDevTests',
+              'skins',
+              launcher.playerSkin.textureFile,
+            ),
+          ).readAsBytes(),
+          await File(
+            p.join(
+              launcher.games
+                  .singleWhere((game) => game.version == version)
+                  .directory,
+              'data',
+              'skin_packs',
+              'vanilla',
+              launcher.playerSkin.textureFile,
+            ),
+          ).readAsBytes(),
         );
         if (launcher.rendererSwitchSupported) {
           expect(

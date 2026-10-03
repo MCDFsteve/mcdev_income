@@ -57,6 +57,8 @@ void main() {
       expect(first.showDeveloperConsole, isFalse);
       expect(first.fullscreenShortcut, isFalse);
       expect(first.playerSkin, TestPlayerSkin.steve);
+      expect(first.useNewWorld, isFalse);
+      await first.chooseNewWorld(true);
       await first.chooseDeveloperConsole(true);
       await first.chooseFullscreenShortcut(true);
       await first.choosePlayerSkin(TestPlayerSkin.alex);
@@ -72,6 +74,8 @@ void main() {
       expect(second.showDeveloperConsole, isTrue);
       expect(second.fullscreenShortcut, isTrue);
       expect(second.playerSkin, TestPlayerSkin.alex);
+      expect(second.useNewWorld, isTrue);
+      await second.chooseNewWorld(false);
       await second.chooseDeveloperConsole(false);
       await second.chooseFullscreenShortcut(false);
       await second.choosePlayerSkin(TestPlayerSkin.steve);
@@ -81,6 +85,7 @@ void main() {
       expect(third.showDeveloperConsole, isFalse);
       expect(third.fullscreenShortcut, isFalse);
       expect(third.playerSkin, TestPlayerSkin.steve);
+      expect(third.useNewWorld, isFalse);
       third.dispose();
     },
   );
@@ -104,6 +109,7 @@ void main() {
             ..busy = state == 'busy'
             ..running = state == 'running';
       await expectLater(instance.chooseDeveloperConsole(true), throwsException);
+      await expectLater(instance.chooseNewWorld(true), throwsException);
       await expectLater(
         instance.chooseFullscreenShortcut(true),
         throwsException,
@@ -115,6 +121,7 @@ void main() {
       expect(instance.showDeveloperConsole, isFalse);
       expect(instance.fullscreenShortcut, isFalse);
       expect(instance.playerSkin, TestPlayerSkin.steve);
+      expect(instance.useNewWorld, isFalse);
       instance
         ..busy = false
         ..running = false

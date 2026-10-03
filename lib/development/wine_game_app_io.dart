@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -24,12 +25,25 @@ class WineGameApplication {
   };
 }
 
-String _info(String identifier) =>
+String _xml(String value) => value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+
+/// Keep names readable while excluding characters invalid in a plist string.
+String wineGameDisplayName(String value) {
+  final name = value.replaceAll(RegExp(r'[\x00-\x1f\x7f]'), ' ').trim();
+  return name.isEmpty ? '我的世界测试' : name;
+}
+
+String _info(String identifier, String displayName) =>
     '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleName</key><string>我的世界测试</string>
-<key>CFBundleDisplayName</key><string>我的世界测试</string>
+<key>CFBundleName</key><string>${_xml(displayName)}</string>
+<key>CFBundleDisplayName</key><string>${_xml(displayName)}</string>
 <key>CFBundleIdentifier</key><string>$identifier</string>
 <key>CFBundleExecutable</key><string>wine</string>
 <key>CFBundleIconFile</key><string>$_iconFile</string>
@@ -47,10 +61,10 @@ String _info(String identifier) =>
 
 const _ntdllLink = '../../../lib/wine/x86_64-unix/ntdll.so';
 
-Future<bool> _ready(String app, String identifier) async {
+Future<bool> _ready(String app, String identifier, String displayName) async {
   try {
     if (await File(p.join(app, 'Contents', 'Info.plist')).readAsString() !=
-            _info(identifier) ||
+            _info(identifier, displayName) ||
         await Link(p.join(app, 'Contents', 'MacOS', 'ntdll.so')).target() !=
             _ntdllLink ||
         !await File(p.join(app, 'Contents', 'MacOS', 'ntdll.so')).exists() ||
@@ -89,6 +103,8 @@ Future<bool> _ready(String app, String identifier) async {
 Future<WineGameApplication> prepareWineGameApplication(
   String runtime, {
   required bool metal,
+  String sessionId = 'default',
+  String displayName = '我的世界测试',
   AssetBundle? bundle,
 }) async {
   final source = File(p.join(runtime, 'lib/wine/x86_64-unix/wine'));
@@ -99,10 +115,21 @@ Future<WineGameApplication> prepareWineGameApplication(
           wineGameLoaderSourceHash) {
     throw const DevelopmentStorageException('Wine 游戏窗口组件与支持的版本不匹配。');
   }
+  // Use only a digest in paths and bundle IDs: project titles can contain
+  // slashes, punctuation or duplicate names. Stay at the runtime root so Wine's
+  // relative library links continue to work after data-directory migration.
+  final sessionSuffix = sessionId == 'default'
+      ? ''
+      : sha256.convert(utf8.encode(sessionId)).toString().substring(0, 32);
+  final name = wineGameDisplayName(displayName);
   final identifier =
-      'com.aimessoft.mcdev.winegame.${metal ? 'metal' : 'opengl'}';
-  final app = p.join(runtime, '我的世界测试.app');
-  if (await _ready(app, identifier)) return WineGameApplication(app);
+      'com.aimessoft.mcdev.winegame.${metal ? 'metal' : 'opengl'}'
+      '${sessionSuffix.isEmpty ? '' : '.s$sessionSuffix'}';
+  final app = p.join(
+    runtime,
+    sessionSuffix.isEmpty ? '我的世界测试.app' : '我的世界测试-$sessionSuffix.app',
+  );
+  if (await _ready(app, identifier, name)) return WineGameApplication(app);
   final stage = await Directory(runtime).createTemp('.mcdev-game-app-');
   // Stage at the same depth as the installed app, so the sealed relative
   // ntdll link resolves both during signing and after the atomic rename.
@@ -127,7 +154,9 @@ Future<WineGameApplication> prepareWineGameApplication(
     final icon = File(p.join(contents, 'Resources', _iconFile));
     await icon.parent.create(recursive: true);
     await icon.writeAsBytes(iconBytes, flush: true);
-    await File(p.join(contents, 'Info.plist')).writeAsString(_info(identifier));
+    await File(
+      p.join(contents, 'Info.plist'),
+    ).writeAsString(_info(identifier, name));
     await File(p.join(contents, 'PkgInfo')).writeAsString('APPL????');
     final permissions = await Process.run('/bin/chmod', [
       '755',
@@ -144,7 +173,7 @@ Future<WineGameApplication> prepareWineGameApplication(
     ]);
     if (permissions.exitCode != 0 ||
         signed.exitCode != 0 ||
-        !await _ready(staged, identifier)) {
+        !await _ready(staged, identifier, name)) {
       throw const DevelopmentStorageException('准备 Wine 游戏窗口组件失败。');
     }
     if (await FileSystemEntity.type(app, followLinks: false) !=

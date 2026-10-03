@@ -19,16 +19,28 @@ import 'render_dragon.dart';
 import 'render_dragon_io.dart';
 import 'wine_game_app_io.dart';
 import 'input_guard_io.dart';
+import 'game_window_chrome_io.dart';
+import 'player_skin_io.dart';
+import 'test_world_io.dart';
+import 'session_preferences.dart';
+import 'test_session_io.dart';
+import 'lan_rpc_io.dart';
+import 'lan_bridge_io.dart';
+import 'lan_endpoint_io.dart';
+import 'lan_join_io.dart';
+import 'lan_patch_io.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
   PreferenceStore preferences, {
   Future<String> Function()? cookieProvider,
+  String sessionId = 'default',
 }) async {
   final launcher = NativeDevelopmentLauncher(
     storage,
     preferences,
     cookieProvider: cookieProvider,
+    sessionId: sessionId,
   );
   await launcher.refresh();
   return launcher;
@@ -39,20 +51,25 @@ Future<DevelopmentLauncher> openDevelopmentLauncher(
 class NativeDevelopmentLauncher extends DevelopmentLauncher {
   NativeDevelopmentLauncher(
     this.storage,
-    this.preferences, {
+    PreferenceStore preferences, {
+    this.sessionId = 'default',
     http.Client? client,
     Future<String> Function()? cookieProvider,
-  }) : api = McsApi(client: client),
+  }) : preferences = TestSessionPreferences(preferences, sessionId),
+       api = McsApi(client: client),
        _cookieProvider = cookieProvider ?? (() async => '') {
-    selectedVersion = preferences.getString(_versionKey);
-    performanceOptimization = preferences.getInt(_performanceKey) != 0;
-    limit60Fps = preferences.getInt(_frameLimitKey) != 0;
-    showDeveloperConsole = preferences.getInt(_developerConsoleKey) == 1;
-    fullscreenShortcut = preferences.getInt(_fullscreenShortcutKey) == 1;
+    selectedVersion = this.preferences.getString(_versionKey);
+    performanceOptimization = this.preferences.getInt(_performanceKey) != 0;
+    limit60Fps = this.preferences.getInt(_frameLimitKey) != 0;
+    showDeveloperConsole = this.preferences.getInt(_developerConsoleKey) == 1;
+    fullscreenShortcut = this.preferences.getInt(_fullscreenShortcutKey) == 1;
+    useNewWorld = this.preferences.getInt(_newWorldKey) == 1;
+    newWorldSeed = this.preferences.getString(_worldSeedKey) ?? '';
     playerSkin =
         TestPlayerSkin.values
             .where(
-              (value) => value.name == preferences.getString(_playerSkinKey),
+              (value) =>
+                  value.name == this.preferences.getString(_playerSkinKey),
             )
             .firstOrNull ??
         TestPlayerSkin.steve;
@@ -61,6 +78,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   final Future<String> Function() _cookieProvider;
   String? _accountFingerprint;
   final DevelopmentStorage storage;
+  final String sessionId;
+  Future<void>? _launchCompletion;
   final PreferenceStore preferences;
   final McsApi api;
   static const _versionKey = 'development_game_version_v1';
@@ -69,6 +88,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   static const _developerConsoleKey = 'development_show_developer_console_v1';
   static const _fullscreenShortcutKey = 'development_fullscreen_shortcut_v1';
   static const _playerSkinKey = 'development_player_skin_v1';
+  static const _newWorldKey = 'development_new_world_v1';
+  static const _worldSeedKey = 'development_world_seed_v1';
+  static const _selectionKey = 'development_selected_packs_v1';
   String get _rendererKey => 'development_renderer_v1_$selectedVersion';
   String get _vibrantKey => 'development_vibrant_visuals_v1_$selectedVersion';
 
@@ -86,14 +108,336 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   Process? _game;
   bool _stopRequested = false;
   bool _stopping = false;
-  ServerSocket? _rpc;
-  final List<Socket> _connections = [];
+  LanGameRpc? _rpc;
+  LanRosterBridge? _lanBridge;
+  Timer? _lanTimer;
+  int _launchGeneration = 0;
+  int? _pollingLanGeneration;
+  int? _lanPort;
+  DateTime? _lanPortChecked;
+  int? _requestedLanPort;
+  bool _closingLan = false;
+  bool _hasLanPlayers = false;
+  bool _hostEverJoined = false;
+  bool _lanTransportReady = false;
+  int _hostId = 0;
+  String _hostWorldName = '';
+  String? _hostPackRoot;
+  String _roomToken = '';
+  DateTime? _rosterUpdated;
+  int _rosterSequence = -1;
+  String? _rosterEpoch;
+  List<LanRosterPlayer> _worldPlayers = [];
+  final Map<String, _LanGuest> _lanGuests = {};
+  _LanJoinTarget? _joinTarget;
+  String _playerName = 'Developer';
+  TestPlayerSkin _hostSkin = TestPlayerSkin.steve;
+
+  @override
+  String get gameDisplayName => _joinTarget == null
+      ? super.gameDisplayName
+      : '${super.gameDisplayName} · $_playerName';
+
+  @override
+  bool get lanAvailable =>
+      running &&
+      _joinTarget == null &&
+      !_closingLan &&
+      _lanTransportReady &&
+      _lanBridge != null &&
+      _hostPackRoot != null &&
+      _lanPort != null &&
+      _rosterUpdated != null &&
+      DateTime.now().difference(_rosterUpdated!).inSeconds < 10 &&
+      _worldPlayers.isNotEmpty;
+  @override
+  String get lanUnavailableReason => !supportsLanPatch(selectedVersion ?? '')
+      ? '当前游戏版本尚未适配局域网测试，请选择 3.10.0.420447。'
+      : '请等待此测试页的世界加载完成。';
+
+  @override
+  bool get hasLanPlayers => _hasLanPlayers || _worldPlayers.length > 1;
+  @override
+  List<DevelopmentPlayer> get players {
+    final claimed = <String>{};
+    bool inWorld(String name) {
+      final match = _worldPlayers
+          .where(
+            (player) => player.name == name && !claimed.contains(player.id),
+          )
+          .firstOrNull;
+      if (match == null) return false;
+      claimed.add(match.id);
+      return true;
+    }
+
+    final result = <DevelopmentPlayer>[];
+    if (running || _hasLanPlayers) {
+      result.add(
+        DevelopmentPlayer(
+          id: 'host',
+          name: _playerName,
+          skin: _hostSkin,
+          host: true,
+          status: running && inWorld(_playerName)
+              ? DevelopmentPlayerStatus.connected
+              : !running || _hostEverJoined
+              ? DevelopmentPlayerStatus.disconnected
+              : DevelopmentPlayerStatus.starting,
+        ),
+      );
+    }
+    for (final guest in _lanGuests.values) {
+      final connected = !guest.finished && inWorld(guest.name);
+      result.add(
+        DevelopmentPlayer(
+          id: guest.id,
+          name: guest.name,
+          skin: guest.skin,
+          host: false,
+          canStop: !guest.finished,
+          status: guest.failure != null
+              ? DevelopmentPlayerStatus.failed
+              : guest.finished
+              ? DevelopmentPlayerStatus.disconnected
+              : connected
+              ? DevelopmentPlayerStatus.connected
+              : guest.everJoined
+              ? DevelopmentPlayerStatus.disconnected
+              : DevelopmentPlayerStatus.starting,
+          error: guest.failure,
+        ),
+      );
+    }
+    for (final player in _worldPlayers) {
+      if (claimed.contains(player.id)) continue;
+      result.add(
+        DevelopmentPlayer(
+          id: 'external:${player.id}',
+          name: player.name,
+          host: false,
+          status: DevelopmentPlayerStatus.connected,
+        ),
+      );
+    }
+    return List.unmodifiable(result);
+  }
+
+  @override
+  Future<void> launchLanPlayer({
+    required String name,
+    required TestPlayerSkin skin,
+  }) async {
+    final invalid = validateDevelopmentPlayerName(name);
+    if (invalid != null) throw DevelopmentStorageException(invalid);
+    name = name.trim();
+    if (!lanAvailable) {
+      throw DevelopmentStorageException(lanUnavailableReason);
+    }
+    if (name == _playerName ||
+        _worldPlayers.any((player) => player.name == name) ||
+        _lanGuests.values.any((p) => !p.finished && p.name == name)) {
+      throw const DevelopmentStorageException('这个玩家名字已经在当前世界使用，请换一个名字。');
+    }
+    var slot = 1;
+    final prefix = sha256
+        .convert(utf8.encode(sessionId))
+        .toString()
+        .substring(0, 16);
+    while (_lanGuests['lan-$prefix-$slot']?.finished == false) {
+      slot++;
+    }
+    final id = 'lan-$prefix-$slot';
+    final old = _lanGuests[id];
+    old?.launcher.dispose();
+    final child = NativeDevelopmentLauncher(
+      storage,
+      (preferences as TestSessionPreferences).store,
+      sessionId: id,
+      cookieProvider: _cookieProvider,
+    );
+    child
+      ..games = List.of(games)
+      ..packs = List.of(packs)
+      ..catalog = catalog
+      ..selectedVersion = selectedVersion
+      ..runtimeReady = runtimeReady
+      ..renderer = renderer
+      ..performanceOptimization = performanceOptimization
+      ..limit60Fps = limit60Fps
+      ..vibrantVisuals = vibrantVisuals
+      ..showDeveloperConsole = showDeveloperConsole
+      ..fullscreenShortcut = fullscreenShortcut
+      ..playerSkin = skin
+      ..useNewWorld = false
+      .._playerName = name
+      .._accountFingerprint = _accountFingerprint;
+    child.selectedPacks.addAll(selectedPacks);
+    child.api
+      ..session = api.session
+      ..web = api.web;
+    final token = _roomToken;
+    final epoch = _rosterEpoch;
+    final port = _lanPort!;
+    final hostProcess = _game!;
+    final hostBridge = _lanBridge!;
+    child._joinTarget = _LanJoinTarget(
+      port,
+      hostProcess.pid,
+      _hostId,
+      _hostWorldName,
+      token,
+      _hostPackRoot!,
+      hostBridge,
+      () =>
+          !_disposed &&
+          running &&
+          !_closingLan &&
+          identical(_game, hostProcess) &&
+          identical(_lanBridge, hostBridge) &&
+          _roomToken == token &&
+          _rosterEpoch == epoch,
+      () =>
+          _rosterUpdated != null &&
+          DateTime.now().difference(_rosterUpdated!).inSeconds < 10 &&
+          _worldPlayers.isNotEmpty,
+      _pollLan,
+    );
+    final guest = _LanGuest(id, name, skin, child);
+    _lanGuests[id] = guest;
+    _hasLanPlayers = true;
+    child.addListener(_notify);
+    _notify();
+    final launched = child.launchTest(
+      worldName: _hostWorldName,
+      creative: true,
+      menuOnly: false,
+    );
+    unawaited(
+      launched.then<void>(
+        (_) {
+          guest.finished = true;
+          guest.failure = child.error;
+          child.removeListener(_notify);
+          _notify();
+        },
+        onError: (Object e, StackTrace _) {
+          guest.finished = true;
+          guest.failure = e.toString();
+          child.removeListener(_notify);
+          _notify();
+        },
+      ),
+    );
+  }
+
+  @override
+  Future<void> stopLanPlayer(String id) async {
+    final guest = _lanGuests[id];
+    if (guest == null || guest.finished) return;
+    guest.launcher.cancel();
+    await guest.launcher.stopGame();
+  }
+
+  Future<void> _stopLanGuests() async {
+    _closingLan = true;
+    _notify();
+    await Future.wait(
+      _lanGuests.values
+          .where((g) => !g.finished)
+          .map((g) => stopLanPlayer(g.id)),
+    );
+  }
+
+  Future<void> _pollLan() async {
+    final generation = _launchGeneration;
+    final game = _game;
+    final bridge = _lanBridge;
+    bool current() =>
+        !_disposed &&
+        generation == _launchGeneration &&
+        game != null &&
+        identical(game, _game) &&
+        identical(bridge, _lanBridge) &&
+        running &&
+        !_closingLan;
+    if (_pollingLanGeneration == generation ||
+        !current() ||
+        _joinTarget != null) {
+      return;
+    }
+    _pollingLanGeneration = generation;
+    try {
+      final report = await bridge?.readReport();
+      if (!current()) return;
+      if (report != null && report.epoch != _rosterEpoch) {
+        _rosterEpoch = report.epoch;
+        _rosterSequence = -1;
+        _lanPort = null;
+        _lanPortChecked = null;
+      }
+      if (report != null && report.ready && report.sequence > _rosterSequence) {
+        _rosterSequence = report.sequence;
+        _rosterUpdated = DateTime.now();
+        _worldPlayers = report.players;
+        if (_worldPlayers.any((player) => player.name == _playerName)) {
+          _hostEverJoined = true;
+        }
+        for (final guest in _lanGuests.values) {
+          if (_worldPlayers.any((player) => player.name == guest.name)) {
+            guest.everJoined = true;
+          }
+        }
+      }
+      if (_worldPlayers.isNotEmpty &&
+          (_lanPortChecked == null ||
+              DateTime.now().difference(_lanPortChecked!).inSeconds >= 5)) {
+        // Recent Bedrock builds choose their own ephemeral hosting port and
+        // omit the legacy RPC launch reply. Inspect only this exact process.
+        final endpoint = await discoverLanEndpointForProcess(game!.pid);
+        if (!current()) return;
+        _lanPort = endpoint?.port;
+        _lanPortChecked = DateTime.now();
+      }
+      if (_rosterUpdated != null &&
+          DateTime.now().difference(_rosterUpdated!).inSeconds >= 10) {
+        _worldPlayers = [];
+      }
+      _notify();
+    } catch (_) {
+      // A disappearing prefix or a transient UDP failure must not escape an
+      // unawaited timer callback. Require a fresh world report before joining.
+      if (current()) {
+        _worldPlayers = [];
+        _rosterUpdated = null;
+        _notify();
+      }
+    } finally {
+      if (_pollingLanGeneration == generation) _pollingLanGeneration = null;
+    }
+  }
+
   String? _activeWine;
   String get runtime => p.join(storage.paths.runtimes, 'wine-11.0_1-mcs-v1');
   String get wine => _activeWine ?? p.join(runtime, 'bin/wine');
-  String get gamePrefix => p.join(storage.paths.prefixes, 'game');
+  String get gamePrefix => p.join(
+    storage.paths.prefixes,
+    sessionId == 'default' ? 'game' : 'game-$sessionId',
+  );
   String get _lock => storage.lockPath;
   String get _projectsFile => p.join(storage.paths.root, 'projects.json');
+  @override
+  Future<void> chooseNewWorld(bool enabled) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改存档设置。');
+    }
+    if (!await preferences.setInt(_newWorldKey, enabled ? 1 : 0)) {
+      throw const DevelopmentStorageException('无法保存存档设置。');
+    }
+    useNewWorld = enabled;
+    _notify();
+  }
+
   @override
   Future<void> choosePerformanceOptimization(bool enabled) async {
     if (busy || running) {
@@ -199,7 +543,10 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     }
   }
 
-  Future<void> _operation(Future<void> Function() action) async {
+  Future<void> _operation(
+    Future<void> Function() action, {
+    bool sharedLock = true,
+  }) async {
     if (busy || running) {
       throw const DevelopmentStorageException('请等待当前任务完成或退出测试游戏。');
     }
@@ -209,10 +556,16 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     _control = DownloadControl();
     _notify();
     try {
-      await withFileLock(_lock, () async {
+      Future<void> work() async {
         await _requireStorage();
         await action();
-      }, wait: false);
+      }
+
+      if (sharedLock) {
+        await withFileLock(_lock, work);
+      } else {
+        await work();
+      }
     } on DownloadCancelled {
       notice = '下载已暂停，重试时会继续。';
     } on FileSystemException {
@@ -241,6 +594,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
 
   @override
   Future<void> refresh() async {
+    if (running) return;
     await _requireStorage();
     await _refreshAccount();
     runtimeReady = await patchedWineReady(runtime);
@@ -288,12 +642,24 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       }
     }
     _restoreRenderer();
+    await _readProjects();
+    _notify();
+  }
+
+  Future<void> _readProjects() async {
     final manifest = File(_projectsFile);
+    final type = await FileSystemEntity.type(manifest.path, followLinks: false);
+    if (type != FileSystemEntityType.notFound &&
+        type != FileSystemEntityType.file) {
+      throw const DevelopmentStorageException('项目注册文件无法读取。');
+    }
     final loaded = <ModPack>[];
     final selected = <String>{};
     if (await manifest.exists()) {
       for (final row in jsonDecode(await manifest.readAsString()) as List) {
-        if (row['selected'] == true) selected.add(row['uuid']);
+        if (row['selected'] == true) {
+          selected.add(row['uuid']);
+        }
         final directory = _expandProject(row['path']);
         loaded.add(
           ModPack(
@@ -309,13 +675,43 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         );
       }
     }
+    // Another tab may be opened before the legacy tab. Preserve its old
+    // selection before any shared registry writer drops the legacy flags.
+    final originalPreferences = (preferences as TestSessionPreferences).store;
+    if (originalPreferences.getString(_selectionKey) == null &&
+        !await originalPreferences.setString(
+          _selectionKey,
+          jsonEncode(selected.toList()),
+        )) {
+      throw const DevelopmentStorageException('无法迁移原测试页的项目选择。');
+    }
+    if (sessionId != 'default') selected.clear();
+    final savedSelection = preferences.getString(_selectionKey);
+    if (savedSelection != null) {
+      selected
+        ..clear()
+        ..addAll((jsonDecode(savedSelection) as List).whereType<String>());
+    } else if (!await preferences.setString(
+      _selectionKey,
+      jsonEncode(selected.toList()),
+    )) {
+      throw const DevelopmentStorageException('无法保存项目选择。');
+    }
     packs = loaded;
     selectedPacks
       ..clear()
       ..addAll(
         selected.where((uuid) => packs.any((pack) => pack.uuid == uuid)),
       );
-    _notify();
+  }
+
+  Future<void> _saveSelection() async {
+    if (!await preferences.setString(
+      _selectionKey,
+      jsonEncode(selectedPacks.toList()),
+    )) {
+      throw const DevelopmentStorageException('无法保存项目选择。');
+    }
   }
 
   String _expandProject(String value) =>
@@ -327,7 +723,6 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'uuid': pack.uuid,
         'version': pack.version,
         'type': pack.type,
-        'selected': selectedPacks.contains(pack.uuid),
         'path': p.isWithin(storage.paths.root, pack.directory)
             ? p.relative(pack.directory, from: storage.paths.root)
             : pack.directory,
@@ -353,13 +748,14 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   @override
   Future<void> togglePacks(Iterable<String> uuids, bool selected) =>
       _operation(() async {
+        await _readProjects();
         final previous = {...selectedPacks};
         final known = uuids
             .where((uuid) => packs.any((pack) => pack.uuid == uuid))
             .toList();
         selected ? selectedPacks.addAll(known) : selectedPacks.removeAll(known);
         try {
-          await _saveProjects();
+          await _saveSelection();
         } catch (_) {
           selectedPacks
             ..clear()
@@ -721,6 +1117,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
 
   @override
   Future<void> importMods(String path) => _operation(() async {
+    await _readProjects();
     var source = p.absolute(path);
     final type = await FileSystemEntity.type(source);
     Directory? stage;
@@ -786,6 +1183,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       }
       packs = next;
       await _saveProjects();
+      await _saveSelection();
       notice = '已导入 ${groupModProjects(imported).length} 个项目。测试前同步源文件。';
     } finally {
       if (stage != null && await stage.exists()) {
@@ -799,6 +1197,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
 
   @override
   Future<void> removePacks(Iterable<String> uuids) => _operation(() async {
+    await _readProjects();
     final ids = uuids.toSet();
     final previous = [...packs];
     final selected = {...selectedPacks};
@@ -806,6 +1205,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     selectedPacks.removeAll(ids);
     try {
       await _saveProjects();
+      await _saveSelection();
       notice = '项目已从列表移除，源文件保留。';
     } catch (_) {
       packs = previous;
@@ -837,19 +1237,92 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     required String worldName,
     required bool creative,
     required bool menuOnly,
-  }) => _operation(() async {
+    String? seed,
+  }) {
+    if (busy || running) {
+      return Future.error(const DevelopmentStorageException('此测试页已经在运行。'));
+    }
+    _stopRequested = false;
+    _stopping = false;
+    _launchGeneration++;
+    final operation = _operation(
+      () => withTestSessionLocks(
+        storageLock: _lock,
+        prefixes: storage.paths.prefixes,
+        sessionId: sessionId,
+        run: (releasePreparation) => _launchTest(
+          worldName: worldName,
+          creative: creative,
+          menuOnly: menuOnly,
+          seed: seed,
+          releasePreparation: releasePreparation,
+        ),
+      ),
+      sharedLock: false,
+    );
+    _launchCompletion = operation;
+    return operation;
+  }
+
+  Future<void> _launchTest({
+    required String worldName,
+    required bool creative,
+    required bool menuOnly,
+    required void Function() releasePreparation,
+    String? seed,
+  }) async {
+    final generation = _launchGeneration;
+    _control?.check();
+    _joinTarget?.requireHost();
+    if (_joinTarget == null) {
+      for (final guest in _lanGuests.values) {
+        guest.launcher.dispose();
+      }
+      _lanGuests.clear();
+      _hasLanPlayers = false;
+      _hostEverJoined = false;
+      _closingLan = false;
+      _lanPort = null;
+      _lanPortChecked = null;
+      _requestedLanPort = null;
+      _worldPlayers = [];
+      _rosterUpdated = null;
+      _rosterSequence = -1;
+      _rosterEpoch = null;
+      _hostPackRoot = null;
+    }
     final game = games
         .where((game) => game.version == selectedVersion)
         .firstOrNull;
     if (game == null) throw const DevelopmentStorageException('请先下载或导入游戏。');
+    if (!menuOnly && useNewWorld && seed != null) {
+      final value = seed.trim();
+      if (!await preferences.setString(_worldSeedKey, value)) {
+        throw const DevelopmentStorageException('无法保存世界种子。');
+      }
+      newWorldSeed = value;
+    }
     Directory? performanceFiles;
+    Directory? lanFiles;
     Directory? rendererFiles;
     String? dragonRuntime;
     final adaptedDragon =
         !menuOnly &&
         effectiveRenderer == GameRenderer.renderDragon &&
         renderDragonCompatibilitySupported;
-    final executable = p.join(game.directory, 'Minecraft.Windows.exe');
+    _update(const StorageMigrationProgress('准备此测试页的游戏文件'));
+    final gameDirectory = await prepareSessionGame(
+      source: game.directory,
+      prefix: gamePrefix,
+      version: game.version,
+    );
+    final executable = p.join(gameDirectory, 'Minecraft.Windows.exe');
+    _lanTransportReady = false;
+    if (!menuOnly && supportsLanPatch(game.version)) {
+      _update(const StorageMigrationProgress('校验局域网兼容组件'));
+      await validateLanGame(game.version, File(executable));
+      lanFiles = await prepareLanPatch(storage.paths.runtimes);
+    }
     if (performanceOptimization && performanceOptimizationSupported) {
       _update(const StorageMigrationProgress('校验性能补丁'));
       await validatePerformanceGame(game.version, File(executable));
@@ -883,12 +1356,12 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     );
     await options.parent.create(recursive: true);
     final originalOptions = await options.exists()
-        ? await options.readAsString()
+        ? await options.readAsString(encoding: gameOptionsEncoding)
         : '';
     final stagingOptions = File('${options.path}.mcdev-tmp');
     IOSink? output;
+    var rpcLoggingOpen = true;
     final subscriptions = <StreamSubscription<List<int>>>[];
-    _stopRequested = false;
     try {
       await stagingOptions.writeAsString(
         mergeGameOptions(originalOptions, {
@@ -898,6 +1371,14 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           ),
           if (adaptedDragon) ...renderDragonOptions(vibrantVisuals),
           'dev_showDevConsoleButton': showDeveloperConsole ? '1' : '0',
+          // Match MCS CppGameOptionM.SetForceOptions. These developer options
+          // do not replace normal resource initialization or suppress all
+          // native resource assertions.
+          'resource_concatenation_enabled': '0',
+          'dev_assertions_debug_break': '0',
+          // Direct LAN login reads this option rather than player_info's
+          // launcher nickname. Keep each managed prefix's player independent.
+          'mp_username': _playerName,
         }),
         flush: true,
       );
@@ -911,18 +1392,28 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'games',
         'com.netease',
       );
+      if (_joinTarget == null) _hostPackRoot = dataRoot;
       final behavior = <String>[], resources = <String>[];
       for (final pack in chosen) {
         _control?.check();
+        final name = 'mcdev_${pack.uuid}';
+        // A guest joins the already running world. Source projects may have
+        // changed since launch; use exactly the host's mounted pack snapshot.
+        final source = _joinTarget == null
+            ? pack.directory
+            : p.join(
+                _joinTarget!.packRoot,
+                pack.type == 'resources' ? 'resource_packs' : 'behavior_packs',
+                name,
+              );
         final current = (await discoverModPacks(
-          pack.directory,
+          source,
         )).where((item) => item.uuid == pack.uuid).firstOrNull;
         if (current == null) {
           throw DevelopmentStorageException(
             '模组 ${pack.name} 的源文件已变化或无法访问，请重新导入。',
           );
         }
-        final name = 'mcdev_${pack.uuid}';
         final target = Directory(
           p.join(
             dataRoot,
@@ -937,7 +1428,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           if ((await Process.run('/usr/bin/ditto', [
                 '--noextattr',
                 '--norsrc',
-                pack.directory,
+                source,
                 staging.path,
               ])).exitCode !=
               0) {
@@ -958,16 +1449,32 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         }
         (pack.type == 'resources' ? resources : behavior).add(name);
       }
-      _rpc = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-      _rpc!.listen((socket) {
-        _connections.add(socket);
-        socket.listen(
-          (_) {},
-          onError: (_) {},
-          onDone: () => _connections.remove(socket),
+      if (_joinTarget case final target?) {
+        target.requireHost();
+        await target.bridge.copyToGuest(
+          behaviorPacksDirectory: p.join(dataRoot, 'behavior_packs'),
         );
-      });
-      final stamp = DateTime.now().millisecondsSinceEpoch;
+        behavior.add(target.bridge.directoryName);
+        target.requireHost();
+      }
+      _rpc = await LanGameRpc.start(
+        // Legacy endpoint replies are not sufficient proof that the socket
+        // belongs to this Tab. The host poll verifies the exact game PID.
+        onPacket: (packet) {
+          // Only protocol metadata, never packet bodies or login keys.
+          if (rpcLoggingOpen && generation == _launchGeneration) {
+            output?.writeln(
+              '[MCDev RPC] command=${packet.command} bytes=${packet.payload.length}',
+            );
+          }
+        },
+        onError: (message) {
+          if (rpcLoggingOpen && generation == _launchGeneration) {
+            output?.writeln('[MCDev RPC] $message');
+          }
+        },
+      );
+      final stamp = '$sessionId-${DateTime.now().microsecondsSinceEpoch}';
       final config = File(
         p.join(gamePrefix, 'drive_c', 'MCDevTests', 'test.cppconfig'),
       );
@@ -975,6 +1482,45 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'dc_tag1=${menuOnly ? 'mod_pc_no_launcher' : 'studio_no_launcher'}',
       ];
       if (!menuOnly) {
+        _hostSkin = playerSkin;
+        final skinInfo = await prepareTestPlayerSkin(
+          skin: _hostSkin,
+          gameDirectory: gameDirectory,
+          gamePrefix: gamePrefix,
+        );
+        final world = _joinTarget == null
+            ? await TestWorldStore(
+                p.join(
+                  await _roaming(),
+                  'MinecraftPE_Netease',
+                  'minecraftWorlds',
+                ),
+              ).prepare(fresh: useNewWorld, seed: newWorldSeed)
+            : null;
+        final playerId =
+            (((int.tryParse(api.session?.id ?? '') ?? 0) | 0x80000000) &
+            0xffffffff);
+        _roomToken =
+            _joinTarget?.token ??
+            // CoreNative.GetH5Token returns the login token's MD5 hex;
+            // CppGameM encodes those 16 digest bytes for the game config.
+            base64Encode(md5.convert(utf8.encode(api.session!.token)).bytes);
+        _hostId = _joinTarget?.hostId ?? playerId;
+        _hostWorldName = worldName.trim().isEmpty ? '模组测试' : worldName.trim();
+        if (_joinTarget == null) {
+          _requestedLanPort = await chooseAvailableLanPort();
+          _lanBridge = await LanRosterBridge.create(
+            behaviorPacksDirectory: p.join(dataRoot, 'behavior_packs'),
+            reportPath: p.join(
+              gamePrefix,
+              'drive_c',
+              'MCDevTests',
+              'lan-roster.json',
+            ),
+            windowsReportPath: r'C:\MCDevTests\lan-roster.json',
+          );
+          behavior.add(_lanBridge!.directoryName);
+        }
         await _saveJson(config, {
           'version': game.version,
           if (rendererSwitchSupported)
@@ -989,67 +1535,64 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           'MainComponentId': '',
           'LocalComponentPathsDict': {},
           'path': _winPath(config.path),
-          'world_info': {
-            'level_id': 'mcdev_test',
-            'name': worldName.trim().isEmpty ? '模组测试' : worldName.trim(),
-            'seed': '',
-            'game_type': creative ? 1 : 0,
-            'difficulty': 2,
-            'permission_level': 1,
-            'cheat': true,
-            'cheat_info': {
-              'pvp': true,
-              'show_coordinates': true,
-              'daylight_cycle': true,
-              'fire_spreads': true,
-              'tnt_explodes': true,
-              'mob_spawn': true,
-              'natural_regeneration': true,
-              'mob_loot': true,
-              'mob_griefing': true,
-              'tile_drops': true,
-              'entities_drop_loot': true,
-              'weather_cycle': true,
-              'command_blocks_enabled': true,
-              'random_tick_speed': 1,
-            },
-            'resource_packs': resources,
-            'behavior_packs': behavior,
-            'world_type': 1,
-            'start_with_map': false,
-            'bonus_items': false,
-          },
+          'world_info': world == null
+              ? null
+              : {
+                  'level_id': world.levelId,
+                  'name': worldName.trim().isEmpty ? '模组测试' : worldName.trim(),
+                  'seed': world.seed,
+                  'game_type': creative ? 1 : 0,
+                  'difficulty': 2,
+                  'permission_level': 1,
+                  'cheat': true,
+                  'cheat_info': {
+                    'pvp': true,
+                    'show_coordinates': true,
+                    'daylight_cycle': true,
+                    'fire_spreads': true,
+                    'tnt_explodes': true,
+                    'mob_spawn': true,
+                    'natural_regeneration': true,
+                    'mob_loot': true,
+                    'mob_griefing': true,
+                    'tile_drops': true,
+                    'entities_drop_loot': true,
+                    'weather_cycle': true,
+                    'command_blocks_enabled': true,
+                    'random_tick_speed': 1,
+                  },
+                  'resource_packs': resources,
+                  'behavior_packs': behavior,
+                  'world_type': 1,
+                  'start_with_map': false,
+                  'bonus_items': false,
+                },
           'room_info': {
-            'ip': '',
-            'port': 0,
+            // Use local RakNet rather than the developer client's default
+            // NetherNet/P2P service, which requires online signaling.
+            'in_webrtc_gray': false,
+            'ip': _joinTarget == null ? '' : '127.0.0.1',
+            'port': _joinTarget?.port ?? _requestedLanPort,
+            // Each guest owns an independent process and prefix. MCS's
+            // muiltClient shortcut skips player, skin and resource bootstrap;
+            // type 100 plus the endpoint still selects a remote world join.
             'muiltClient': false,
-            'token': base64Encode(
-              List<int>.generate(32, (_) => Random.secure().nextInt(256)),
-            ),
-            'room_id': 0,
-            'host_id': 0,
+            'token': _roomToken,
+            'room_id': _hostId,
+            'host_id': _hostId,
+            'room_name': _hostWorldName,
+            'max_player': 255,
+            'visibility_mode': 0,
             'allow_pe': true,
             'is_pe': false,
             'item_ids': [],
           },
           'player_info': {
-            'user_id':
-                ((int.tryParse(api.session?.id ?? '') ?? 0) | 0x80000000) &
-                0xffffffff,
-            'user_name': 'Developer',
+            'user_id': playerId,
+            'user_name': _playerName,
             'urs': '',
           },
-          'skin_info': playerSkin.skinInfo(
-            _winPath(
-              p.join(
-                game.directory,
-                'data',
-                'skin_packs',
-                'vanilla',
-                playerSkin.textureFile,
-              ),
-            ),
-          ),
+          'skin_info': skinInfo,
           'anti_addiction_info': {
             'enable': false,
             'left_time': 0,
@@ -1058,7 +1601,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
             'first_message': '',
           },
           'misc': {
-            'multiplayer_game_type': 0,
+            // LAN_HOST/GUEST (1/2) are NetEase relay rooms. Keep the host a
+            // local test world and join its direct endpoint with type 100.
+            'multiplayer_game_type': _joinTarget == null ? 0 : 100,
             'launcher_port': _rpc!.port,
             'auth_server_url': 'https://g79authexpr1.nie.netease.com',
             'sensitive_word_file': '',
@@ -1082,7 +1627,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         p.join(gamePrefix, 'drive_c', 'MCDevTests', 'assertions'),
       );
       await assertDir.create(recursive: true);
-      await _saveJson(File(p.join(game.directory, 'netease_data.json')), {
+      await _saveJson(File(p.join(gameDirectory, 'netease_data.json')), {
         'Uid': api.session?.id ?? '',
         'Urs': '',
         'ServerName': 'MCS',
@@ -1095,6 +1640,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'performance-$stamp.log',
       );
       final rendererLog = p.join(storage.paths.logs, 'renderer-$stamp.log');
+      final lanLog = p.join(storage.paths.logs, 'lan-$stamp.log');
       if (dragonRuntime != null) {
         _activeWine = p.join(dragonRuntime, 'bin/wine');
       }
@@ -1102,21 +1648,58 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           ? await prepareWineGameApplication(
               dragonRuntime ?? runtime,
               metal: dragonRuntime != null,
+              sessionId: sessionId,
+              displayName: gameDisplayName,
             )
           : null;
       final inputGuard = Platform.isMacOS && !fullscreenShortcut
           ? await prepareFullscreenShortcutGuard(storage.paths.runtimes)
           : null;
+      final chrome = gameApplication != null
+          ? await prepareGameWindowChrome(storage.paths.runtimes)
+          : null;
+      final inputEnvironment = inputGuard != null
+          ? fullscreenShortcutEnvironment(inputGuard.path)
+          : <String, String>{};
+      _control?.check();
+      _joinTarget?.requireHost();
+      if (_joinTarget != null) {
+        await File(
+          p.join(
+            await _roaming(),
+            'MinecraftPE_Netease',
+            'random_device_id.txt',
+          ),
+        ).writeAsString('');
+      }
+      _control?.check();
+      await _joinTarget?.verifyHost(() {
+        _control?.check();
+        if (_stopRequested) throw DownloadCancelled();
+      });
+      _control?.check();
       _game = await Process.start(
         gameApplication?.loader ?? wine,
         [_winPath(executable), ...args],
-        workingDirectory: game.directory,
+        workingDirectory: gameDirectory,
         environment: _env(
           gamePrefix,
           overrides: {
             if (gameApplication != null) ...gameApplication.environment,
-            if (inputGuard != null)
-              ...fullscreenShortcutEnvironment(inputGuard.path),
+            ...inputEnvironment,
+            if (lanFiles != null) ...{
+              'MCDEV_LAN_PATCH_LOG': _winPath(lanLog),
+              'MCDEV_LAN_ROLE': _joinTarget == null ? 'host' : 'guest',
+            },
+            if (chrome != null)
+              ...chrome.environment(
+                loader: gameApplication!.loader,
+                version: game.version,
+                displayName: gameDisplayName,
+                renderer:
+                    (menuOnly ? GameRenderer.openGL : effectiveRenderer).label,
+                inherited: {...Platform.environment, ...inputEnvironment},
+              ),
             if (rendererFiles != null) ...{
               ...renderDragonEnvironment,
               'MCDEV_RENDERER_LOG': _winPath(rendererLog),
@@ -1130,6 +1713,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         ),
       );
       running = true;
+      busy = false;
       final actualRenderer = menuOnly ? GameRenderer.openGL : effectiveRenderer;
       notice =
           '测试游戏已启动（${actualRenderer.label} · ${limit60Fps ? '60 帧上限' : '不限帧'}）。';
@@ -1156,6 +1740,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         drained.then<void>((_) {}, onError: (Object _, StackTrace _) {}),
       );
       progress = null;
+      if (lanFiles != null) {
+        unawaited(_activateLan(lanFiles, executable, lanLog, _game!));
+      }
       if (performanceFiles != null) {
         unawaited(
           _activatePerformance(
@@ -1171,7 +1758,33 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           _activateRenderer(rendererFiles, executable, rendererLog, _game!),
         );
       }
+      releasePreparation();
+      // Cancellation can arrive while Process.start is awaiting the OS. At
+      // that time stopGame has no Process to close and waits for this lifetime.
+      // Close the process directly here; calling stopGame would self-await.
+      final cancelledAfterSpawn =
+          _stopRequested ||
+          _control?.cancelled == true ||
+          (_joinTarget != null && !_joinTarget!.isCurrent());
+      if (cancelledAfterSpawn) {
+        _stopRequested = true;
+        _closingLan = true;
+        try {
+          await _requestProcessExit(_game!);
+        } catch (_) {
+          // Retain the live process and its lifetime lease if the OS could not
+          // stop it. The user can retry shutdown; never mark it as exited.
+          error = '游戏启动已取消，但窗口尚未退出，请重试退出测试。';
+          _notify();
+        }
+      } else if (_joinTarget == null && !menuOnly) {
+        _lanTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+          unawaited(_pollLan());
+        });
+      }
       final code = await _game!.exitCode;
+      busy = true;
+      await _stopLanGuests();
       try {
         await drained.timeout(const Duration(seconds: 10));
       } on TimeoutException {
@@ -1183,22 +1796,39 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         notice = '测试游戏已退出，存档保留在当前容器中。';
       }
     } finally {
+      // Invalidate in-flight probes before any asynchronous cleanup. RPC must
+      // stop writing before the log sink closes.
+      busy = true;
+      _closingLan = true;
+      rpcLoggingOpen = false;
+      _lanTimer?.cancel();
+      _lanTimer = null;
+      _lanBridge = null;
+      try {
+        await _closeRpc();
+      } catch (_) {
+        // The server invalidates callbacks before closing its socket; continue
+        // releasing streams and the prefix even if the OS reports close errors.
+      }
       for (final subscription in subscriptions) {
         await subscription.cancel();
       }
       try {
         await output?.close();
       } finally {
+        _lanPort = null;
+        _worldPlayers = [];
+        _lanBridge = null;
         running = false;
         _game = null;
-        _stopping = false;
-        await _closeRpc();
         _activeWine = null;
         if (adaptedDragon && await options.exists()) {
           try {
             // The prefix is shared across versions. Restore only the two
             // temporary renderer settings; preserve game-written preferences.
-            final text = await options.readAsString();
+            final text = await options.readAsString(
+              encoding: gameOptionsEncoding,
+            );
             await stagingOptions.writeAsString(
               restoreRenderDragonOptions(text, originalOptions),
               flush: true,
@@ -1211,7 +1841,62 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         _notify();
       }
     }
-  });
+  }
+
+  Future<void> _activateLan(
+    Directory files,
+    String executable,
+    String log,
+    Process target,
+  ) async {
+    bool current() => running && identical(_game, target);
+    try {
+      final loaded = await injectPerformancePatch(
+        wine: wine,
+        environment: _env(gamePrefix),
+        helper: _winPath(p.join(files.path, lanInjectorFile)),
+        dll: _winPath(p.join(files.path, 'lan-patch.dll')),
+        executable: _winPath(executable),
+        cancelWhen: target.exitCode.then<void>((_) {}),
+      );
+      if (loaded) {
+        for (var attempt = 0; attempt < 160 && current(); attempt++) {
+          final file = File(log);
+          if (await file.exists()) {
+            final text = await file.readAsString();
+            if (!current()) return;
+            if (text.contains('"lan_patch":"ready"')) {
+              _lanTransportReady = true;
+              _notify();
+              return;
+            }
+            if (text.contains('"lan_patch":"failed"') ||
+                text.contains('"lan_patch":"unsupported"')) {
+              break;
+            }
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        }
+      }
+    } catch (_) {
+      // Single-player gameplay may continue; no unverified LAN join is offered.
+    }
+    if (current()) {
+      if (_joinTarget != null) {
+        error = '局域网连接兼容组件未能激活，请查看日志后重新添加测试玩家。';
+        _notify();
+        try {
+          await stopGame();
+        } catch (_) {
+          error = '局域网兼容组件未能激活，访客窗口尚未退出，请在玩家列表关闭该窗口。';
+          _notify();
+        }
+        return;
+      }
+      notice = '局域网兼容组件未能激活，当前游戏仍可继续单人测试，请查看日志。';
+      _notify();
+    }
+  }
 
   Future<void> _activateRenderer(
     Directory files,
@@ -1323,34 +2008,72 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   }
 
   Future<void> _closeRpc() async {
-    for (final socket in [..._connections]) {
-      socket.destroy();
-    }
-    _connections.clear();
-    await _rpc?.close();
+    final rpc = _rpc;
     _rpc = null;
+    await rpc?.close();
   }
 
-  @override
-  Future<void> stopGame() async {
-    final child = _game;
-    if (child == null || _stopping) return;
-    _stopping = true;
-    _stopRequested = true;
+  Future<void> _requestProcessExit(Process child) async {
     try {
-      // WM_CLOSE first; target this application's isolated prefix only.
+      // WM_CLOSE first; only this application's isolated prefix is targeted.
       await _wineRun(gamePrefix, [
         'taskkill',
         '/im',
         'Minecraft.Windows.exe',
       ], timeout: const Duration(seconds: 15));
       await child.exitCode.timeout(const Duration(seconds: 20));
+      return;
+    } catch (_) {
+      // Includes a missing wine binary or a disconnected data volume, as well
+      // as a timeout. Such failures must not enter an unbounded lifetime wait.
+    }
+    try {
+      await _killPrefix(gamePrefix);
+    } catch (_) {
+      // The already-created Process remains addressable if its runtime moved.
+    }
+    try {
+      await child.exitCode.timeout(const Duration(seconds: 5));
+      return;
     } on TimeoutException {
-      await _killPrefix(gamePrefix);
-    } on DevelopmentStorageException {
-      await _killPrefix(gamePrefix);
+      child.kill(ProcessSignal.sigterm);
+    }
+    try {
+      await child.exitCode.timeout(const Duration(seconds: 5));
+      return;
+    } on TimeoutException {
+      child.kill(ProcessSignal.sigkill);
+    }
+    await child.exitCode.timeout(const Duration(seconds: 5));
+  }
+
+  @override
+  Future<void> stopGame() async {
+    final completion = _launchCompletion;
+    final generation = _launchGeneration;
+    if (_game == null && !busy) return;
+    if (_stopping) {
+      await completion?.timeout(const Duration(seconds: 90));
+      return;
+    }
+    _stopping = true;
+    _stopRequested = true;
+    _control?.cancelled = true;
+    _closingLan = true;
+    _notify();
+    try {
+      try {
+        await _stopLanGuests().timeout(const Duration(seconds: 90));
+      } catch (_) {
+        // Still close the host if a guest could not finish shutting down.
+      }
+      final child = _game;
+      if (child != null) await _requestProcessExit(child);
+      await completion?.timeout(const Duration(seconds: 90));
+    } catch (_) {
+      throw const DevelopmentStorageException('测试游戏尚未完成退出，请重试；正在运行的窗口与存档仍保留。');
     } finally {
-      _stopping = false;
+      if (generation == _launchGeneration) _stopping = false;
     }
   }
 
@@ -1363,9 +2086,62 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   void dispose() {
     _disposed = true;
     _control?.cancelled = true;
+    for (final guest in _lanGuests.values) {
+      guest.launcher.dispose();
+    }
     if (!running && !busy) api.close();
     super.dispose();
   }
+}
+
+class _LanJoinTarget {
+  const _LanJoinTarget(
+    this.port,
+    this.hostPid,
+    this.hostId,
+    this.worldName,
+    this.token,
+    this.packRoot,
+    this.bridge,
+    this.isCurrent,
+    this.hasFreshWorld,
+    this.refreshWorld,
+  );
+  final int port;
+  final int hostPid;
+  final int hostId;
+  final String worldName;
+  final String token;
+  final String packRoot;
+  final LanRosterBridge bridge;
+  final bool Function() isCurrent;
+  final bool Function() hasFreshWorld;
+  final Future<void> Function() refreshWorld;
+  void requireHost() {
+    if (!isCurrent()) {
+      throw const DevelopmentStorageException('房主世界已退出或已切换，请重新添加测试玩家。');
+    }
+  }
+
+  Future<void> verifyHost(void Function() checkCancelled) => verifyLanJoinHost(
+    hostPid: hostPid,
+    port: port,
+    requireHost: requireHost,
+    hasFreshWorld: hasFreshWorld,
+    refreshWorld: refreshWorld,
+    checkCancelled: checkCancelled,
+  );
+}
+
+class _LanGuest {
+  _LanGuest(this.id, this.name, this.skin, this.launcher);
+  final String id;
+  final String name;
+  final TestPlayerSkin skin;
+  final NativeDevelopmentLauncher launcher;
+  bool finished = false;
+  bool everJoined = false;
+  String? failure;
 }
 
 String safeArchivePath(String name) {

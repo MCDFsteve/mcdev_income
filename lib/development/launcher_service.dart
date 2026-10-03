@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import '../core/preferences.dart';
@@ -13,10 +15,12 @@ Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
   PreferenceStore preferences, {
   Future<String> Function()? cookieProvider,
+  String sessionId = 'default',
 }) => backend.openDevelopmentLauncher(
   storage,
   preferences,
   cookieProvider: cookieProvider,
+  sessionId: sessionId,
 );
 
 class LocalGame {
@@ -137,6 +141,56 @@ List<ModProject> groupModProjects(Iterable<ModPack> packs) {
   ];
 }
 
+enum DevelopmentPlayerStatus { starting, connected, disconnected, failed }
+
+class DevelopmentPlayer {
+  const DevelopmentPlayer({
+    required this.id,
+    required this.name,
+    this.skin,
+    required this.host,
+    required this.status,
+    this.canStop = false,
+    this.error,
+  });
+  final String id;
+  final String name;
+
+  /// Only known for launcher-managed players. LAN reports do not include skin.
+  final TestPlayerSkin? skin;
+  final bool host;
+  final DevelopmentPlayerStatus status;
+
+  /// The launcher can close this local guest window, independently of whether
+  /// its player is currently inside the world.
+  final bool canStop;
+  final String? error;
+}
+
+String? validateDevelopmentPlayerName(String value) {
+  final name = value.trim();
+  if (name.isEmpty) return '请输入玩家名字。';
+  // mp_username is a 16-byte UTF-8 field in the game, not 16 characters.
+  // Reject overlong names instead of allowing native truncation mid-character.
+  if (utf8.encode(name).length > 16) {
+    return '玩家名字最多 16 字节，中文通常最多 5 个字。';
+  }
+  if (RegExp(r'[\x00-\x1f\x7f§]').hasMatch(name)) {
+    return '玩家名字不能包含控制字符或颜色代码。';
+  }
+  return null;
+}
+
+String suggestedDevelopmentPlayerName(Iterable<String> reservedNames) {
+  final reserved = reservedNames.toSet();
+  for (var index = 1; ; index++) {
+    var name = '测试玩家$index';
+    if (utf8.encode(name).length > 16) name = '玩家$index';
+    if (utf8.encode(name).length > 16) name = 'P${index.toRadixString(36)}';
+    if (!reserved.contains(name)) return name;
+  }
+}
+
 abstract class DevelopmentLauncher extends ChangeNotifier {
   bool busy = false;
   bool running = false;
@@ -157,6 +211,8 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   bool vibrantVisuals = false;
   bool showDeveloperConsole = false;
   bool fullscreenShortcut = false;
+  bool useNewWorld = false;
+  String newWorldSeed = '';
   TestPlayerSkin playerSkin = TestPlayerSkin.steve;
   GameRenderer renderer = GameRenderer.openGL;
   bool get rendererSwitchSupported => supportsRendererSwitch(selectedVersion);
@@ -172,6 +228,24 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
       effectiveRenderer == GameRenderer.renderDragon;
   final Set<String> selectedPacks = {};
   List<ModProject> get projects => groupModProjects(packs);
+  String get tabTitle {
+    final names = projects
+        .where((project) => project.uuids.any(selectedPacks.contains))
+        .map((project) => project.name);
+    return names.isEmpty ? '原版测试' : names.join(' + ');
+  }
+
+  String get gameDisplayName => '我的世界测试 · $tabTitle';
+
+  bool get lanAvailable => false;
+  String get lanUnavailableReason => '请等待此测试页的世界加载完成。';
+  bool get hasLanPlayers => false;
+  List<DevelopmentPlayer> get players => const [];
+  Future<void> launchLanPlayer({
+    required String name,
+    required TestPlayerSkin skin,
+  }) => Future.error(const DevelopmentStorageException('请先启动此测试页的世界。'));
+  Future<void> stopLanPlayer(String id) async {}
 
   Future<void> refresh();
   Future<void> installWine();
@@ -186,9 +260,15 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
     required String worldName,
     required bool creative,
     required bool menuOnly,
+    String? seed,
   });
   Future<void> stopGame();
   void cancel();
+  Future<void> chooseNewWorld(bool enabled) async {
+    useNewWorld = enabled;
+    notifyListeners();
+  }
+
   Future<void> choosePerformanceOptimization(bool enabled) async {
     performanceOptimization = enabled;
     notifyListeners();

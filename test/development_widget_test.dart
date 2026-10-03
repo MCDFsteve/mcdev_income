@@ -60,6 +60,8 @@ class FakeLauncher extends DevelopmentLauncher {
   }
   int launches = 0;
   int refreshes = 0;
+  String? lastSeed;
+  bool? lastNewWorld;
   @override
   Future<void> refresh() async {
     refreshes++;
@@ -100,8 +102,11 @@ class FakeLauncher extends DevelopmentLauncher {
     required String worldName,
     required bool creative,
     required bool menuOnly,
+    String? seed,
   }) async {
     launches++;
+    lastSeed = seed;
+    lastNewWorld = useNewWorld;
     running = true;
     busy = true;
     notifyListeners();
@@ -235,7 +240,7 @@ void main() {
           find.byKey(const ValueKey('development-desktop')),
           findsOneWidget,
         );
-        expect(find.text('Project'), findsOneWidget);
+        expect(find.text('Project'), findsNWidgets(2));
         expect(find.text('/project/BP'), findsNothing);
         expect(find.textContaining('部分启用'), findsOneWidget);
         final wine = tester.getRect(find.text('Wine 运行环境'));
@@ -243,7 +248,7 @@ void main() {
         expect(projects.left, greaterThan(wine.right));
         final launch = find.widgetWithText(OreButton, '启动测试');
         expect(launch.hitTestable(), findsOneWidget);
-        await tester.tap(find.text('Project'));
+        await tester.tap(find.text('Project').last);
         await tester.pumpAndSettle();
         expect(launcher.selectedPacks, containsAll(['bp', 'rp']));
         expect(find.textContaining('部分启用'), findsNothing);
@@ -460,10 +465,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(OreButton, '测试设置'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(OreTextField), 'Retained world');
-    await tester.tap(find.widgetWithText(OreButton, '完成'));
     await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(390, 844);
     await tester.pumpAndSettle();
@@ -492,9 +495,8 @@ void main() {
     // A short desktop window must allow scrolling instead of overflowing.
     tester.view.physicalSize = const Size(1280, 480);
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('development-desktop')), findsOneWidget);
     expect(
-      find.byKey(const PageStorageKey('development-projects-compact')),
+      find.byKey(const ValueKey('development-single-column')),
       findsOneWidget,
     );
     expect(launch.hitTestable(), findsOneWidget);
@@ -540,7 +542,6 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(OreButton, '测试设置'));
         await tester.pumpAndSettle();
         expect(find.text('灵动视效（实验性）'), findsNothing);
         await tester.tap(find.text('渲染龙'));
@@ -556,7 +557,14 @@ void main() {
           await tester.pumpAndSettle();
           expect(launcher.vibrantVisuals, isTrue);
         } else {
-          expect(find.textContaining('当前版本尚未适配灵动视效'), findsOneWidget);
+          expect(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is OreTooltip &&
+                  widget.message.contains('当前版本尚未适配灵动视效'),
+            ),
+            findsOneWidget,
+          );
         }
         expect(tester.takeException(), isNull);
       },

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mcdev_income/development/game_graphics.dart';
 import 'package:mcdev_income/development/mcs_api.dart';
@@ -26,6 +29,30 @@ void main() {
     ]);
     expect(catalog.stable!.clientType, GameClientType.openGL);
   });
+  test(
+    'truncated UTF-8 username recovers without losing other saved options',
+    () async {
+      final temporary = await Directory.systemTemp.createTemp('mcdev-options-');
+      addTearDown(() => temporary.delete(recursive: true));
+      final file = File('${temporary.path}/options.txt');
+      // The native client wrote 16 bytes of an 18-byte name, leaving an
+      // incomplete final Chinese character. This previously blocked relaunch.
+      await file.writeAsBytes([
+        ...utf8.encode('mp_username:'),
+        ...utf8.encode('测试艾利克斯').take(16),
+        ...utf8.encode('\r\ngfx_viewdistance:96\r\ncustom:保留此项\r\n'),
+      ]);
+      final source = await file.readAsString(encoding: gameOptionsEncoding);
+      final repaired = mergeGameOptions(source, {'mp_username': '测试艾莉'});
+      expect(
+        repaired,
+        'mp_username:测试艾莉\r\ngfx_viewdistance:96\r\ncustom:保留此项\r\n',
+      );
+      await file.writeAsString(repaired);
+      expect(await file.readAsString(), repaired);
+    },
+  );
+
   test(
     'renderer choices match MCS version boundary and configuration enums',
     () {

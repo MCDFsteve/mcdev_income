@@ -78,7 +78,43 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
   ).join();
 
   Future<T> _exclusive<T>(Future<T> Function() action) =>
-      withFileLock(lockPath, action, wait: false);
+      withFileLock(lockPath, () => _withIdleSessions(action), wait: false);
+
+  /// Launch preparation holds the storage lock only until the game starts.
+  /// The session leases outlive preparation, so another app process cannot
+  /// move an active prefix or switch its data directory while a game runs.
+  Future<T> _withIdleSessions<T>(Future<T> Function() action) async {
+    final directory = Directory(paths.prefixes);
+    final leases = <String>[];
+    if (await directory.exists()) {
+      await for (final entry in directory.list(followLinks: false)) {
+        if (RegExp(
+          r'^\.session-[a-zA-Z0-9_-]{1,64}\.lock$',
+        ).hasMatch(p.basename(entry.path))) {
+          if (entry is! File) {
+            throw const DevelopmentStorageException('测试容器锁文件无效。');
+          }
+          leases.add(entry.path);
+        }
+      }
+    }
+    leases.sort();
+    Future<T> acquire(int index) async {
+      if (index == leases.length) return action();
+      var acquired = false;
+      try {
+        return await withFileLock(leases[index], () {
+          acquired = true;
+          return acquire(index + 1);
+        }, wait: false);
+      } on FileSystemException {
+        if (acquired) rethrow;
+        throw const DevelopmentStorageException('请先退出所有测试游戏，再更改开发数据目录。');
+      }
+    }
+
+    return acquire(0);
+  }
 
   /// Resolve existing ancestors too, so symlink aliases cannot bypass nesting checks.
   Future<String> _canonical(String value) async {
@@ -190,7 +226,19 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
     }
   }
 
-  Future<void> _saveRoot(String root) async {
+  Future<void> _saveRoot(String root, {String? copiedTabsFrom}) async {
+    if (copiedTabsFrom != null) {
+      final tabs = preferences.getString(
+        'development_test_tabs_v1:$copiedTabsFrom',
+      );
+      if (tabs != null &&
+          !await preferences.setString(
+            'development_test_tabs_v1:$root',
+            tabs,
+          )) {
+        throw const DevelopmentStorageException('测试标签页设置未能迁移，原位置仍保持启用。');
+      }
+    }
     if (!await preferences.setString(DevelopmentStorage.preferenceKey, root)) {
       throw const DevelopmentStorageException('路径设置未能保存，原位置仍保持启用。');
     }
@@ -442,7 +490,7 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
       onProgress?.call(const StorageMigrationProgress('切换数据位置'));
       // Renaming over a nonempty target fails atomically: never delete it.
       await stage.rename(destination);
-      await _saveRoot(destination);
+      await _saveRoot(destination, copiedTabsFrom: source);
     } finally {
       if (await stage.exists()) await stage.delete(recursive: true);
     }

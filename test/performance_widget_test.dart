@@ -10,7 +10,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   for (final supported in [true, false]) {
     testWidgets(
-      'performance setting is ${supported ? 'available' : 'hidden'} and fits the desktop dialog',
+      'inline performance setting is ${supported ? 'available' : 'hidden'} and fits the desktop',
       (tester) async {
         tester.view.physicalSize = const Size(1024, 768);
         tester.view.devicePixelRatio = 1;
@@ -31,7 +31,6 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('测试设置'));
         await tester.pumpAndSettle();
         final setting = find.widgetWithText(OreCheckboxListTile, '图形性能优化');
         if (supported) {
@@ -75,7 +74,6 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('测试设置'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('渲染龙'));
       await tester.tap(find.text('渲染龙'));
