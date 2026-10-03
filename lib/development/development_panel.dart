@@ -221,125 +221,120 @@ class _DevelopmentEnvironmentPanelState
                 children: [
                   for (final tab in _store!.tabs)
                     if (_launchers[tab.id] case final launcher?)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Stack(
-                              children: [
-                                Semantics(
-                                  button: true,
-                                  selected: _store!.activeId == tab.id,
-                                  inMutuallyExclusiveGroup: true,
-                                  child: OreTooltip(
-                                    message: launcher.tabTitle,
-                                    child: OreButton(
-                                      key: ValueKey(
-                                        'development-tab-${tab.id}',
-                                      ),
-                                      size: OreButtonSize.sm,
-                                      variant: _store!.activeId == tab.id
-                                          ? OreButtonVariant.primary
-                                          : OreButtonVariant.secondary,
-                                      forcePressed: _store!.activeId == tab.id,
-                                      forcePressedKeepsColor: true,
-                                      onPressed: () => _select(tab.id),
-                                      child: ConstrainedBox(
-                                        constraints: const BoxConstraints(
-                                          maxWidth: 190,
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            if (launcher.running ||
-                                                launcher.busy) ...[
-                                              Icon(
-                                                launcher.running
-                                                    ? Icons.play_arrow
-                                                    : Icons.hourglass_top,
-                                                size: 14,
-                                              ),
-                                              const SizedBox(width: 4),
-                                            ],
-                                            Flexible(
-                                              child: Text(
-                                                launcher.tabTitle,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (_store!.activeId == tab.id)
-                                  Positioned(
-                                    key: ValueKey(
-                                      'development-tab-indicator-${tab.id}',
-                                    ),
-                                    left: 0,
-                                    right: 0,
-                                    bottom: theme.borderWidth,
-                                    height:
-                                        theme.borderWidth *
-                                        OreTokens.choiceIndicatorHeightUnits,
-                                    child: IgnorePointer(
-                                      child: Align(
-                                        alignment: Alignment.center,
-                                        child: FractionallySizedBox(
-                                          widthFactor: OreTokens
-                                              .choiceIndicatorWidthFactor,
-                                          heightFactor: 1,
-                                          child: ColoredBox(
-                                            color: theme.colors.textInverse,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            OreTooltip(
-                              message: _store!.tabs.length == 1
-                                  ? '至少保留一个测试标签'
-                                  : '关闭测试标签',
-                              child: Semantics(
-                                label: '关闭测试标签',
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Stack(
+                            children: [
+                              Semantics(
                                 button: true,
-                                enabled:
-                                    !_adding &&
-                                    _store!.tabs.length > 1 &&
-                                    !_closing.contains(tab.id) &&
-                                    (!launcher.busy || launcher.running),
-                                child: OreButton(
-                                  key: ValueKey(
-                                    'development-close-tab-${tab.id}',
+                                selected: _store!.activeId == tab.id,
+                                inMutuallyExclusiveGroup: true,
+                                child: OreTooltip(
+                                  message: launcher.tabTitle,
+                                  child: OreButton(
+                                    key: ValueKey('development-tab-${tab.id}'),
+                                    size: OreButtonSize.sm,
+                                    variant: _store!.activeId == tab.id
+                                        ? OreButtonVariant.primary
+                                        : OreButtonVariant.secondary,
+                                    forcePressed: _store!.activeId == tab.id,
+                                    forcePressedKeepsColor: true,
+                                    onPressed: () => _select(tab.id),
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 190,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (launcher.running ||
+                                              launcher.busy) ...[
+                                            Icon(
+                                              launcher.running
+                                                  ? Icons.play_arrow
+                                                  : Icons.hourglass_top,
+                                              size: 14,
+                                            ),
+                                            const SizedBox(width: 4),
+                                          ],
+                                          Flexible(
+                                            child: Text(
+                                              launcher.tabTitle,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                  size: OreButtonSize.sm,
-                                  width: OreTokens.controlHeightSm,
-                                  contentPadding: EdgeInsets.zero,
-                                  variant: _store!.activeId == tab.id
-                                      ? OreButtonVariant.primary
-                                      : OreButtonVariant.secondary,
-                                  forcePressed: _store!.activeId == tab.id,
-                                  forcePressedKeepsColor: true,
-                                  onPressed:
-                                      _adding ||
-                                          _store!.tabs.length <= 1 ||
-                                          _closing.contains(tab.id) ||
-                                          (launcher.busy && !launcher.running)
-                                      ? null
-                                      : () => _remove(tab.id),
-                                  child: const Icon(Icons.close, size: 16),
                                 ),
                               ),
+                              if (_store!.activeId == tab.id)
+                                Positioned(
+                                  key: ValueKey(
+                                    'development-tab-indicator-${tab.id}',
+                                  ),
+                                  left: 0,
+                                  right: 0,
+                                  bottom: theme.borderWidth,
+                                  height:
+                                      theme.borderWidth *
+                                      OreTokens.choiceIndicatorHeightUnits,
+                                  child: IgnorePointer(
+                                    child: Align(
+                                      alignment: Alignment.center,
+                                      child: FractionallySizedBox(
+                                        widthFactor: OreTokens
+                                            .choiceIndicatorWidthFactor,
+                                        heightFactor: 1,
+                                        child: ColoredBox(
+                                          color: theme.colors.textInverse,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          OreTooltip(
+                            message: _store!.tabs.length == 1
+                                ? '至少保留一个测试标签'
+                                : '关闭测试标签',
+                            child: Semantics(
+                              label: '关闭测试标签',
+                              button: true,
+                              enabled:
+                                  !_adding &&
+                                  _store!.tabs.length > 1 &&
+                                  !_closing.contains(tab.id) &&
+                                  (!launcher.busy || launcher.running),
+                              child: OreButton(
+                                key: ValueKey(
+                                  'development-close-tab-${tab.id}',
+                                ),
+                                size: OreButtonSize.sm,
+                                width: OreTokens.controlHeightSm,
+                                contentPadding: EdgeInsets.zero,
+                                variant: _store!.activeId == tab.id
+                                    ? OreButtonVariant.primary
+                                    : OreButtonVariant.secondary,
+                                forcePressed: _store!.activeId == tab.id,
+                                forcePressedKeepsColor: true,
+                                onPressed:
+                                    _adding ||
+                                        _store!.tabs.length <= 1 ||
+                                        _closing.contains(tab.id) ||
+                                        (launcher.busy && !launcher.running)
+                                    ? null
+                                    : () => _remove(tab.id),
+                                child: const Icon(Icons.close, size: 16),
+                              ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                 ],
               ),
