@@ -4,10 +4,13 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:mcdev_income/development/input_guard_io.dart';
+import 'package:mcdev_income/development/platform/game_window_backend.dart';
+import 'package:mcdev_income/development/platform/macos_game_window.dart';
 import 'package:mcdev_income/development/wine_network_io.dart';
 import 'performance_patch_test.dart' show LocalPatchBundle;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temp;
   setUp(() async => temp = await Directory.systemTemp.createTemp('mcdev-net-'));
   tearDown(() async => temp.delete(recursive: true));
@@ -48,7 +51,7 @@ void main() {
       bundle: LocalPatchBundle(corrupt: true),
     );
     expect(await library.exists(), isTrue);
-  });
+  }, skip: Platform.isWindows); // DYLD paths cannot contain a drive colon.
 
   test(
     'corrupt assets and ambiguous dyld paths fail before cache writes',
@@ -91,4 +94,60 @@ void main() {
       network,
     );
   });
+
+  final runtime = Platform.environment['MCDEV_TEST_WINE_RUNTIME'];
+  final client = Platform.environment['MCDEV_CHROME_CLIENT_APP'];
+  test(
+    'macOS launch keeps network and chrome with either shortcut setting',
+    () async {
+      final root = p.join(temp.path, 'Wine runtime with spaces');
+      final lib = Directory(p.join(root, 'lib/wine/x86_64-unix'));
+      await lib.create(recursive: true);
+      for (final name in ['wine', 'ntdll.so']) {
+        await File(
+          p.join(runtime!, 'lib/wine/x86_64-unix', name),
+        ).copy(p.join(lib.path, name));
+      }
+      final window = MacGameWindow(
+        runtime: root,
+        runtimes: p.join(temp.path, 'runtimes'),
+        metal: false,
+        sessionId: 'network-regression',
+      );
+      for (final shortcut in [false, true]) {
+        final launch = await window.prepare(
+          GameWindowRequest(
+            executable: '/game/Minecraft.Windows.exe',
+            version: '3.10.0.420447',
+            displayName: '我的世界测试 · 网络回归',
+            renderer: 'OpenGL',
+            fullscreenShortcut: shortcut,
+          ),
+        );
+        final libraries = launch.environment['DYLD_INSERT_LIBRARIES']!.split(
+          ':',
+        );
+        expect(
+          libraries.where((path) => path.endsWith('ipv6-discovery.dylib')),
+          hasLength(1),
+        );
+        expect(
+          libraries.where((path) => path.endsWith('game-window-chrome.dylib')),
+          hasLength(1),
+        );
+        expect(
+          libraries.any((path) => path.endsWith('fullscreen-shortcut.dylib')),
+          !shortcut,
+        );
+        expect(
+          launch.environment['MCDEV_FULLSCREEN_SHORTCUT'],
+          shortcut ? isNull : '0',
+        );
+        expect(launch.environment['MCDEV_CHROME_LOADER'], launch.loader);
+        expect(launch.environment['WINELOADERNOEXEC'], '1');
+        expect(await File(launch.loader!).exists(), isTrue);
+      }
+    },
+    skip: !Platform.isMacOS || runtime == null || client == null,
+  );
 }

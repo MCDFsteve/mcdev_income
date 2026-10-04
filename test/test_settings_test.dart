@@ -56,9 +56,13 @@ void main() {
       final first = launcher(preferences);
       expect(first.showDeveloperConsole, isFalse);
       expect(first.fullscreenShortcut, isFalse);
+      expect(first.disableCompanion, isTrue);
       expect(first.playerSkin, TestPlayerSkin.steve);
+      expect(first.useNewWorld, isFalse);
+      await first.chooseNewWorld(true);
       await first.chooseDeveloperConsole(true);
       await first.chooseFullscreenShortcut(true);
+      await first.chooseDisableCompanion(false);
       await first.choosePlayerSkin(TestPlayerSkin.alex);
       expect(first.limit60Fps, isTrue);
       expect(first.performanceOptimization, isTrue);
@@ -71,16 +75,22 @@ void main() {
       final second = launcher(preferences);
       expect(second.showDeveloperConsole, isTrue);
       expect(second.fullscreenShortcut, isTrue);
+      expect(second.disableCompanion, isFalse);
       expect(second.playerSkin, TestPlayerSkin.alex);
+      expect(second.useNewWorld, isTrue);
+      await second.chooseNewWorld(false);
       await second.chooseDeveloperConsole(false);
       await second.chooseFullscreenShortcut(false);
+      await second.chooseDisableCompanion(true);
       await second.choosePlayerSkin(TestPlayerSkin.steve);
       second.dispose();
 
       final third = launcher(preferences);
       expect(third.showDeveloperConsole, isFalse);
       expect(third.fullscreenShortcut, isFalse);
+      expect(third.disableCompanion, isTrue);
       expect(third.playerSkin, TestPlayerSkin.steve);
+      expect(third.useNewWorld, isFalse);
       third.dispose();
     },
   );
@@ -104,6 +114,11 @@ void main() {
             ..busy = state == 'busy'
             ..running = state == 'running';
       await expectLater(instance.chooseDeveloperConsole(true), throwsException);
+      await expectLater(instance.chooseNewWorld(true), throwsException);
+      await expectLater(
+        instance.chooseDisableCompanion(false),
+        throwsException,
+      );
       await expectLater(
         instance.chooseFullscreenShortcut(true),
         throwsException,
@@ -114,7 +129,9 @@ void main() {
       );
       expect(instance.showDeveloperConsole, isFalse);
       expect(instance.fullscreenShortcut, isFalse);
+      expect(instance.disableCompanion, isTrue);
       expect(instance.playerSkin, TestPlayerSkin.steve);
+      expect(instance.useNewWorld, isFalse);
       instance
         ..busy = false
         ..running = false

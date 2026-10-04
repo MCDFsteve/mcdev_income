@@ -10,6 +10,8 @@ class IncomePage extends StatefulWidget {
 class _IncomePageState extends State<IncomePage> {
   final _dateFormat = DateFormat('yyyy-MM-dd');
   static const _presetStorageKey = 'income_presets_v1';
+  static const _selectedPresetStorageKey = 'income_selected_preset_v1';
+  static const _rangeStorageKey = 'income_date_range_v1';
 
   DateTimeRange? _range;
   ModCategory _category = ModCategory.pe;
@@ -48,7 +50,7 @@ class _IncomePageState extends State<IncomePage> {
   final TextEditingController _defaultInternalRatioController =
       TextEditingController(text: '1.0');
   final TextEditingController _defaultNeteaseRatioController =
-      TextEditingController(text: '1.0');
+      TextEditingController(text: '0.39');
   final TextEditingController _taxRateController = TextEditingController(
     text: '0.16',
   );
@@ -60,8 +62,7 @@ class _IncomePageState extends State<IncomePage> {
   @override
   void initState() {
     super.initState();
-    _loadPresets();
-    _loadMods(silent: true);
+    _restorePreferences();
     _defaultInternalRatioController.addListener(_onShareParamChanged);
     _defaultNeteaseRatioController.addListener(_onShareParamChanged);
     _taxRateController.addListener(_onShareParamChanged);
@@ -137,44 +138,125 @@ class _IncomePageState extends State<IncomePage> {
     return id;
   }
 
-  Future<void> _loadPresets() async {
+  Future<void> _restorePreferences() async {
+    IncomePreset? selectedPreset;
     try {
       final prefs = await AppPreferences.getInstance();
-      final raw = prefs.getString(_presetStorageKey);
-      if (raw == null || raw.isEmpty) {
-        return;
-      }
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) {
-        return;
-      }
-      final presets = <IncomePreset>[];
-      for (final entry in decoded) {
-        if (entry is Map<String, dynamic>) {
-          presets.add(IncomePreset.fromJson(entry));
-        } else if (entry is Map) {
-          presets.add(
-            IncomePreset.fromJson(
-              entry.map((key, value) => MapEntry(key.toString(), value)),
-            ),
-          );
+      final presets = _readStoredPresets(prefs.getString(_presetStorageKey));
+      final selectedId = prefs.getString(_selectedPresetStorageKey);
+      for (final preset in presets) {
+        if (preset.id == selectedId) {
+          selectedPreset = preset;
+          break;
         }
       }
+      final range = _readStoredRange(prefs.getString(_rangeStorageKey));
       if (!mounted) {
         return;
       }
       setState(() {
         _presets = presets;
+        _selectedPresetId = selectedPreset?.id;
+        _range = range;
       });
     } catch (_) {
-      // 忽略损坏数据
+      // 本地偏好不可用时仍可使用默认设置。
+    }
+    if (!mounted) {
+      return;
+    }
+    if (selectedPreset != null) {
+      await _applyPreset(selectedPreset);
+    } else {
+      await _loadMods(silent: true);
     }
   }
 
-  Future<void> _persistPresets() async {
+  List<IncomePreset> _readStoredPresets(String? raw) {
+    if (raw == null || raw.isEmpty) {
+      return [];
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        return [];
+      }
+      final presets = <IncomePreset>[];
+      for (final entry in decoded) {
+        if (entry is! Map) {
+          continue;
+        }
+        try {
+          final preset = IncomePreset.fromJson(
+            entry.map((key, value) => MapEntry(key.toString(), value)),
+          );
+          if (preset.id.isNotEmpty &&
+              !presets.any((existing) => existing.id == preset.id)) {
+            presets.add(preset);
+          }
+        } catch (_) {
+          // 单个损坏预设不影响其他预设与日期恢复。
+        }
+      }
+      return presets;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  DateTimeRange? _readStoredRange(String? raw) {
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        return null;
+      }
+      final start = DateTime.tryParse(decoded['start']?.toString() ?? '');
+      final end = DateTime.tryParse(decoded['end']?.toString() ?? '');
+      if (start == null ||
+          end == null ||
+          _dateFormat.format(start) != decoded['start'] ||
+          _dateFormat.format(end) != decoded['end'] ||
+          start.isAfter(end) ||
+          start.isBefore(DateTime(2020, 1, 1)) ||
+          end.isAfter(DateTime(DateTime.now().year + 1, 12, 31))) {
+        return null;
+      }
+      return DateTimeRange(start: start, end: end);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistRange() async {
+    final range = _range;
     final prefs = await AppPreferences.getInstance();
+    await prefs.apply({
+      _rangeStorageKey: range == null
+          ? null
+          : jsonEncode({
+              'start': _dateFormat.format(range.start),
+              'end': _dateFormat.format(range.end),
+            }),
+    });
+  }
+
+  Future<void> _persistSelectedPreset() async {
+    final selectedId = _selectedPresetId;
+    final prefs = await AppPreferences.getInstance();
+    await prefs.apply({_selectedPresetStorageKey: selectedId});
+  }
+
+  Future<void> _persistPresets() async {
     final payload = _presets.map((preset) => preset.toJson()).toList();
-    await prefs.setString(_presetStorageKey, jsonEncode(payload));
+    final selectedId = _selectedPresetId;
+    final prefs = await AppPreferences.getInstance();
+    await prefs.apply({
+      _presetStorageKey: jsonEncode(payload),
+      _selectedPresetStorageKey: selectedId,
+    });
   }
 
   Future<void> _saveNewPreset() async {
@@ -357,8 +439,8 @@ class _IncomePageState extends State<IncomePage> {
     final defaultNeteaseRatio = _parseRate(
       _defaultNeteaseRatioController.text,
       fieldName: '默认网易分成',
-      defaultValue: 1.0,
-      invalidValue: 1.0,
+      defaultValue: 0.39,
+      invalidValue: 0.39,
     ).value;
     final taxRate = _parseRate(
       _taxRateController.text,
@@ -419,6 +501,8 @@ class _IncomePageState extends State<IncomePage> {
 
   Future<void> _applyPresetById(String? presetId) async {
     if (presetId == null) {
+      setState(() => _selectedPresetId = null);
+      await _persistSelectedPreset();
       return;
     }
     IncomePreset? preset;
@@ -434,50 +518,24 @@ class _IncomePageState extends State<IncomePage> {
     setState(() {
       _selectedPresetId = presetId;
     });
-    await _applyPreset(preset);
+    await _persistSelectedPreset();
+    if (mounted) {
+      await _applyPreset(preset);
+    }
   }
 
   Future<void> _applyPreset(IncomePreset preset) async {
-    if (_category != preset.category) {
-      setState(() {
-        _category = preset.category;
-      });
-    }
-    await _loadMods(silent: true);
-    if (!mounted) {
-      return;
-    }
-
-    final availableIds = _mods.map((mod) => mod.id).toSet();
-    final missing = <String>[];
-    final selectedIds = <String>[];
-    String? singleId;
-
-    switch (preset.scope) {
-      case IncomeScope.all:
-        break;
-      case IncomeScope.multiple:
-        for (final id in preset.modIds) {
-          if (availableIds.contains(id)) {
-            selectedIds.add(id);
-          } else {
-            missing.add(id);
-          }
-        }
-        break;
-      case IncomeScope.single:
-        final id = preset.modIds.isNotEmpty ? preset.modIds.first : null;
-        if (id != null) {
-          if (availableIds.contains(id)) {
-            singleId = id;
-          } else {
-            missing.add(id);
-          }
-        }
-        break;
-    }
-
+    // 先恢复参数与作品编号，未登录或网络失败时也保留预设选择。
+    // 列表成功加载后，_loadMods 会过滤已不存在的作品编号。
+    final selectedIds = preset.scope == IncomeScope.multiple
+        ? preset.modIds
+        : <String>[];
+    final singleId =
+        preset.scope == IncomeScope.single && preset.modIds.isNotEmpty
+        ? preset.modIds.first
+        : null;
     setState(() {
+      _category = preset.category;
       _scope = preset.scope;
       _selectedModIds = selectedIds.toSet();
       _singleModId = singleId;
@@ -500,7 +558,13 @@ class _IncomePageState extends State<IncomePage> {
     });
     _syncRatioControllers();
 
-    if (missing.isNotEmpty) {
+    await _loadMods(silent: true);
+    if (!mounted || _modsCategory != preset.category || _modsError != null) {
+      return;
+    }
+    final availableIds = _mods.map((mod) => mod.id).toSet();
+    final missing = preset.modIds.where((id) => !availableIds.contains(id));
+    if (preset.scope != IncomeScope.all && missing.isNotEmpty) {
       showOreToast(context, Text('已忽略 ${missing.length} 个不存在的 Mod'));
     }
   }
@@ -685,8 +749,8 @@ class _IncomePageState extends State<IncomePage> {
     final defaultNeteaseParse = _parseRate(
       _defaultNeteaseRatioController.text,
       fieldName: '默认网易分成',
-      defaultValue: 1.0,
-      invalidValue: 1.0,
+      defaultValue: 0.39,
+      invalidValue: 0.39,
     );
     final taxParse = _parseRate(
       _taxRateController.text,
@@ -1073,10 +1137,14 @@ class _IncomePageState extends State<IncomePage> {
       );
     }
 
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() {
         _range = picked;
       });
+      await _persistRange();
+      if (!mounted) {
+        return;
+      }
       if (!_loading) {
         final cookieHeader = await LoginCookieHelper.buildCookieHeader();
         if (cookieHeader.isNotEmpty) {
@@ -1209,7 +1277,12 @@ class _IncomePageState extends State<IncomePage> {
           min(i + batchSize, targetMods.length),
         );
         final results = await Future.wait(
-          batch.map((mod) => api.fetchIncomeWithRetry(mod, IncomeDateRange(start: range.start, end: range.end))),
+          batch.map(
+            (mod) => api.fetchIncomeWithRetry(
+              mod,
+              IncomeDateRange(start: range.start, end: range.end),
+            ),
+          ),
         );
         if (!mounted) {
           return;

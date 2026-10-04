@@ -85,6 +85,28 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   const bool headless = !command_line_arguments.empty() &&
                         command_line_arguments.front() == "--headless";
 
+  std::unique_ptr<GameWindowHost> game_host;
+  const bool game_chrome = !command_line_arguments.empty() &&
+                          command_line_arguments.front() == "--game-chrome";
+  if (game_chrome) {
+    if (command_line_arguments.size() != 6) return EXIT_FAILURE;
+    char* end = nullptr;
+    const auto pid = strtoul(command_line_arguments[1].c_str(), &end, 10);
+    if (!pid || !end || *end) return EXIT_FAILURE;
+    const auto& utf8_path = command_line_arguments[2];
+    const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+        utf8_path.c_str(), -1, nullptr, 0);
+    if (!length) return EXIT_FAILURE;
+    std::wstring path(length, L'\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+        utf8_path.c_str(), -1, path.data(), length);
+    path.resize(length - 1);
+    game_host = std::make_unique<GameWindowHost>(static_cast<DWORD>(pid), path);
+    if (!game_host->valid()) return EXIT_FAILURE;
+    command_line_arguments.erase(command_line_arguments.begin(), command_line_arguments.begin() + 3);
+    project.set_dart_entrypoint("gameChromeMain");
+  }
+
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   if (headless) {
@@ -111,7 +133,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     }
   }
 
-  FlutterWindow window(project);
+  FlutterWindow window(project, std::move(game_host));
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
   if (!window.Create(L"我的世界开发者管理", origin, size)) {

@@ -7,6 +7,13 @@ import 'package:mcdev_income/development/wine_game_app_io.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'display names keep project names while removing control characters',
+    () {
+      expect(wineGameDisplayName(' 我的世界测试 · 模组 A / B '), '我的世界测试 · 模组 A / B');
+      expect(wineGameDisplayName('\u0000\n'), '我的世界测试');
+    },
+  );
   test('unsupported Wine loader cannot create a game application', () async {
     final temp = await Directory.systemTemp.createTemp('mcdev-game-app-guard-');
     try {
@@ -66,6 +73,53 @@ void main() {
         final modified = await File(app.loader).lastModified();
         await prepareWineGameApplication(root, metal: true);
         expect(await File(app.loader).lastModified(), modified);
+        final originalInfo = await File(
+          p.join(app.path, 'Contents/Info.plist'),
+        ).readAsString();
+        final second = await prepareWineGameApplication(
+          root,
+          metal: true,
+          sessionId: '../tab / 第二个',
+          displayName: '我的世界测试 · 草地 <A> & "B"',
+        );
+        expect(p.dirname(second.path), root);
+        expect(second.path, isNot(app.path));
+        final secondInfo = await File(
+          p.join(second.path, 'Contents/Info.plist'),
+        ).readAsString();
+        expect(secondInfo, contains('草地 &lt;A&gt; &amp; &quot;B&quot;'));
+        expect(secondInfo, contains('winegame.metal.s'));
+        expect(
+          await Link(
+            p.join(second.path, 'Contents/MacOS/ntdll.so'),
+          ).resolveSymbolicLinks(),
+          await File(p.join(lib, 'ntdll.so')).resolveSymbolicLinks(),
+        );
+        final secondSignature = await Process.run('/usr/bin/codesign', [
+          '--verify',
+          '--strict=sideband',
+          second.path,
+        ]);
+        expect(
+          secondSignature.exitCode,
+          0,
+          reason: secondSignature.stderr.toString(),
+        );
+        await prepareWineGameApplication(
+          root,
+          metal: true,
+          sessionId: '../tab / 第二个',
+          displayName: '我的世界测试 · 海洋',
+        );
+        expect(await File(app.loader).lastModified(), modified);
+        expect(
+          await File(p.join(app.path, 'Contents/Info.plist')).readAsString(),
+          originalInfo,
+        );
+        expect(
+          await File(p.join(second.path, 'Contents/Info.plist')).readAsString(),
+          contains('我的世界测试 · 海洋'),
+        );
         await icon.writeAsString('damaged icon');
         await prepareWineGameApplication(root, metal: true);
         expect(

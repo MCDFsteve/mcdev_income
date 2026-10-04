@@ -1,3 +1,10 @@
+import 'dart:convert';
+
+/// Some game builds truncate player names by UTF-8 bytes when saving options.
+/// Recover the remaining settings; launch replaces mp_username with validated
+/// text instead of making the entire prefix unusable after a truncated name.
+const gameOptionsEncoding = Utf8Codec(allowMalformed: true);
+
 /// MCS uses options.txt for frame limits (0 means unlimited). VSync's enum
 /// values in the supported developer game are Off=0, On=1, Adaptive=2.
 /// Keep unrelated options, including quality and render distance, verbatim.

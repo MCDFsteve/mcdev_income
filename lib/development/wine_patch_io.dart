@@ -12,9 +12,9 @@ const wineArchiveHash =
     'b50dc50ec7f41d58b115a6b685d4d1315ba3c797bd3aa0f49213f2703cb82388';
 const wineMacOriginal =
     '7687c4095ea6dba1761052ac19d46db3409a36f2bc827b79c6e32bf779df59f4';
-// Hash of the patched Mach-O after codesign --remove-signature. Ad-hoc
-// signatures vary with the signing tools and identifier; executable content
-// must remain pinned independently of that metadata.
+// Hash of the patched Mach-O after codesign --remove-signature, with the
+// original __LINKEDIT reservation. Signing tools can resize that reservation;
+// executable content remains pinned independently of signing metadata.
 const wineMacPatchedUnsigned =
     'e3679793f1020d743d6e82b2760c9c90d4de8198493b148a8eda09aa5f1c8035';
 const wineGlOriginal =
@@ -50,9 +50,17 @@ Future<bool> _patchedWineMacReady(File mac) async {
       '--remove-signature',
       unsigned.path,
     ]);
-    return removed.exitCode == 0 &&
-        (await sha256.bind(unsigned.openRead()).first).toString() ==
-            wineMacPatchedUnsigned;
+    if (removed.exitCode != 0) return false;
+    final bytes = await unsigned.readAsBytes();
+    if (bytes.length < 0x9e0) return false;
+    final view = ByteData.sublistView(bytes);
+    // Wine 11.0_1's __LINKEDIT vmsize is at this pinned offset. macOS 27
+    // codesign shrinks its reservation from 64 KiB to 48 KiB. Accept only
+    // these known layouts, then normalize this scratch buffer for hashing.
+    final linkeditSize = view.getUint64(0x9d8, Endian.little);
+    if (linkeditSize != 0x10000 && linkeditSize != 0xc000) return false;
+    view.setUint64(0x9d8, 0x10000, Endian.little);
+    return sha256.convert(bytes).toString() == wineMacPatchedUnsigned;
   } on ProcessException {
     return false;
   } on FileSystemException {

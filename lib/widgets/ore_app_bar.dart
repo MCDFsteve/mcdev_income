@@ -32,12 +32,19 @@ PreferredSizeWidget buildOreAppBar(
   BuildContext context, {
   required String title,
   List<Widget>? actions,
+  bool windowTitleBar = true,
 }) {
+  if (windowTitleBar && hasDesktopWindow) {
+    return OreWindowTitleBar(
+      title: '我的世界开发者管理',
+      subtitle: title,
+      actions: actions ?? const [],
+    );
+  }
   final ore = OreTheme.of(context);
   final colors = ore.colors;
   final palette = _fixedBarPalette();
-  final textStyle =
-      ore.typography.choiceTitle.copyWith(color: Colors.white);
+  final textStyle = ore.typography.choiceTitle.copyWith(color: Colors.white);
   final borderWidth = ore.borderWidth;
   final depth = borderWidth * 2;
   final actionWidgets = actions ?? const <Widget>[];

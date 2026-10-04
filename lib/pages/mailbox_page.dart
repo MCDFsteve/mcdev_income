@@ -421,6 +421,7 @@ class _MailboxPageState extends State<MailboxPage> {
                   buildOreAppBar(
                     context,
                     title: '邮件',
+                    windowTitleBar: false,
                     actions: [
                       OreIconButton(
                         icon: const Icon(Icons.refresh),

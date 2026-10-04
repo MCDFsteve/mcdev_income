@@ -10,6 +10,7 @@ import 'package:mcdev_income/development/game_graphics.dart';
 import 'package:mcdev_income/development/performance_patch.dart';
 import 'package:mcdev_income/development/performance_patch_io.dart';
 import 'package:mcdev_income/development/storage_backend_io.dart';
+import 'package:mcdev_income/development/platform/macos_game_runtime.dart';
 import 'development_test.dart' show MemoryPreferences;
 
 class LocalPatchBundle extends CachingAssetBundle {
@@ -101,15 +102,18 @@ void main() {
     );
   });
 
-  NativeDevelopmentLauncher launcher(MemoryPreferences preferences) =>
-      NativeDevelopmentLauncher(
-        NativeDevelopmentStorage(
-          preferences: preferences,
-          defaultRoot: temp.path,
-          lockPath: p.join(temp.path, 'lock'),
-        ),
-        preferences,
-      );
+  NativeDevelopmentLauncher launcher(MemoryPreferences preferences) {
+    final storage = NativeDevelopmentStorage(
+      preferences: preferences,
+      defaultRoot: temp.path,
+      lockPath: p.join(temp.path, 'lock'),
+    );
+    return NativeDevelopmentLauncher(
+      storage,
+      preferences,
+      runtimeBackend: MacWineRuntime(storage, 'default'),
+    );
+  }
 
   test('optimization defaults on and explicit rollback persists', () async {
     final preferences = MemoryPreferences();
@@ -238,61 +242,73 @@ void main() {
     },
   );
 
-  test('game exit cancels a helper still waiting for initialization', () async {
-    final helper = File(p.join(temp.path, 'waiting.sh'));
-    await helper.writeAsString('while true; do :; done\n');
-    final exited = Completer<void>();
-    final loading = injectPerformancePatch(
-      wine: '/bin/sh',
-      environment: Platform.environment,
-      helper: helper.path,
-      dll: 'unused.dll',
-      executable: 'unused.exe',
-      cancelWhen: exited.future,
-    );
-    exited.complete();
-    expect(await loading, isFalse);
-  });
-
-  test('failed injection helper leaves the game directory intact', () async {
-    final helper = File(p.join(temp.path, 'failed.sh'));
-    await helper.writeAsString('exit 9\n');
-    final marker = File(p.join(temp.path, 'save.marker'));
-    await marker.writeAsString('existing save');
-    expect(
-      await injectPerformancePatch(
+  test(
+    'game exit cancels a helper still waiting for initialization',
+    () async {
+      final helper = File(p.join(temp.path, 'waiting.sh'));
+      await helper.writeAsString('while true; do :; done\n');
+      final exited = Completer<void>();
+      final loading = injectPerformancePatch(
         wine: '/bin/sh',
         environment: Platform.environment,
         helper: helper.path,
         dll: 'unused.dll',
         executable: 'unused.exe',
-      ),
-      isFalse,
-    );
-    expect(await marker.readAsString(), 'existing save');
-  });
+        cancelWhen: exited.future,
+      );
+      exited.complete();
+      expect(await loading, isFalse);
+    },
+    skip: Platform.isWindows,
+  );
 
-  test('successful helper does not wait for inherited pipe handles', () async {
-    final helper = File(p.join(temp.path, 'inherited-pipes.sh'));
-    final worker = File(p.join(temp.path, 'worker.pid'));
-    await helper.writeAsString('sleep 30 &\necho "\$!" > "\$2"\nexit 0\n');
-    try {
+  test(
+    'failed injection helper leaves the game directory intact',
+    () async {
+      final helper = File(p.join(temp.path, 'failed.sh'));
+      await helper.writeAsString('exit 9\n');
+      final marker = File(p.join(temp.path, 'save.marker'));
+      await marker.writeAsString('existing save');
       expect(
         await injectPerformancePatch(
           wine: '/bin/sh',
           environment: Platform.environment,
           helper: helper.path,
           dll: 'unused.dll',
-          executable: worker.path,
+          executable: 'unused.exe',
         ),
-        isTrue,
+        isFalse,
       );
-    } finally {
-      if (await worker.exists()) {
-        Process.killPid(int.parse((await worker.readAsString()).trim()));
+      expect(await marker.readAsString(), 'existing save');
+    },
+    skip: Platform.isWindows,
+  );
+
+  test(
+    'successful helper does not wait for inherited pipe handles',
+    () async {
+      final helper = File(p.join(temp.path, 'inherited-pipes.sh'));
+      final worker = File(p.join(temp.path, 'worker.pid'));
+      await helper.writeAsString('sleep 30 &\necho "\$!" > "\$2"\nexit 0\n');
+      try {
+        expect(
+          await injectPerformancePatch(
+            wine: '/bin/sh',
+            environment: Platform.environment,
+            helper: helper.path,
+            dll: 'unused.dll',
+            executable: worker.path,
+          ),
+          isTrue,
+        );
+      } finally {
+        if (await worker.exists()) {
+          Process.killPid(int.parse((await worker.readAsString()).trim()));
+        }
       }
-    }
-  });
+    },
+    skip: Platform.isWindows,
+  );
 
   test(
     'timed-out helper returns without terminating unrelated processes',
@@ -311,5 +327,6 @@ void main() {
         isFalse,
       );
     },
+    skip: Platform.isWindows,
   );
 }

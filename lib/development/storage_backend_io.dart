@@ -7,9 +7,12 @@ import '../core/preferences.dart';
 import '../storage/file_preferences.dart';
 import '../storage/file_lock.dart';
 import 'development_storage.dart';
+import 'platform/host_files_io.dart';
 
 Future<bool> supportsDevelopment() async {
-  if (!Platform.isMacOS || Platform.environment.containsKey('FLUTTER_TEST')) {
+  if (Platform.environment.containsKey('FLUTTER_TEST')) return false;
+  if (Platform.isWindows) return true;
+  if (!Platform.isMacOS) {
     return false;
   }
   try {
@@ -27,20 +30,34 @@ Future<DevelopmentStorage> openDevelopmentStorage(
   PreferenceStore preferences,
 ) async {
   final home = Platform.environment['HOME'];
-  if (!Platform.isMacOS || home == null) {
-    throw const DevelopmentStorageException('开发功能仅支持 macOS。');
+  final local =
+      Platform.environment['LOCALAPPDATA'] ?? Platform.environment['APPDATA'];
+  if (!(Platform.isWindows && local != null) &&
+      !(Platform.isMacOS && home != null)) {
+    throw const DevelopmentStorageException(
+      '开发功能目前支持 Windows 和 Apple 芯片 macOS。',
+    );
   }
   return NativeDevelopmentStorage(
     preferences: preferences,
-    defaultRoot: p.join(
-      home,
-      'Library',
-      'Application Support',
-      'mcdev_income',
-      'development',
-    ),
+    defaultRoot: Platform.isWindows
+        ? p.join(local!, 'mcdev_income', 'development')
+        : p.join(
+            home!,
+            'Library',
+            'Application Support',
+            'mcdev_income',
+            'development',
+          ),
     lockPath: p.join(mcdevHome(), 'development-storage.lock'),
   );
+}
+
+bool _isSessionLease(String relative) {
+  final parts = p.split(relative);
+  return parts.length == 2 &&
+      parts.first == 'prefixes' &&
+      RegExp(r'^\.session-[a-zA-Z0-9_-]{1,64}\.lock$').hasMatch(parts.last);
 }
 
 class _Entry {
@@ -52,7 +69,8 @@ class _Entry {
 }
 
 /// Managed development data, separate from the existing account/config store.
-/// No filesystem is created until the user initializes or changes a location.
+/// Inspection is read only; the development page initializes a fresh default
+/// on first entry, while unavailable saved locations require explicit recovery.
 class NativeDevelopmentStorage implements DevelopmentStorage {
   NativeDevelopmentStorage({
     required this.preferences,
@@ -78,13 +96,50 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
   ).join();
 
   Future<T> _exclusive<T>(Future<T> Function() action) =>
-      withFileLock(lockPath, action, wait: false);
+      withFileLock(lockPath, () => _withIdleSessions(action), wait: false);
+
+  /// Launch preparation holds the storage lock only until the game starts.
+  /// The session leases outlive preparation, so another app process cannot
+  /// move an active prefix or switch its data directory while a game runs.
+  Future<T> _withIdleSessions<T>(Future<T> Function() action) async {
+    final directory = Directory(paths.prefixes);
+    final leases = <String>[];
+    if (await directory.exists()) {
+      await for (final entry in directory.list(followLinks: false)) {
+        if (RegExp(
+          r'^\.session-[a-zA-Z0-9_-]{1,64}\.lock$',
+        ).hasMatch(p.basename(entry.path))) {
+          if (entry is! File) {
+            throw const DevelopmentStorageException('测试容器锁文件无效。');
+          }
+          leases.add(entry.path);
+        }
+      }
+    }
+    leases.sort();
+    Future<T> acquire(int index) async {
+      if (index == leases.length) return action();
+      var acquired = false;
+      try {
+        return await withFileLock(leases[index], () {
+          acquired = true;
+          return acquire(index + 1);
+        }, wait: false);
+      } on FileSystemException {
+        if (acquired) rethrow;
+        throw const DevelopmentStorageException('请先退出所有测试游戏，再更改开发数据目录。');
+      }
+    }
+
+    return acquire(0);
+  }
 
   /// Resolve existing ancestors too, so symlink aliases cannot bypass nesting checks.
   Future<String> _canonical(String value) async {
     var path = value.trim();
     if (path == '~' || path.startsWith('~/')) {
-      final home = Platform.environment['HOME'];
+      final home =
+          Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
       if (home == null) throw const DevelopmentStorageException('无法确定用户目录。');
       path = path == '~' ? home : p.join(home, path.substring(2));
     }
@@ -190,7 +245,19 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
     }
   }
 
-  Future<void> _saveRoot(String root) async {
+  Future<void> _saveRoot(String root, {String? copiedTabsFrom}) async {
+    if (copiedTabsFrom != null) {
+      final tabs = preferences.getString(
+        'development_test_tabs_v1:$copiedTabsFrom',
+      );
+      if (tabs != null &&
+          !await preferences.setString(
+            'development_test_tabs_v1:$root',
+            tabs,
+          )) {
+        throw const DevelopmentStorageException('测试标签页设置未能迁移，原位置仍保持启用。');
+      }
+    }
     if (!await preferences.setString(DevelopmentStorage.preferenceKey, root)) {
       throw const DevelopmentStorageException('路径设置未能保存，原位置仍保持启用。');
     }
@@ -284,6 +351,8 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
       root,
     ).list(recursive: true, followLinks: false)) {
       final relative = p.relative(entity.path, from: root);
+      // Windows leases are mandatory locks, not user data to copy or hash.
+      if (Platform.isWindows && _isSessionLease(relative)) continue;
       final type = await FileSystemEntity.type(entity.path, followLinks: false);
       if (type == FileSystemEntityType.link) {
         result[relative] = _Entry(
@@ -354,15 +423,19 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
       onProgress?.call(const StorageMigrationProgress('复制开发数据'));
       // ditto preserves executable modes and copies symbolic links without
       // traversing Wine's dosdevices/z: link or linked external projects.
-      final copied = await Process.run('/usr/bin/ditto', [
-        '--noextattr',
-        '--norsrc',
+      await copyDevelopmentTree(
         source,
         stage.path,
-      ]);
-      if (copied.exitCode != 0) {
-        throw const DevelopmentStorageException('数据复制失败，原目录和原路径设置均已保留。');
-      }
+        excludedFiles: Platform.isWindows
+            ? [
+                await for (final entry in Directory(
+                  p.join(source, 'prefixes'),
+                ).list(followLinks: false))
+                  if (_isSessionLease(p.relative(entry.path, from: source)))
+                    entry.path,
+              ]
+            : const [],
+      );
       for (final entry in original.entries.where(
         (entry) => entry.value.type == FileSystemEntityType.link,
       )) {
@@ -442,7 +515,7 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
       onProgress?.call(const StorageMigrationProgress('切换数据位置'));
       // Renaming over a nonempty target fails atomically: never delete it.
       await stage.rename(destination);
-      await _saveRoot(destination);
+      await _saveRoot(destination, copiedTabsFrom: source);
     } finally {
       if (await stage.exists()) await stage.delete(recursive: true);
     }
@@ -453,9 +526,6 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
     if (!await Directory(path).exists()) {
       throw const DevelopmentStorageException('该目录尚未创建或存储卷未连接。');
     }
-    final result = await Process.run('/usr/bin/open', [path]);
-    if (result.exitCode != 0) {
-      throw const DevelopmentStorageException('无法在 Finder 中打开目录。');
-    }
+    await revealDevelopmentDirectory(path);
   }
 }

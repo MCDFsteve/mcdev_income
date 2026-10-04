@@ -14,7 +14,8 @@ final _explicitLevel = RegExp(
   r'\b(?:[0-9a-f]{3,}:)+(err|warn|fixme|trace):|'
   r'"(?:level|severity)"\s*:\s*"(error|fatal|warning|warn|info|debug|trace)"|'
   r'^\s*(?:\d{4}-\d\d-\d\d[ T][\d:.+Z-]+\s+)?'
-  r'(ERROR|FATAL|WARNING|WARN|INFO|DEBUG|TRACE)\b',
+  r'(ERROR|FATAL|WARNING|WARN|INFO|DEBUG|TRACE)\b|'
+  r'^\[\d{4}-\d\d-\d\d [\d:,. ]+(ERROR|FATAL|WARN|INFO|DEBUG|TRACE)\b',
   caseSensitive: false,
 );
 
@@ -36,6 +37,7 @@ DevelopmentLogLevel classifyLogLine(
     };
   }
   if (RegExp(
+    r'^Traceback \(most recent call last\):|'
     r'^\s*(?:Unhandled|Uncaught)\s+(?:exception|error)|'
     r'^\s*\w*(?:Error|Exception)[:\s]',
     caseSensitive: false,

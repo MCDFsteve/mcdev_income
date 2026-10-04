@@ -111,7 +111,7 @@ extension _IncomeCommands on McdevCli {
       'internal',
     );
     final netease = _ratio(
-      str('netease') ?? preset?['defaultNeteaseRatio'] ?? 1,
+      str('netease') ?? preset?['defaultNeteaseRatio'] ?? 0.39,
       'netease',
     );
     final tax = _ratio(str('tax') ?? preset?['taxRate'] ?? 0.16, 'tax');

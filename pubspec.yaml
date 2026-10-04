@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.0+4
+version: 1.4.0+7
 
 environment:
   sdk: ^3.10.4
@@ -49,6 +49,7 @@ dependencies:
   shared_preferences: ^2.2.3
   flutter_widget_from_html_core: ^0.17.4
   url_launcher: ^6.3.2
+  window_manager: ^0.5.2
 
 dev_dependencies:
   flutter_test:
@@ -130,10 +131,14 @@ flutter:
     - assets/development/performance-inject.exe
     - assets/development/renderer-patch.dll
     - assets/development/renderer-inject.exe
+    - assets/development/lan-patch.dll
     - assets/development/winemac-dxmt.so
     - assets/development/fullscreen-shortcut.dylib
     - assets/development/ipv6-discovery.dylib
     - assets/development/minecraft-bedrock-icon.icns
+    - assets/development/game-window-chrome.dylib
+    - tools/windowing/build.py
+    - tools/windowing/native/
     - tools/input/build.py
     - tools/input/native/
     - tools/network/build.py

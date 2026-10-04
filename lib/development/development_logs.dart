@@ -15,7 +15,12 @@ class DevelopmentLogFile {
   final DateTime modified;
   final int size;
   String get name => p.basename(path);
-  String get label => '${name.startsWith('game-') ? '游戏' : 'Wine'} · $name';
+  String get label =>
+      '${name.startsWith('test-')
+          ? '模组'
+          : name.startsWith('game-')
+          ? '游戏'
+          : '诊断'} · $name';
 }
 
 class DevelopmentLogChunk {
@@ -175,7 +180,11 @@ class DevelopmentLogController extends ChangeNotifier {
           _select(
             files.any((file) => file.path == preferredPath)
                 ? preferredPath
-                : files.firstOrNull?.path,
+                : files
+                          .where((file) => file.name.startsWith('test-'))
+                          .firstOrNull
+                          ?.path ??
+                      files.firstOrNull?.path,
           );
         }
       }

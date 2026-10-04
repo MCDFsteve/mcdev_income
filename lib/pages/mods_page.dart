@@ -1,7 +1,9 @@
 part of mcdev_income_app;
 
 class ModsPage extends StatefulWidget {
-  const ModsPage({super.key});
+  const ModsPage({super.key, this.apiFactory});
+
+  final McDevApi Function(String category)? apiFactory;
 
   @override
   State<ModsPage> createState() => _ModsPageState();
@@ -49,8 +51,10 @@ class _ModsPageState extends State<ModsPage> {
   }
 
   Future<void> _loadMods() async {
-    final cookieHeader = await LoginCookieHelper.buildCookieHeader();
-    if (cookieHeader.isEmpty) {
+    final cookieHeader = widget.apiFactory == null
+        ? await LoginCookieHelper.buildCookieHeader()
+        : '';
+    if (cookieHeader.isEmpty && widget.apiFactory == null) {
       if (!mounted) {
         return;
       }
@@ -69,10 +73,7 @@ class _ModsPageState extends State<ModsPage> {
       });
     }
 
-    final api = McDevApi(
-      cookie: cookieHeader,
-      category: modCategoryValue(_category),
-    );
+    final api = _createApi(cookieHeader);
     try {
       final mods = await api.fetchMods(onlyPriced: false, onlyPublished: false);
       if (!mounted) {
@@ -104,6 +105,10 @@ class _ModsPageState extends State<ModsPage> {
   String _analysisCategory(ModCategory category) {
     return category == ModCategory.pe ? 'pe' : 'pc';
   }
+
+  McDevApi _createApi(String cookieHeader) =>
+      widget.apiFactory?.call(modCategoryValue(_category)) ??
+      McDevApi(cookie: cookieHeader, category: modCategoryValue(_category));
 
   Future<Map<String, int>> _fetchSalesInBatches(
     McDevApi api,
@@ -150,10 +155,7 @@ class _ModsPageState extends State<ModsPage> {
       _salesError = null;
     });
 
-    final api = McDevApi(
-      cookie: cookieHeader,
-      category: modCategoryValue(_category),
-    );
+    final api = _createApi(cookieHeader);
     try {
       final ids = mods.map((mod) => mod.id).toList();
       final now = DateTime.now();
@@ -293,6 +295,12 @@ class _ModsPageState extends State<ModsPage> {
   }
 
   Widget _buildModCard(ModItem mod, ThemeData theme) {
+    final category = _category;
+    final entry = LeaderboardEntry(
+      {'item_id': mod.id, 'item_name': mod.name},
+      type: category == ModCategory.pe ? 'pe_hot' : 'pc_download',
+      fallbackRank: 0,
+    );
     final statusLabel = _statusLabel(mod);
     final statusColor = _statusColor(theme, statusLabel);
     final releaseText = mod.releaseAt == null
@@ -300,45 +308,70 @@ class _ModsPageState extends State<ModsPage> {
         : _dateFormat.format(mod.releaseAt!);
 
     return OreCard(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  mod.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: statusColor,
+      padding: EdgeInsets.zero,
+      child: Semantics(
+        button: entry.hasResourceDetails,
+        hint: entry.hasResourceDetails ? '查看资源详情' : null,
+        child: OreListTile(
+          key: ValueKey('mod-resource-${modCategoryValue(category)}-${mod.id}'),
+          contentPadding: const EdgeInsets.all(12),
+          onTap: entry.hasResourceDetails
+              ? () => showOreDialog<void>(
+                  context: context,
+                  builder: (_) => LeaderboardResourceDialog(
+                    entry: entry,
+                    apiFactory: widget.apiFactory == null
+                        ? null
+                        : () => widget.apiFactory!(modCategoryValue(category)),
                   ),
-                ),
+                )
+              : null,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      mod.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      statusLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 8),
+              Text('ID: ${mod.id}', style: theme.textTheme.bodySmall),
+              const SizedBox(height: 4),
+              Text('价格: ${_priceLabel(mod)}', style: theme.textTheme.bodySmall),
+              const SizedBox(height: 4),
+              Text(
+                '总销量: ${_salesLabel(mod)}',
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 4),
+              Text('上架: $releaseText', style: theme.textTheme.bodySmall),
             ],
           ),
-          const SizedBox(height: 8),
-          Text('ID: ${mod.id}', style: theme.textTheme.bodySmall),
-          const SizedBox(height: 4),
-          Text('价格: ${_priceLabel(mod)}', style: theme.textTheme.bodySmall),
-          const SizedBox(height: 4),
-          Text('总销量: ${_salesLabel(mod)}', style: theme.textTheme.bodySmall),
-          const SizedBox(height: 4),
-          Text('上架: $releaseText', style: theme.textTheme.bodySmall),
-        ],
+        ),
       ),
     );
   }
@@ -368,7 +401,10 @@ class _ModsPageState extends State<ModsPage> {
                   SegmentedButton<ModCategory>(
                     segments: const [
                       ButtonSegment(value: ModCategory.pe, label: Text('PE')),
-                      ButtonSegment(value: ModCategory.java, label: Text('Java')),
+                      ButtonSegment(
+                        value: ModCategory.java,
+                        label: Text('Java'),
+                      ),
                     ],
                     selected: {_category},
                     buttonWidth: segmentButtonWidth,

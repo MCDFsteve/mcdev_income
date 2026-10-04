@@ -63,7 +63,9 @@ Future<Map<String, Object>> _legacyMacPreferences() async {
             (entry.key.substring(8).startsWith('login_') ||
                 entry.key.substring(8).startsWith('resource_draft_v1:') ||
                 entry.key == 'flutter.theme_mode' ||
-                entry.key == 'flutter.income_presets_v1') &&
+                entry.key == 'flutter.income_presets_v1' ||
+                entry.key == 'flutter.income_selected_preset_v1' ||
+                entry.key == 'flutter.income_date_range_v1') &&
             (entry.value is String || entry.value is int))
           entry.key.substring(8): entry.value as Object,
     };

@@ -21,6 +21,9 @@ Future<File> downloadManaged(
   String? expectedSha256,
   String? expectedMd5,
   DownloadControl? control,
+  // Only for archives whose contents are checked against an official manifest
+  // before installation. A .part file never qualifies as a completed cache.
+  bool reuseCompleted = false,
   void Function(StorageMigrationProgress)? onProgress,
 }) async {
   Future<bool> valid(File file) async {
@@ -38,6 +41,14 @@ Future<File> downloadManaged(
   }
 
   if (await valid(destination)) return destination;
+  if (reuseCompleted &&
+      expectedSha256 == null &&
+      expectedMd5 == null &&
+      await destination.exists() &&
+      await destination.length() > 0) {
+    control?.check();
+    return destination;
+  }
   final part = File('${destination.path}.part');
   await destination.parent.create(recursive: true);
   for (var attempt = 0; attempt < 2; attempt++) {

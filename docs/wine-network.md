@@ -12,13 +12,13 @@ RakNet → sendto → WS2_sendto → WaitForSingleObject(INFINITE)
 
 ## 修正范围
 
-启动器给 macOS Wine 游戏进程加载独立的 x86_64 `ipv6-discovery.dylib`。它只处理地址为 `ff02::1`、端口为 `19133`、没有 scope 和控制消息的 `sendmsg`：
+macOS 后端在 `MacGameWindow.prepare` 中给 Wine 游戏主进程加载独立的 x86_64 `ipv6-discovery.dylib`。它只处理地址为 `ff02::1`、端口为 `19133`、没有 scope 和控制消息的 `sendmsg`：
 
 1. 优先沿用 socket 的 `IPV6_MULTICAST_IF` 或绑定地址对应的接口。
 2. 否则选择当前主网络的可用 IPv6 局域网接口；没有合适的主接口时，使用可用的非回环、非点对点 IPv6 局域网接口。
 3. 在地址副本里补充接口编号，调用原 `sendmsg`，保留其返回值和错误。找不到接口时沿用原调用。
 
-调用者的数据、已经指定接口的 IPv6 包、IPv4、单播、其他端口和带控制消息的发送都不修改。没有关闭局域网发现、系统 IPv6、代理、防火墙或隐私保护，也没有修改游戏 EXE、Wine 文件或渲染器。网络组件与输入组件组合加载，原有输入开关继续有效。
+调用者的数据、已经指定接口的 IPv6 包、IPv4、单播、其他端口和带控制消息的发送都不修改。没有关闭局域网发现、系统 IPv6、代理、防火墙或隐私保护，也没有修改游戏 EXE、Wine 文件或渲染器。网络组件与输入、游戏顶栏组件组合加载，原有输入开关继续有效。
 
 资源按 SHA-256 校验后写入独立的 `runtimes/network-discovery-v1` 缓存；移动开发目录后仍可复用，损坏的缓存会修复，损坏的应用资源会拒绝启动。Wine 初始化与启动器单独启动的注入器不追加该环境变量。
 
@@ -28,6 +28,8 @@ RakNet → sendto → WS2_sendto → WaitForSingleObject(INFINITE)
 python3 tools/network/build.py
 flutter test test/wine_network_test.dart test/input_guard_test.dart
 ```
+
+设置 `MCDEV_TEST_WINE_RUNTIME` 指向已解压的 Wine 11.0_1，并用 `MCDEV_CHROME_CLIENT_APP` 指向已构建的 macOS 客户端，可额外验证真实签名应用的启动环境：全屏快捷键开／关时，网络、输入与顶栏组件正确组合；该测试不启动游戏。
 
 需要 Xcode 命令行工具；原生检查验证目标包识别、显式接口优先级、主接口选择、回环/点对点接口回退、正常 UDP 载荷及错误传递。重新编译后核对输出 SHA-256，并更新 `lib/development/wine_network_io.dart` 中的固定值。
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -60,6 +61,8 @@ class FakeLauncher extends DevelopmentLauncher {
   }
   int launches = 0;
   int refreshes = 0;
+  String? lastSeed;
+  bool? lastNewWorld;
   @override
   Future<void> refresh() async {
     refreshes++;
@@ -87,7 +90,10 @@ class FakeLauncher extends DevelopmentLauncher {
   @override
   Future<void> importGame(String directory) async {}
   @override
-  Future<void> importMods(String path) async {}
+  Future<void> importMods(
+    String path, {
+    Future<bool> Function()? confirmUuidRefresh,
+  }) async {}
   @override
   Future<void> removePack(String uuid) async {
     packs.removeWhere((pack) => pack.uuid == uuid);
@@ -100,8 +106,11 @@ class FakeLauncher extends DevelopmentLauncher {
     required String worldName,
     required bool creative,
     required bool menuOnly,
+    String? seed,
   }) async {
     launches++;
+    lastSeed = seed;
+    lastNewWorld = useNewWorld;
     running = true;
     busy = true;
     notifyListeners();
@@ -192,7 +201,8 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        final launcher = FakeLauncher();
+        final launcher = FakeLauncher()
+          ..projectSortOrder = ProjectSortOrder.importedOldest;
         launcher.packs = [
           const ModPack(
             name: '§lProject  ',
@@ -235,7 +245,7 @@ void main() {
           find.byKey(const ValueKey('development-desktop')),
           findsOneWidget,
         );
-        expect(find.text('Project'), findsOneWidget);
+        expect(find.text('Project'), findsNWidgets(2));
         expect(find.text('/project/BP'), findsNothing);
         expect(find.textContaining('部分启用'), findsOneWidget);
         final wine = tester.getRect(find.text('Wine 运行环境'));
@@ -243,7 +253,7 @@ void main() {
         expect(projects.left, greaterThan(wine.right));
         final launch = find.widgetWithText(OreButton, '启动测试');
         expect(launch.hitTestable(), findsOneWidget);
-        await tester.tap(find.text('Project'));
+        await tester.tap(find.text('Project').last);
         await tester.pumpAndSettle();
         expect(launcher.selectedPacks, containsAll(['bp', 'rp']));
         expect(find.textContaining('部分启用'), findsNothing);
@@ -439,6 +449,223 @@ void main() {
     },
   );
 
+  for (final dark in [false, true]) {
+    for (final size in [
+      const Size(800, 600),
+      const Size(1024, 600),
+      const Size(1100, 700),
+      const Size(1440, 600),
+    ]) {
+      testWidgets(
+        'desktop columns scroll independently $size ${dark ? "dark" : "light"}',
+        (tester) async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final launcher = FakeLauncher();
+          launcher.packs = [
+            for (var i = 0; i < 30; i++)
+              ModPack(
+                name: 'Project $i',
+                uuid: 'id-$i',
+                version: const [1, 0, 0],
+                type: 'data',
+                directory: '/projects/$i',
+              ),
+          ];
+          await tester.pumpWidget(
+            host(
+              HomeShell(
+                developmentSupported: true,
+                developmentPageBuilder: (_) => Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: DevelopmentEnvironmentPanel(
+                    storage: FakeStorage(),
+                    launcherFactory: () async => launcher,
+                    storageSection: const OreCard(
+                      child: SizedBox(height: 600, child: Text('Directory')),
+                    ),
+                  ),
+                ),
+              ),
+              dark: dark,
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('开发'));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('development-desktop')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('development-single-column')),
+            findsNothing,
+          );
+          final environment = find.byKey(
+            const PageStorageKey('development-environment'),
+          );
+          final projectRows = find.byKey(
+            const PageStorageKey('development-projects'),
+          );
+          final projects = projectRows.evaluate().isNotEmpty
+              ? projectRows
+              : find.byKey(
+                  const PageStorageKey('development-projects-compact'),
+                );
+          expect(environment, findsOneWidget);
+          expect(projects, findsOneWidget);
+          final environmentScrollable = find
+              .descendant(of: environment, matching: find.byType(Scrollable))
+              .first;
+          final projectScrollable = find
+              .descendant(of: projects, matching: find.byType(Scrollable))
+              .first;
+          final environmentPosition = tester
+              .state<ScrollableState>(environmentScrollable)
+              .position;
+          final projectPosition = tester
+              .state<ScrollableState>(projectScrollable)
+              .position;
+          expect(
+            tester.getRect(projects).left,
+            greaterThan(tester.getRect(environment).right),
+          );
+          final launchRegion = find.byKey(
+            const ValueKey('development-launch-region'),
+          );
+          final launchRect = tester.getRect(launchRegion);
+          final directoryRect = tester.getRect(find.text('Directory'));
+          final status = find.byKey(const ValueKey('development-status'));
+          final statusRect = tester.getRect(status);
+          await tester.sendEventToBinding(
+            PointerScrollEvent(
+              position: tester.getCenter(projects),
+              scrollDelta: const Offset(0, 240),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(projectPosition.pixels, greaterThan(0));
+          expect(environmentPosition.pixels, 0);
+          expect(tester.getRect(find.text('Directory')), directoryRect);
+          expect(tester.getRect(launchRegion), launchRect);
+          expect(tester.getRect(status), statusRect);
+          await tester.scrollUntilVisible(
+            find.text('Project 29'),
+            500,
+            scrollable: projectScrollable,
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('Project 29').hitTestable(), findsOneWidget);
+          expect(environmentPosition.pixels, 0);
+          expect(tester.getRect(launchRegion), launchRect);
+          expect(tester.getRect(status), statusRect);
+          final projectOffset = projectPosition.pixels;
+          await tester.sendEventToBinding(
+            PointerScrollEvent(
+              position: tester.getCenter(environment),
+              scrollDelta: const Offset(0, 240),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(environmentPosition.pixels, greaterThan(0));
+          expect(projectPosition.pixels, projectOffset);
+          expect(tester.getRect(launchRegion), launchRect);
+          expect(tester.getRect(status), statusRect);
+          await tester.scrollUntilVisible(
+            find.text('Wine 运行环境'),
+            300,
+            scrollable: environmentScrollable,
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('Wine 运行环境').hitTestable(), findsOneWidget);
+          expect(projectPosition.pixels, projectOffset);
+          expect(
+            find.byKey(const ValueKey('development-launch')).hitTestable(),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets('tall desktop at the column breakpoint fits expanded settings', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(720, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final launcher = FakeLauncher()..useNewWorld = true;
+    await tester.pumpWidget(
+      host(
+        DevelopmentEnvironmentPanel(
+          storage: FakeStorage(),
+          launcherFactory: () async => launcher,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('development-desktop')), findsOneWidget);
+    await tester.ensureVisible(find.text('本地项目'));
+    await tester.pumpAndSettle();
+    expect(find.text('本地项目').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('large text uses two columns when their scaled widths fit', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final launcher = FakeLauncher()..useNewWorld = true;
+    await tester.pumpWidget(
+      host(
+        Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: DevelopmentEnvironmentPanel(
+              storage: FakeStorage(),
+              launcherFactory: () async => launcher,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('development-desktop')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('development-world-name')),
+      'Large text world',
+    );
+    await tester.ensureVisible(find.text('本地项目'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(find.text('本地项目')).left,
+      greaterThan(tester.getRect(find.text('Wine 运行环境')).right),
+    );
+    expect(find.text('本地项目').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    tester.view.physicalSize = const Size(800, 900);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('development-single-column')),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('development-world-name')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Large text world'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('responsive resize preserves launcher and test world input', (
     tester,
   ) async {
@@ -460,10 +687,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(OreButton, '测试设置'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(OreTextField), 'Retained world');
-    await tester.tap(find.widgetWithText(OreButton, '完成'));
     await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(390, 844);
     await tester.pumpAndSettle();
@@ -489,28 +714,21 @@ void main() {
     expect(factories, 1);
     expect(find.textContaining('Retained world'), findsOneWidget);
     expect(launch.hitTestable(), findsOneWidget);
-    // A short desktop window must allow scrolling instead of overflowing.
+    // Short desktop windows keep independent panes and scroll launch settings.
     tester.view.physicalSize = const Size(1280, 480);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('development-desktop')), findsOneWidget);
-    expect(
-      find.byKey(const PageStorageKey('development-projects-compact')),
-      findsOneWidget,
-    );
     expect(launch.hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
     tester.view.physicalSize = const Size(1280, 320);
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('development-single-column')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('development-desktop')), findsOneWidget);
     await tester.scrollUntilVisible(
       launch,
       200,
       scrollable: find
           .descendant(
-            of: find.byKey(const ValueKey('development-single-column')),
+            of: find.byKey(const PageStorageKey('development-launch-controls')),
             matching: find.byType(Scrollable),
           )
           .first,
@@ -540,7 +758,6 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(OreButton, '测试设置'));
         await tester.pumpAndSettle();
         expect(find.text('灵动视效（实验性）'), findsNothing);
         await tester.tap(find.text('渲染龙'));
@@ -556,7 +773,14 @@ void main() {
           await tester.pumpAndSettle();
           expect(launcher.vibrantVisuals, isTrue);
         } else {
-          expect(find.textContaining('当前版本尚未适配灵动视效'), findsOneWidget);
+          expect(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is OreTooltip &&
+                  widget.message.contains('当前版本尚未适配灵动视效'),
+            ),
+            findsOneWidget,
+          );
         }
         expect(tester.takeException(), isNull);
       },

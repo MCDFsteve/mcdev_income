@@ -1,4 +1,4 @@
-part of mcdev_income_app;
+part of '../main.dart';
 
 class DevelopmentPage extends StatefulWidget {
   const DevelopmentPage({super.key, this.storageFactory});
@@ -32,12 +32,22 @@ class _DevelopmentPageState extends State<DevelopmentPage> {
     try {
       final storage =
           _storage ?? await (widget.storageFactory?.call() ?? _openStorage());
-      final status = await storage.inspect();
-      if (mounted)
+      // Keep recovery actions available even if inspection or setup fails.
+      if (!mounted) return;
+      setState(() => _storage = storage);
+      var status = await storage.inspect();
+      if (!status.initialized && !status.exists && status.problem == null) {
+        // A missing, unconfigured default is the first-use case. An unavailable
+        // saved location or an invalid existing directory requires user action.
+        await storage.initialize();
+        status = await storage.inspect();
+      }
+      if (mounted) {
         setState(() {
           _storage = storage;
           _status = status;
         });
+      }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
@@ -57,19 +67,21 @@ class _DevelopmentPageState extends State<DevelopmentPage> {
     try {
       await action();
       final status = await _storage!.inspect();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _status = status;
           _notice = success;
         });
+      }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _busy = false;
           _progress = null;
         });
+      }
     }
   }
 
@@ -134,7 +146,7 @@ class _DevelopmentPageState extends State<DevelopmentPage> {
             children: [
               OreSelectableText(storage.paths.root),
               const SizedBox(height: 12),
-              const Text('Wine、游戏、存档、下载缓存和日志统一存放在此目录。迁移会先复制并校验，成功后切换位置，原目录保留。'),
+              const Text('游戏、存档、运行组件和日志统一存放在此目录。迁移会先复制并校验，成功后切换位置，原目录保留。'),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -228,9 +240,9 @@ class _DevelopmentPageState extends State<DevelopmentPage> {
                         ? null
                         : () => _run(
                             () => storage.reveal(storage.paths.root),
-                            '已在 Finder 中打开。',
+                            '已打开目录。',
                           ),
-                    child: const Text('在 Finder 中打开'),
+                    child: const Text('打开目录'),
                   ),
               ],
             ),
@@ -314,12 +326,7 @@ class _DevelopmentPageState extends State<DevelopmentPage> {
                       if (mounted) setState(() => _environmentActive = active);
                     },
                   )
-                : ListView(
-                    children: [
-                      if (storageCard != null) storageCard,
-                      ...messages,
-                    ],
-                  ),
+                : ListView(children: [?storageCard, ...messages]),
           ),
         ],
       ),
@@ -371,7 +378,7 @@ class _DevelopmentPathDialogState extends State<_DevelopmentPathDialog> {
     };
     final description = switch (widget.action) {
       _StorageAction.initialize => '选择空文件夹。切换后原目录仍保留，可通过“使用已有目录”重新加载。',
-      _StorageAction.reuse => '选择本应用之前创建的开发数据根目录。已有 Wine 和游戏可以继续使用。',
+      _StorageAction.reuse => '选择本应用之前创建的开发数据根目录，继续使用已有游戏和存档。',
       _StorageAction.migrate => '请先关闭游戏。复制并校验成功后切换位置，旧目录保留；新旧目录不能互相包含。',
     };
     return OreAlertDialog(
@@ -385,7 +392,7 @@ class _DevelopmentPathDialogState extends State<_DevelopmentPathDialog> {
           OreTextField(
             controller: _path,
             enabled: !_picking,
-            hintText: '/Volumes/磁盘/MCDev',
+            hintText: '输入文件夹的完整路径',
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 8),
