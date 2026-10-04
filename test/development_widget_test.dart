@@ -820,6 +820,7 @@ void main() {
         final stop = find.widgetWithText(OreButton, '退出测试');
         expect(stop, findsOneWidget);
         await tester.ensureVisible(stop);
+        await tester.pumpAndSettle();
         await tester.tap(stop);
         await tester.pumpAndSettle();
         expect(launcher.running, false);

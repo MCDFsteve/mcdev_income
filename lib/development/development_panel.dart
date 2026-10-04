@@ -1394,6 +1394,19 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
     final selected = launcher.projects
         .where((project) => project.selection(launcher.selectedPacks) != false)
         .length;
+    final reload = OreTooltip(
+      message: launcher.pythonReloadAvailable
+          ? '将源项目中的 Python 修改应用到当前测试世界。'
+          : launcher.pythonReloadUnavailableReason,
+      child: OreButton(
+        key: const ValueKey('development-python-reload'),
+        size: OreButtonSize.sm,
+        onPressed: launcher.pythonReloadAvailable
+            ? () => _run(launcher.reloadPython)
+            : null,
+        child: Text(launcher.pythonReloadBusy ? '正在热重载…' : 'Python 热重载'),
+      ),
+    );
     return _card('启动游戏', [
       LayoutBuilder(
         builder: (context, constraints) {
@@ -1443,7 +1456,14 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
                 ? '主菜单模式不创建或切换测试存档。'
                 : '${launcher.useNewWorld ? '每次启动创建新存档，已有存档保留' : '继续上次测试存档'} · $selected 个项目',
           ),
-          _button('查看日志', _showLogs),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _button('查看日志', _showLogs),
+              const SizedBox(width: 12),
+              reload,
+            ],
+          ),
           if (launcher.running) _button('退出测试', () => _run(launcher.stopGame)),
         ],
       ),

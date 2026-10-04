@@ -346,6 +346,12 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   bool get lanAvailable => false;
   String get lanUnavailableReason => '请等待此测试页的世界加载完成。';
   bool get hasLanPlayers => false;
+  bool pythonReloadBusy = false;
+  bool get pythonReloadAvailable => false;
+  String get pythonReloadUnavailableReason =>
+      '启动 3.10.0.420447 测试世界后可重载 Python。';
+  Future<void> reloadPython() =>
+      Future.error(DevelopmentStorageException(pythonReloadUnavailableReason));
   List<DevelopmentPlayer> get players => const [];
   Future<void> launchLanPlayer({
     required String name,

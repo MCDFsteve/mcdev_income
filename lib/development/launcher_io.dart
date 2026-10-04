@@ -36,6 +36,7 @@ import 'platform/runtime_factory_io.dart';
 import 'platform/host_files_io.dart';
 import 'platform/game_diagnostics.dart' show classifyNativeDiagnostic;
 import 'mod_manifest_io.dart';
+import 'python_reload_io.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -164,6 +165,145 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   _LanJoinTarget? _joinTarget;
   String _playerName = 'Developer';
   TestPlayerSkin _hostSkin = TestPlayerSkin.steve;
+  PythonReloadSession? _pythonReloadSession;
+  PythonReloadBridge? _pythonReloadBridge;
+  Timer? _pythonReloadTimer;
+  Completer<void>? _pythonReloadFinished;
+  bool _pythonReloadNeedsRestart = false;
+  bool _pythonReloadApplied = false;
+  String? _pythonReloadFailure;
+  bool get _reloadHasGuests =>
+      _worldPlayers.length > 1 ||
+      _lanGuests.values.any((guest) => !guest.finished);
+
+  @override
+  bool get pythonReloadAvailable =>
+      running &&
+      !busy &&
+      !pythonReloadBusy &&
+      !_stopRequested &&
+      !_stopping &&
+      !_pythonReloadNeedsRestart &&
+      _joinTarget == null &&
+      !_reloadHasGuests &&
+      _pythonReloadSession?.hasScripts == true &&
+      _pythonReloadBridge?.ready == true;
+
+  @override
+  String get pythonReloadUnavailableReason {
+    if (selectedVersion != pythonReloadVersion) {
+      return 'Python 热重载目前支持 3.10.0.420447。';
+    }
+    if (!running) return '启动测试世界后可重载已启用项目的 Python。';
+    if (_pythonReloadNeedsRestart) return '上次重载未完整完成，请重新启动测试游戏。';
+    if (_pythonReloadFailure != null) return _pythonReloadFailure!;
+    if (_reloadHasGuests) return '请先退出局域网玩家，再重载 Python。';
+    if (_pythonReloadSession?.hasScripts != true) {
+      return '本次测试没有可重载的 Python 源码。';
+    }
+    if (pythonReloadBusy) return '正在重载 Python…';
+    return '请等待世界加载完成；游戏暂停时请先返回游戏。';
+  }
+
+  @override
+  Future<void> reloadPython() async {
+    if (!pythonReloadAvailable) {
+      throw DevelopmentStorageException(pythonReloadUnavailableReason);
+    }
+    final generation = _launchGeneration;
+    final bridge = _pythonReloadBridge!;
+    final epoch = bridge.epoch!;
+    final session = _pythonReloadSession!;
+    void checkCurrent() {
+      if (!running ||
+          _stopRequested ||
+          _stopping ||
+          generation != _launchGeneration ||
+          !identical(bridge, _pythonReloadBridge) ||
+          bridge.epoch != epoch) {
+        throw const DevelopmentStorageException('测试世界已退出或变化，已停止热重载。');
+      }
+    }
+
+    pythonReloadBusy = true;
+    final finished = Completer<void>();
+    _pythonReloadFinished = finished;
+    error = null;
+    notice = '正在检查 Python 修改…';
+    _notify();
+    PythonReloadChanges? changes;
+    var applying = false;
+    try {
+      changes = await session.changes();
+      checkCurrent();
+      if (changes.isEmpty) {
+        notice = 'Python 源码没有变化。';
+        return;
+      }
+      final id = DateTime.now().microsecondsSinceEpoch.toString();
+      final files = changes.requestFiles(_winPath);
+      final validation = await bridge.request(
+        id: id,
+        operation: 'validate',
+        worldEpoch: epoch,
+        files: files,
+        checkCurrent: checkCurrent,
+      );
+      if (validation['ok'] != true) {
+        await _pythonReloadLog(
+          '[ERROR] Python 语法检查失败：\n${validation['error']}',
+        );
+        throw const DevelopmentStorageException('Python 语法检查失败，游戏逻辑未更新；请查看日志。');
+      }
+      await changes.stage(checkCurrent);
+      notice = '正在应用 ${changes.count} 个 Python 文件…';
+      _notify();
+      applying = true;
+      final result = await bridge.request(
+        id: id,
+        operation: 'apply',
+        worldEpoch: epoch,
+        files: files,
+        checkCurrent: checkCurrent,
+      );
+      checkCurrent();
+      if (result['ok'] != true) {
+        await _pythonReloadLog('[ERROR] Python 热重载失败：\n${result['error']}');
+        throw const DevelopmentStorageException('Python 执行失败，请查看日志并重新启动测试。');
+      }
+      changes.commit();
+      _pythonReloadApplied = true;
+      notice =
+          'Python 热重载完成：${result['reloaded']} 个模块已更新'
+          '${result['deferred'] == 0 ? '。' : '，${result['deferred']} 个新模块将在导入时加载。'}';
+      await _pythonReloadLog('[INFO] $notice');
+    } catch (e) {
+      if (applying &&
+          generation == _launchGeneration &&
+          identical(bridge, _pythonReloadBridge)) {
+        _pythonReloadNeedsRestart = true;
+      } else if (!applying) {
+        await changes?.rollback();
+      }
+      if (generation == _launchGeneration) {
+        error = e is TimeoutException && applying
+            ? 'Python 重载未收到完成确认，请查看日志并重新启动测试。'
+            : e.toString();
+        notice = null;
+      }
+    } finally {
+      if (generation == _launchGeneration) pythonReloadBusy = false;
+      finished.complete();
+      if (identical(_pythonReloadFinished, finished)) {
+        _pythonReloadFinished = null;
+      }
+      _notify();
+    }
+  }
+
+  void Function(String)? _writePythonReloadLog;
+  Future<void> _pythonReloadLog(String message) async =>
+      _writePythonReloadLog?.call('$message\n');
 
   @override
   String get gameDisplayName => _joinTarget == null
@@ -174,6 +314,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   bool get lanAvailable =>
       running &&
       _joinTarget == null &&
+      !pythonReloadBusy &&
+      !_pythonReloadApplied &&
       !_closingLan &&
       _lanTransportReady &&
       _lanBridge != null &&
@@ -183,7 +325,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       DateTime.now().difference(_rosterUpdated!).inSeconds < 10 &&
       _worldPlayers.isNotEmpty;
   @override
-  String get lanUnavailableReason => !supportsLanPatch(selectedVersion ?? '')
+  String get lanUnavailableReason => _pythonReloadApplied
+      ? 'Python 热重载后，请重新启动测试再添加局域网玩家。'
+      : !supportsLanPatch(selectedVersion ?? '')
       ? '当前游戏版本尚未适配局域网测试，请选择 3.10.0.420447。'
       : '请等待此测试页的世界加载完成。';
 
@@ -1323,6 +1467,12 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     String? seed,
   }) async {
     final generation = _launchGeneration;
+    _pythonReloadSession = null;
+    _pythonReloadBridge = null;
+    _pythonReloadFailure = null;
+    _pythonReloadNeedsRestart = false;
+    _pythonReloadApplied = false;
+    pythonReloadBusy = false;
     _control?.check();
     _joinTarget?.requireHost();
     if (_joinTarget == null) {
@@ -1356,6 +1506,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     Directory? performanceFiles;
     Directory? lanFiles;
     Directory? rendererFiles;
+    Directory? pythonFiles;
     String? dragonRuntime;
     final adaptedDragon =
         capabilities.metalRenderer &&
@@ -1449,6 +1600,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       if (_joinTarget == null) _hostPackRoot = dataRoot;
       final behavior = <String>[], resources = <String>[];
       final modSnapshots = <Directory>[];
+      final pythonPacks = <PythonReloadPack>[];
       for (final pack in chosen) {
         _control?.check();
         final name = 'mcdev_${pack.uuid}';
@@ -1497,6 +1649,31 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         }
         (pack.type == 'resources' ? resources : behavior).add(name);
         modSnapshots.add(target);
+        if (pack.type != 'resources') {
+          pythonPacks.add(PythonReloadPack(source, target.path));
+        }
+      }
+      if (!menuOnly && game.version == pythonReloadVersion) {
+        try {
+          _pythonReloadSession = await PythonReloadSession.capture(pythonPacks);
+          if (_pythonReloadSession!.hasScripts) {
+            pythonFiles = await preparePythonReloadDll(
+              storage.paths.runtimes,
+              File(executable),
+            );
+            _pythonReloadBridge = await PythonReloadBridge.create(
+              behaviorPacks: p.join(dataRoot, 'behavior_packs'),
+              testDirectory: _runtime.testDirectory,
+              gamePath: _winPath,
+              roots: _pythonReloadSession!.roots,
+            );
+            behavior.add(PythonReloadBridge.packName);
+          }
+        } catch (e) {
+          _pythonReloadFailure = 'Python 热重载暂不可用：$e';
+          pythonFiles = null;
+          _pythonReloadBridge = null;
+        }
       }
       final modCapture = await prepareModLogCapture(modSnapshots);
       if (_joinTarget case final target?) {
@@ -1661,9 +1838,13 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'AssertCacheDir': _winPath(assertDir.path),
       });
       output = File(logPath!).openWrite();
+      _writePythonReloadLog = (text) => output?.write(text);
       output.writeln(
         '[INFO] 准备测试游戏：${game.version} · ${effectiveRenderer.label}',
       );
+      if (_pythonReloadFailure != null) {
+        output.writeln('[WARN] $_pythonReloadFailure');
+      }
       final diagnostics = await _runtime.createDiagnostics();
       await diagnostics.prepare();
       modLogs = await ModLogServer.start(
@@ -1714,6 +1895,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         fullscreenShortcut: fullscreenShortcut,
         workingDirectory: gameDirectory,
         overrides: {
+          if (_pythonReloadBridge != null) ..._pythonReloadBridge!.environment,
           if (lanFiles != null) ...{
             'MCDEV_LAN_PATCH_LOG': _winPath(lanLog),
             'MCDEV_LAN_ROLE': _joinTarget == null ? 'host' : 'guest',
@@ -1787,6 +1969,29 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       progress = null;
       if (lanFiles != null) {
         unawaited(_activateLan(lanFiles, executable, lanLog, _game!));
+      }
+      if (pythonFiles != null && _pythonReloadBridge != null) {
+        final bridge = _pythonReloadBridge!;
+        unawaited(
+          _activatePythonReload(pythonFiles, executable, bridge, _game!),
+        );
+        var polling = false;
+        _pythonReloadTimer = Timer.periodic(const Duration(seconds: 1), (
+          _,
+        ) async {
+          if (polling ||
+              generation != _launchGeneration ||
+              !identical(bridge, _pythonReloadBridge)) {
+            return;
+          }
+          polling = true;
+          try {
+            await bridge.poll();
+            _notify();
+          } finally {
+            polling = false;
+          }
+        });
       }
       if (performanceFiles != null) {
         unawaited(
@@ -1867,6 +2072,15 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       _lanTimer?.cancel();
       _lanTimer = null;
       _lanBridge = null;
+      _pythonReloadTimer?.cancel();
+      _pythonReloadTimer = null;
+      final reloadBridge = _pythonReloadBridge;
+      _pythonReloadBridge = null;
+      await reloadBridge?.close();
+      // A cancelled staging operation must restore its files before another
+      // launch can reuse this session's mounted directories.
+      await _pythonReloadFinished?.future;
+      _pythonReloadSession = null;
       try {
         await _closeRpc();
       } catch (_) {
@@ -1886,6 +2100,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         for (final filter in nativeFilters) {
           filter.close();
         }
+        _writePythonReloadLog = null;
         await output?.close();
       } finally {
         _lanPort = null;
@@ -1910,6 +2125,63 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
             error ??= '渲染设置恢复失败，请检查开发目录的写入权限。';
           }
         }
+        _notify();
+      }
+    }
+  }
+
+  Future<void> _activatePythonReload(
+    Directory files,
+    String executable,
+    PythonReloadBridge bridge,
+    Process target,
+  ) async {
+    bool current() =>
+        running &&
+        identical(_game, target) &&
+        identical(_pythonReloadBridge, bridge);
+    try {
+      final loaded = await injectPerformancePatch(
+        wine: _runtime.wine,
+        targetPid: target.pid,
+        environment: _env(gamePrefix),
+        helper: _winPath(p.join(files.path, lanInjectorFile)),
+        dll: _winPath(p.join(files.path, 'python-reload.dll')),
+        executable: _winPath(executable),
+        cancelWhen: target.exitCode.then<void>((_) {}),
+      );
+      if (!current()) return;
+      if (!loaded) {
+        throw const DevelopmentStorageException('Python 重载 DLL 未能加载。');
+      }
+      final deadline = DateTime.now().add(const Duration(seconds: 70));
+      while (current() && DateTime.now().isBefore(deadline)) {
+        final log = File(bridge.nativeLogPath);
+        if (await log.exists()) {
+          try {
+            final result = jsonDecode(await log.readAsString()) as Map;
+            if (result['state'] == 'ready') {
+              await _pythonReloadLog('[INFO] Python 热重载 DLL 已就绪。');
+              return;
+            }
+            if (result['state'] != null) {
+              throw DevelopmentStorageException(
+                'Python 重载 DLL 不支持当前运行布局：${result['reason']}',
+              );
+            }
+          } on FormatException {
+            // The worker may still be writing its readiness record.
+          }
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+      if (current()) {
+        throw const DevelopmentStorageException('Python 重载 DLL 初始化超时。');
+      }
+    } catch (e) {
+      if (current()) {
+        _pythonReloadFailure = e.toString();
+        await _pythonReloadLog('[WARN] $_pythonReloadFailure');
         _notify();
       }
     }
