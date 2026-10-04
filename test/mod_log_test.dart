@@ -182,10 +182,12 @@ void main() {
     'server isolates interleaved peers, session markers and shutdown',
     () async {
       final text = StringBuffer();
+      final nativeLines = <String>[];
       final done = Completer<void>();
       final server = await ModLogServer.start(
         marker: 's',
         sources: sources,
+        onNativeLine: nativeLines.add,
         onText: (value) {
           text.write(value);
           if (text.toString().contains('selected mod failed') &&
@@ -219,6 +221,8 @@ void main() {
         final snapshot = text.toString();
         expect(snapshot, contains(modError));
         expect(snapshot, contains('other peer\n'));
+        expect(nativeLines, contains('Traceback (most recent call last):'));
+        expect(nativeLines, contains('RuntimeError: selected mod failed'));
         await Future<void>.delayed(const Duration(milliseconds: 30));
         expect(text.toString(), snapshot);
         await server.close();

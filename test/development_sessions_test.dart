@@ -372,6 +372,5 @@ void main() {
         'fixture',
       );
     },
-    skip: !Platform.isMacOS,
   );
 }

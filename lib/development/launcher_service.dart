@@ -8,6 +8,7 @@ import 'mcs_api.dart';
 import 'performance_patch.dart';
 import 'game_graphics.dart';
 import 'render_dragon.dart';
+import 'platform/development_capabilities.dart';
 export 'game_graphics.dart' show GameRenderer, GameClientType;
 import 'launcher_stub.dart' if (dart.library.io) 'launcher_io.dart' as backend;
 
@@ -47,8 +48,8 @@ enum TestPlayerSkin {
 
   Map<String, Object> skinInfo(String texturePath) => {
     'skin': texturePath,
-    // Match the MCS PNG-skin path. The game's local-only slots are not
-    // populated consistently by the RenderDragon development client.
+    // MCS PNG-import metadata for Mac/Wine. Native Windows uses the runtime's
+    // packaged-skin selection instead; its PNG imports can select the dummy.
     'sync': true,
     'in_package': false,
     'slim': this == TestPlayerSkin.alex,
@@ -315,14 +316,16 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   String newWorldSeed = '';
   TestPlayerSkin playerSkin = TestPlayerSkin.steve;
   GameRenderer renderer = GameRenderer.openGL;
+  DevelopmentCapabilities get capabilities => DevelopmentCapabilities.macOS;
   bool get rendererSwitchSupported => supportsRendererSwitch(selectedVersion);
   GameRenderer get effectiveRenderer =>
       rendererSwitchSupported ? renderer : GameRenderer.openGL;
   bool get performanceOptimizationSupported =>
+      capabilities.performancePatch &&
       effectiveRenderer == GameRenderer.openGL &&
       supportsPerformancePatch(selectedVersion);
   bool get renderDragonCompatibilitySupported =>
-      supportsRenderDragonPatch(selectedVersion);
+      capabilities.metalRenderer && supportsRenderDragonPatch(selectedVersion);
   bool get vibrantVisualsSupported =>
       renderDragonCompatibilitySupported &&
       effectiveRenderer == GameRenderer.renderDragon;
@@ -352,6 +355,9 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
 
   Future<void> refresh();
   Future<void> installWine();
+
+  /// Platform-neutral entry point; installWine remains for existing clients.
+  Future<void> installRuntime() => installWine();
   Future<void> queryLatest();
   Future<void> installLatest();
   Future<void> queryVersions();

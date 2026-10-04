@@ -8,6 +8,7 @@ import 'package:mcdev_income/development/launcher_io.dart';
 import 'package:mcdev_income/development/launcher_service.dart';
 import 'package:mcdev_income/development/render_dragon.dart';
 import 'package:mcdev_income/development/render_dragon_io.dart';
+import 'package:mcdev_income/development/platform/macos_game_runtime.dart';
 import 'development_test.dart' show MemoryPreferences;
 
 class DiskAssets extends CachingAssetBundle {
@@ -51,7 +52,11 @@ void main() {
         lockPath: p.join(temp.path, 'lock'),
       );
       await storage.initialize();
-      final launcher = NativeDevelopmentLauncher(storage, prefs);
+      final launcher = NativeDevelopmentLauncher(
+        storage,
+        prefs,
+        runtimeBackend: MacWineRuntime(storage, 'default'),
+      );
       launcher.games = [
         const LocalGame(renderDragonPatchVersion, '/test/dragon'),
         const LocalGame('3.8.0.313229', '/test/gl'),
@@ -77,7 +82,11 @@ void main() {
           throwsA(isA<DevelopmentStorageException>()),
         );
         await launcher.chooseVersion(renderDragonPatchVersion);
-        final reopened = NativeDevelopmentLauncher(storage, prefs);
+        final reopened = NativeDevelopmentLauncher(
+          storage,
+          prefs,
+          runtimeBackend: MacWineRuntime(storage, 'default'),
+        );
         expect(reopened.renderer, GameRenderer.renderDragon);
         expect(reopened.vibrantVisuals, isTrue);
         reopened.dispose();

@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.14)
+project(mcdev_game_diagnostics LANGUAGES C CXX)
+add_executable(mcdev_game_diagnostics inspect_game.cpp)
+target_compile_features(mcdev_game_diagnostics PRIVATE cxx_std_17)
+target_compile_definitions(mcdev_game_diagnostics PRIVATE UNICODE _UNICODE)
+target_link_libraries(mcdev_game_diagnostics PRIVATE dbghelp user32)
+add_executable(mcdev_skin_diagnostics inspect_skin.cpp)
+target_compile_features(mcdev_skin_diagnostics PRIVATE cxx_std_17)
+target_compile_definitions(mcdev_skin_diagnostics PRIVATE UNICODE _UNICODE NOMINMAX)
+set(MINHOOK ../../performance/minhook)
+add_library(mcdev_skin_gl_probe SHARED probe_skin_gl.cpp
+  ${MINHOOK}/src/buffer.c ${MINHOOK}/src/hook.c ${MINHOOK}/src/trampoline.c
+  ${MINHOOK}/src/hde/hde64.c)
+target_include_directories(mcdev_skin_gl_probe PRIVATE ${MINHOOK}/include)
+target_compile_features(mcdev_skin_gl_probe PRIVATE cxx_std_17)
+target_link_libraries(mcdev_skin_gl_probe PRIVATE opengl32 gdi32)

@@ -163,7 +163,9 @@ class LanRosterBridge {
         recursive: true,
         followLinks: false,
       )) {
-        final relative = p.relative(item.path, from: target.path);
+        final relative = p
+            .relative(item.path, from: target.path)
+            .replaceAll('\\', '/');
         final knownFile =
             _packFiles.contains(relative) ||
             _packFiles.any(

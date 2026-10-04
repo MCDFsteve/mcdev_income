@@ -7,9 +7,12 @@ import '../core/preferences.dart';
 import '../storage/file_preferences.dart';
 import '../storage/file_lock.dart';
 import 'development_storage.dart';
+import 'platform/host_files_io.dart';
 
 Future<bool> supportsDevelopment() async {
-  if (!Platform.isMacOS || Platform.environment.containsKey('FLUTTER_TEST')) {
+  if (Platform.environment.containsKey('FLUTTER_TEST')) return false;
+  if (Platform.isWindows) return true;
+  if (!Platform.isMacOS) {
     return false;
   }
   try {
@@ -27,20 +30,34 @@ Future<DevelopmentStorage> openDevelopmentStorage(
   PreferenceStore preferences,
 ) async {
   final home = Platform.environment['HOME'];
-  if (!Platform.isMacOS || home == null) {
-    throw const DevelopmentStorageException('开发功能仅支持 macOS。');
+  final local =
+      Platform.environment['LOCALAPPDATA'] ?? Platform.environment['APPDATA'];
+  if (!(Platform.isWindows && local != null) &&
+      !(Platform.isMacOS && home != null)) {
+    throw const DevelopmentStorageException(
+      '开发功能目前支持 Windows 和 Apple 芯片 macOS。',
+    );
   }
   return NativeDevelopmentStorage(
     preferences: preferences,
-    defaultRoot: p.join(
-      home,
-      'Library',
-      'Application Support',
-      'mcdev_income',
-      'development',
-    ),
+    defaultRoot: Platform.isWindows
+        ? p.join(local!, 'mcdev_income', 'development')
+        : p.join(
+            home!,
+            'Library',
+            'Application Support',
+            'mcdev_income',
+            'development',
+          ),
     lockPath: p.join(mcdevHome(), 'development-storage.lock'),
   );
+}
+
+bool _isSessionLease(String relative) {
+  final parts = p.split(relative);
+  return parts.length == 2 &&
+      parts.first == 'prefixes' &&
+      RegExp(r'^\.session-[a-zA-Z0-9_-]{1,64}\.lock$').hasMatch(parts.last);
 }
 
 class _Entry {
@@ -52,7 +69,8 @@ class _Entry {
 }
 
 /// Managed development data, separate from the existing account/config store.
-/// No filesystem is created until the user initializes or changes a location.
+/// Inspection is read only; the development page initializes a fresh default
+/// on first entry, while unavailable saved locations require explicit recovery.
 class NativeDevelopmentStorage implements DevelopmentStorage {
   NativeDevelopmentStorage({
     required this.preferences,
@@ -120,7 +138,8 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
   Future<String> _canonical(String value) async {
     var path = value.trim();
     if (path == '~' || path.startsWith('~/')) {
-      final home = Platform.environment['HOME'];
+      final home =
+          Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
       if (home == null) throw const DevelopmentStorageException('无法确定用户目录。');
       path = path == '~' ? home : p.join(home, path.substring(2));
     }
@@ -332,6 +351,8 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
       root,
     ).list(recursive: true, followLinks: false)) {
       final relative = p.relative(entity.path, from: root);
+      // Windows leases are mandatory locks, not user data to copy or hash.
+      if (Platform.isWindows && _isSessionLease(relative)) continue;
       final type = await FileSystemEntity.type(entity.path, followLinks: false);
       if (type == FileSystemEntityType.link) {
         result[relative] = _Entry(
@@ -402,15 +423,19 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
       onProgress?.call(const StorageMigrationProgress('复制开发数据'));
       // ditto preserves executable modes and copies symbolic links without
       // traversing Wine's dosdevices/z: link or linked external projects.
-      final copied = await Process.run('/usr/bin/ditto', [
-        '--noextattr',
-        '--norsrc',
+      await copyDevelopmentTree(
         source,
         stage.path,
-      ]);
-      if (copied.exitCode != 0) {
-        throw const DevelopmentStorageException('数据复制失败，原目录和原路径设置均已保留。');
-      }
+        excludedFiles: Platform.isWindows
+            ? [
+                await for (final entry in Directory(
+                  p.join(source, 'prefixes'),
+                ).list(followLinks: false))
+                  if (_isSessionLease(p.relative(entry.path, from: source)))
+                    entry.path,
+              ]
+            : const [],
+      );
       for (final entry in original.entries.where(
         (entry) => entry.value.type == FileSystemEntityType.link,
       )) {
@@ -501,9 +526,6 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
     if (!await Directory(path).exists()) {
       throw const DevelopmentStorageException('该目录尚未创建或存储卷未连接。');
     }
-    final result = await Process.run('/usr/bin/open', [path]);
-    if (result.exitCode != 0) {
-      throw const DevelopmentStorageException('无法在 Finder 中打开目录。');
-    }
+    await revealDevelopmentDirectory(path);
   }
 }

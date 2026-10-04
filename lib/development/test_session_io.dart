@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../storage/file_lock.dart';
 import 'development_storage.dart';
 import 'session_preferences.dart';
+import 'platform/host_files_io.dart';
 
 /// Hold a session lease through shutdown, but share installations only during
 /// preparation. The callback must release preparation after its last shared write.
@@ -82,15 +83,7 @@ Future<String> prepareSessionGame({
       // a full copy. Never hardlink files the game might modify.
       await stage.delete(recursive: true);
       await stage.create();
-      final copy = await Process.run('/usr/bin/ditto', [
-        '--noextattr',
-        '--norsrc',
-        source,
-        stage.path,
-      ]);
-      if (copy.exitCode != 0) {
-        throw const DevelopmentStorageException('准备独立游戏文件失败，请检查剩余空间。');
-      }
+      await copyDevelopmentTree(source, stage.path);
     }
     await File(
       p.join(stage.path, '.mcdev-session-game.json'),

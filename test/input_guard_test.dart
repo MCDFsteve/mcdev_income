@@ -48,6 +48,7 @@ void main() {
         fullscreenShortcutGuardHash,
       );
     },
+    skip: Platform.isWindows, // DYLD paths are Unix-only.
   );
 
   test(

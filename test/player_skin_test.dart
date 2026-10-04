@@ -43,7 +43,8 @@ void main() {
         final config = await prepareTestPlayerSkin(
           skin: skin,
           gameDirectory: game,
-          gamePrefix: prefix,
+          skinDirectory: p.join(prefix, 'drive_c', 'MCDevTests', 'skins'),
+          gameSkinDirectory: r'C:\MCDevTests\skins',
         );
         final windowsPath = config['skin']! as String;
         expect(
@@ -59,6 +60,8 @@ void main() {
           ]),
         );
         expect(await staged.readAsBytes(), await sources[skin]!.readAsBytes());
+        expect(config['sync'], isTrue);
+        expect(config['in_package'], isFalse);
         expect(config['slim'], skin == TestPlayerSkin.alex);
         expect(config['skin_iid'], skin == TestPlayerSkin.alex ? '-2' : '-1');
       }
@@ -70,14 +73,16 @@ void main() {
     await prepareTestPlayerSkin(
       skin: TestPlayerSkin.alex,
       gameDirectory: game,
-      gamePrefix: prefix,
+      skinDirectory: p.join(prefix, 'drive_c', 'MCDevTests', 'skins'),
+      gameSkinDirectory: r'C:\MCDevTests\skins',
     );
     game = p.join(temp.path, 'Another Version');
     final source = await writeSkin(TestPlayerSkin.alex, 200);
     await prepareTestPlayerSkin(
       skin: TestPlayerSkin.alex,
       gameDirectory: game,
-      gamePrefix: prefix,
+      skinDirectory: p.join(prefix, 'drive_c', 'MCDevTests', 'skins'),
+      gameSkinDirectory: r'C:\MCDevTests\skins',
     );
     final staged = File(
       p.join(prefix, 'drive_c', 'MCDevTests', 'skins', 'alex.png'),
@@ -99,7 +104,8 @@ void main() {
         prepareTestPlayerSkin(
           skin: TestPlayerSkin.alex,
           gameDirectory: game,
-          gamePrefix: prefix,
+          skinDirectory: p.join(prefix, 'drive_c', 'MCDevTests', 'skins'),
+          gameSkinDirectory: r'C:\MCDevTests\skins',
         ),
         throwsA(isA<DevelopmentStorageException>()),
       );

@@ -34,9 +34,7 @@ PreferredSizeWidget buildOreAppBar(
   List<Widget>? actions,
   bool windowTitleBar = true,
 }) {
-  if (windowTitleBar &&
-      !kIsWeb &&
-      defaultTargetPlatform == TargetPlatform.macOS) {
+  if (windowTitleBar && hasDesktopWindow) {
     return OreWindowTitleBar(
       title: '我的世界开发者管理',
       subtitle: title,

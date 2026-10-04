@@ -48,7 +48,8 @@ Future<Directory> preparePerformancePatch(
 
 /// A failing helper never stops the game or kills its Wine prefix.
 Future<bool> injectPerformancePatch({
-  required String wine,
+  required String? wine,
+  int? targetPid,
   required Map<String, String> environment,
   required String helper,
   required String dll,
@@ -56,11 +57,18 @@ Future<bool> injectPerformancePatch({
   Future<void>? cancelWhen,
   Duration timeout = const Duration(minutes: 2),
 }) async {
-  final child = await Process.start(wine, [
-    helper,
-    dll,
-    executable,
-  ], environment: environment);
+  if (wine == null && (targetPid == null || targetPid <= 0)) return false;
+  final child = await Process.start(
+    wine ??
+        p.join(p.dirname(Platform.resolvedExecutable), 'mcdev_game_helper.exe'),
+    [
+      if (wine != null) helper,
+      dll,
+      executable,
+      if (wine == null) targetPid.toString(),
+    ],
+    environment: environment,
+  );
   final subscriptions = [
     child.stdout.listen((_) {}, onError: (Object _, StackTrace _) {}),
     child.stderr.listen((_) {}, onError: (Object _, StackTrace _) {}),

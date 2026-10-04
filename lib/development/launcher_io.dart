@@ -8,19 +8,17 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import '../core/preferences.dart';
 import '../storage/file_lock.dart';
+import '../logging/app_logger.dart' as app_logger;
 import 'development_storage.dart';
 import 'download_io.dart';
+import 'game_archive_io.dart';
+export 'game_archive_io.dart';
 import 'launcher_service.dart';
 import 'mcs_api.dart';
-import 'wine_patch_io.dart';
 import 'performance_patch_io.dart';
 import 'game_graphics.dart';
 import 'render_dragon.dart';
 import 'render_dragon_io.dart';
-import 'wine_game_app_io.dart';
-import 'input_guard_io.dart';
-import 'game_window_chrome_io.dart';
-import 'player_skin_io.dart';
 import 'test_world_io.dart';
 import 'session_preferences.dart';
 import 'test_session_io.dart';
@@ -32,6 +30,11 @@ import 'lan_patch_io.dart';
 import 'mod_log_io.dart';
 import 'mod_log_filter.dart';
 import 'mod_log_capture_io.dart';
+import 'platform/development_capabilities.dart';
+import 'platform/game_runtime_io.dart';
+import 'platform/runtime_factory_io.dart';
+import 'platform/host_files_io.dart';
+import 'platform/game_diagnostics.dart' show classifyNativeDiagnostic;
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -57,10 +60,12 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     PreferenceStore preferences, {
     this.sessionId = 'default',
     http.Client? client,
+    GameRuntime? runtimeBackend,
     Future<String> Function()? cookieProvider,
   }) : preferences = TestSessionPreferences(preferences, sessionId),
        api = McsApi(client: client),
        _cookieProvider = cookieProvider ?? (() async => '') {
+    _runtime = runtimeBackend ?? createGameRuntime(storage, sessionId);
     selectedVersion = this.preferences.getString(_versionKey);
     performanceOptimization = this.preferences.getInt(_performanceKey) != 0;
     limit60Fps = this.preferences.getInt(_frameLimitKey) != 0;
@@ -87,6 +92,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         TestPlayerSkin.steve;
     _restoreRenderer();
   }
+  late final GameRuntime _runtime;
+  @override
+  DevelopmentCapabilities get capabilities => _runtime.capabilities;
   final Future<String> Function() _cookieProvider;
   String? _accountFingerprint;
   final DevelopmentStorage storage;
@@ -405,6 +413,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         _rosterUpdated = DateTime.now();
         _worldPlayers = report.players;
         if (_worldPlayers.any((player) => player.name == _playerName)) {
+          if (!_hostEverJoined) notice = '测试世界已加载。';
           _hostEverJoined = true;
         }
         for (final guest in _lanGuests.values) {
@@ -441,13 +450,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     }
   }
 
-  String? _activeWine;
-  String get runtime => p.join(storage.paths.runtimes, 'wine-11.0_1-mcs-v1');
-  String get wine => _activeWine ?? p.join(runtime, 'bin/wine');
-  String get gamePrefix => p.join(
-    storage.paths.prefixes,
-    sessionId == 'default' ? 'game' : 'game-$sessionId',
-  );
+  String get runtime => _runtime.baseRuntime;
+  String? get wine => _runtime.wine;
+  String get gamePrefix => _runtime.prefix;
   String get _lock => storage.lockPath;
   String get _projectsFile => p.join(storage.paths.root, 'projects.json');
   @override
@@ -604,8 +609,13 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       }
     } on DownloadCancelled {
       notice = '下载已暂停，重试时会继续。';
-    } on FileSystemException {
-      error = '无法读写开发目录，请检查磁盘连接、权限和剩余空间。';
+    } on FileSystemException catch (e, stack) {
+      final phase = progress?.message ?? '开发操作';
+      app_logger.error('$phase：文件操作失败', e, stack);
+      error =
+          '$phase失败：${e.osError?.message ?? e.message}'
+          '${e.osError == null ? '' : '（系统错误 ${e.osError!.errorCode}）'}'
+          '${e.path == null ? '' : '\n${e.path}'}';
     } catch (e) {
       error = e.toString();
     } finally {
@@ -633,7 +643,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     if (running) return;
     await _requireStorage();
     await _refreshAccount();
-    runtimeReady = await patchedWineReady(runtime);
+    runtimeReady = await _runtime.ready();
     final installed = <LocalGame>[];
     await for (final dir in Directory(
       storage.paths.games,
@@ -854,154 +864,17 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
 
   @override
   Future<void> installWine() => _operation(() async {
-    if (await patchedWineReady(runtime)) {
-      runtimeReady = true;
-      notice = 'Wine 已就绪。';
-      return;
-    }
-    final archive = File(
-      p.join(storage.paths.downloads, 'wine-stable-11.0_1.tar.xz'),
-    );
-    // University MacPorts archives depend on /opt/local and cannot be used here.
-    // Every transport serves the exact same hash-pinned upstream portable asset.
-    var downloaded = false;
-    for (final url in [
-      wineArchiveUrl,
-      'https://gh-proxy.com/$wineArchiveUrl',
-      'https://ghfast.top/$wineArchiveUrl',
-    ]) {
-      try {
-        await downloadManaged(
-          api.client,
-          Uri.parse(url),
-          archive,
-          expectedSha256: wineArchiveHash,
-          control: _control,
-          onProgress: _update,
-        );
-        downloaded = true;
-        break;
-      } on DownloadCancelled {
-        rethrow;
-      } catch (_) {
-        _control?.check();
-      }
-    }
-    if (!downloaded) {
-      throw const DevelopmentStorageException('Wine 下载线路均不可用，请稍后重试。');
-    }
-    final stage = await Directory(
-      storage.paths.runtimes,
-    ).createTemp('.wine-install-');
-    try {
-      _update(const StorageMigrationProgress('解压 Wine'));
-      final extracted = await Process.run('/usr/bin/tar', [
-        '-xJf',
-        archive.path,
-        '-C',
-        stage.path,
-      ]);
-      if (extracted.exitCode != 0) {
-        throw const DevelopmentStorageException('Wine 解压失败。');
-      }
-      final payload = p.join(
-        stage.path,
-        'Wine Stable.app',
-        'Contents',
-        'Resources',
-        'wine',
-      );
-      _update(const StorageMigrationProgress('安装启动补丁'));
-      await patchWine11(payload);
-      _control?.check();
-      if (await Directory(runtime).exists()) {
-        throw const DevelopmentStorageException(
-          '已有 Wine 目录校验未通过，请在 Finder 中保留备份后移走该目录再重试。',
-        );
-      }
-      await Directory(payload).rename(runtime);
-      runtimeReady = true;
-      notice = 'Wine 与启动补丁已安装。';
-    } finally {
-      if (await stage.exists()) await stage.delete(recursive: true);
-    }
+    await _runtime.install(api.client, _control, _update);
+    runtimeReady = await _runtime.ready();
+    notice = capabilities.requiresWine
+        ? 'Wine 与启动补丁已就绪。'
+        : 'Windows 原生运行环境已就绪。';
   });
-
   Map<String, String> _env(
     String prefix, {
     Map<String, String> overrides = const {},
-  }) => {
-    ...Platform.environment,
-    'WINEPREFIX': prefix,
-    'TMPDIR': p.join(storage.paths.prefixes, '.wine_tmp'),
-    'WINELOADER': wine,
-    'WINEDEBUG': '-all',
-    'MVK_CONFIG_LOG_LEVEL': '1',
-    'WINEDLLOVERRIDES': 'kerberos=',
-    'LC_ALL': 'C',
-    ...overrides,
-  };
-
-  Future<void> _killPrefix(String prefix) async {
-    await Process.run(p.join(p.dirname(wine), 'wineserver'), [
-      '-k',
-    ], environment: _env(prefix)).timeout(const Duration(seconds: 15));
-  }
-
-  Future<ProcessResult> _wineRun(
-    String prefix,
-    List<String> args, {
-    Map<String, String> overrides = const {},
-    String? workingDirectory,
-    Duration timeout = const Duration(minutes: 2),
-  }) async {
-    await Directory(
-      p.join(storage.paths.prefixes, '.wine_tmp'),
-    ).create(recursive: true);
-    final child = await Process.start(
-      wine,
-      args,
-      environment: _env(prefix, overrides: overrides),
-      workingDirectory: workingDirectory,
-    );
-    // Never persist native SDK/dependency output: it may include account details.
-    final drains = [child.stdout.drain<void>(), child.stderr.drain<void>()];
-    try {
-      final code = await child.exitCode.timeout(timeout);
-      await Future.wait(drains).timeout(const Duration(seconds: 15));
-      return ProcessResult(child.pid, code, '', '');
-    } on TimeoutException {
-      child.kill(ProcessSignal.sigterm);
-      await _killPrefix(prefix);
-      throw const DevelopmentStorageException('Windows 依赖操作超时，请重试；已下载的安装包会保留。');
-    }
-  }
-
-  Future<void> _ensurePrefix(String prefix) async {
-    if (!await patchedWineReady(runtime)) {
-      throw const DevelopmentStorageException('请先安装 Wine。');
-    }
-    final supported = await Process.run(wine, ['--version']);
-    if (supported.exitCode != 0) {
-      throw const DevelopmentStorageException(
-        'Wine 无法运行。Apple 芯片 Mac 请先安装 Rosetta 2，再检查运行环境。',
-      );
-    }
-    await Directory(prefix).create(recursive: true);
-    if (!await File(p.join(prefix, 'system.reg')).exists()) {
-      _update(const StorageMigrationProgress('准备 Windows 容器'));
-      final result = await _wineRun(
-        prefix,
-        ['wineboot', '-u'],
-        overrides: {'WINEDLLOVERRIDES': 'mscoree,mshtml='},
-      );
-      if (result.exitCode != 0) {
-        throw const DevelopmentStorageException('Windows 容器初始化失败。');
-      }
-    }
-  }
-
-  String _winPath(String path) => 'Z:${p.absolute(path).replaceAll('/', '\\')}';
+  }) => _runtime.environment(overrides: overrides);
+  String _winPath(String path) => _runtime.gamePath(path);
 
   Future<void> _loadCatalog() async {
     await _connectAccount();
@@ -1072,6 +945,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       api.client,
       signMcsDownload(package.zipUrl),
       zip,
+      reuseCompleted: true,
       control: _control,
       onProgress: _update,
     );
@@ -1079,39 +953,36 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       storage.paths.games,
     ).createTemp('.game-install-');
     try {
-      _update(const StorageMigrationProgress('解压游戏包'));
-      final input = InputFileStream(zip.path);
       try {
-        await extractZipSafe(
-          ZipDecoder().decodeStream(input),
+        _update(const StorageMigrationProgress('解压游戏包'));
+        final input = InputFileStream(zip.path);
+        try {
+          await extractGameZipSafe(
+            ZipDecoder().decodeStream(input),
+            stage.path,
+            control: _control,
+            onProgress: _update,
+          );
+        } finally {
+          await input.close();
+        }
+        await verifyGameFiles(
           stage.path,
+          hashes,
           control: _control,
+          onProgress: _update,
         );
-      } finally {
-        input.close();
+      } on ArchiveException {
+        await zip.delete();
+        throw const DevelopmentStorageException('游戏压缩包损坏，重试将重新下载。');
+      } on FormatException {
+        await zip.delete();
+        throw const DevelopmentStorageException('游戏压缩包格式无效，重试将重新下载。');
+      } on DevelopmentStorageException catch (e) {
+        await zip.delete();
+        throw DevelopmentStorageException('$e；重试将重新下载游戏包。');
       }
-      var gameRoot = stage.path;
-      if (!await File(p.join(gameRoot, 'Minecraft.Windows.exe')).exists()) {
-        final candidates = <Directory>[];
-        await for (final entry in stage.list(followLinks: false)) {
-          if (entry is Directory &&
-              await File(
-                p.join(entry.path, 'Minecraft.Windows.exe'),
-              ).exists()) {
-            candidates.add(entry);
-          }
-        }
-        if (candidates.length != 1) {
-          throw const DevelopmentStorageException('游戏包中没有唯一的游戏目录。');
-        }
-        gameRoot = candidates.single.path;
-      }
-      await verifyGameFiles(
-        gameRoot,
-        hashes,
-        control: _control,
-        onProgress: _update,
-      );
+      final gameRoot = stage.path;
       await File(
         p.join(gameRoot, 'patch.json'),
       ).writeAsString(patch, flush: true);
@@ -1127,7 +998,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       await refresh();
       notice = '游戏 ${package.version} 已安装。';
     } finally {
-      if (await stage.exists()) await stage.delete(recursive: true);
+      final cleanup = Directory(nativeFileSystemPath(stage.path));
+      if (await cleanup.exists()) await cleanup.delete(recursive: true);
     }
   }
 
@@ -1154,15 +1026,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     ).createTemp('.game-import-');
     try {
       _update(const StorageMigrationProgress('复制已有游戏'));
-      if ((await Process.run('/usr/bin/ditto', [
-            '--noextattr',
-            '--norsrc',
-            source,
-            stage.path,
-          ])).exitCode !=
-          0) {
-        throw const DevelopmentStorageException('复制已有游戏失败。');
-      }
+      await rejectTreeLinks(source);
+      await copyDevelopmentTree(source, stage.path);
       await verifyGameFiles(
         stage.path,
         parseGamePatch(await patchFile.readAsString()),
@@ -1200,7 +1065,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           control: _control,
         );
       } finally {
-        input.close();
+        await input.close();
       }
       source = stage.path;
     } else if (type != FileSystemEntityType.directory) {
@@ -1285,21 +1150,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     }
   });
 
-  Future<String> _roaming() async {
-    final users = Directory(p.join(gamePrefix, 'drive_c', 'users'));
-    await for (final dir in users.list(followLinks: false)) {
-      if (dir is Directory &&
-          ![
-            'Public',
-            'Default',
-            'Default User',
-            'All Users',
-          ].contains(p.basename(dir.path))) {
-        return p.join(dir.path, 'AppData', 'Roaming');
-      }
-    }
-    throw const DevelopmentStorageException('Windows 用户目录尚未创建。');
-  }
+  Future<String> _roaming() => _runtime.roaming();
 
   @override
   Future<void> launchTest({
@@ -1376,6 +1227,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     Directory? rendererFiles;
     String? dragonRuntime;
     final adaptedDragon =
+        capabilities.metalRenderer &&
         !menuOnly &&
         effectiveRenderer == GameRenderer.renderDragon &&
         renderDragonCompatibilitySupported;
@@ -1411,7 +1263,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       rendererFiles = await prepareRendererPatch(storage.paths.runtimes);
     }
     await _connectAccount();
-    await _ensurePrefix(gamePrefix);
+    await _runtime.prepare(_update);
     if (dragonRuntime != null) {
       await prepareWineMetalPrefix(dragonRuntime, gamePrefix);
     }
@@ -1432,6 +1284,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     ModLogServer? modLogs;
     final nativeFilters = <ModNativeErrorFilter>[];
     final subscriptions = <StreamSubscription<Object?>>[];
+    String? runtimeFailure;
     try {
       await stagingOptions.writeAsString(
         mergeGameOptions(originalOptions, {
@@ -1496,15 +1349,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         final staging = await target.parent.createTemp('.pack-');
         final backup = Directory('${target.path}.previous');
         try {
-          if ((await Process.run('/usr/bin/ditto', [
-                '--noextattr',
-                '--norsrc',
-                source,
-                staging.path,
-              ])).exitCode !=
-              0) {
-            throw DevelopmentStorageException('装配模组失败：${pack.name}');
-          }
+          await rejectTreeLinks(source);
+          await copyDevelopmentTree(source, staging.path);
           await rejectTreeLinks(staging.path);
           if (await backup.exists()) await backup.delete(recursive: true);
           if (await target.exists()) await target.rename(backup.path);
@@ -1534,19 +1380,13 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       // verifies the exact game PID. Protocol diagnostics are not mod output.
       _rpc = await LanGameRpc.start();
       final stamp = '$sessionId-${DateTime.now().microsecondsSinceEpoch}';
-      final config = File(
-        p.join(gamePrefix, 'drive_c', 'MCDevTests', 'test.cppconfig'),
-      );
+      final config = File(p.join(_runtime.testDirectory, 'test.cppconfig'));
       final args = <String>[
         'dc_tag1=${menuOnly ? 'mod_pc_no_launcher' : 'studio_no_launcher'}',
       ];
       if (!menuOnly) {
         _hostSkin = playerSkin;
-        final skinInfo = await prepareTestPlayerSkin(
-          skin: _hostSkin,
-          gameDirectory: gameDirectory,
-          gamePrefix: gamePrefix,
-        );
+        final skinInfo = await _runtime.prepareSkin(_hostSkin, gameDirectory);
         final world = _joinTarget == null
             ? await TestWorldStore(
                 p.join(
@@ -1570,13 +1410,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           _requestedLanPort = await chooseAvailableLanPort();
           _lanBridge = await LanRosterBridge.create(
             behaviorPacksDirectory: p.join(dataRoot, 'behavior_packs'),
-            reportPath: p.join(
-              gamePrefix,
-              'drive_c',
-              'MCDevTests',
-              'lan-roster.json',
-            ),
-            windowsReportPath: r'C:\MCDevTests\lan-roster.json',
+            reportPath: p.join(_runtime.testDirectory, 'lan-roster.json'),
+            windowsReportPath: _runtime.testFilePath('lan-roster.json'),
           );
           behavior.add(_lanBridge!.directoryName);
         }
@@ -1685,9 +1520,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'errorlog=${_winPath(p.join(storage.paths.logs, 'game-$stamp.log'))}',
       );
       await Directory(p.dirname(logPath!)).create(recursive: true);
-      final assertDir = Directory(
-        p.join(gamePrefix, 'drive_c', 'MCDevTests', 'assertions'),
-      );
+      final assertDir = Directory(p.join(_runtime.testDirectory, 'assertions'));
       await assertDir.create(recursive: true);
       await _saveJson(File(p.join(gameDirectory, 'netease_data.json')), {
         'Uid': api.session?.id ?? '',
@@ -1697,11 +1530,21 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'AssertCacheDir': _winPath(assertDir.path),
       });
       output = File(logPath!).openWrite();
+      output.writeln(
+        '[INFO] 准备测试游戏：${game.version} · ${effectiveRenderer.label}',
+      );
+      final diagnostics = await _runtime.createDiagnostics();
+      await diagnostics.prepare();
       modLogs = await ModLogServer.start(
         marker: modCapture.marker,
         sources: modCapture.sources,
         onText: (text) {
           if (generation == _launchGeneration) output?.write(text);
+        },
+        onNativeLine: (line) {
+          if (generation != _launchGeneration) return;
+          final diagnostic = classifyNativeDiagnostic(line);
+          if (diagnostic != null) output?.write(diagnostic.logLine);
         },
       );
       args.addAll(['loggingIP=127.0.0.1', 'loggingPort=${modLogs.port}']);
@@ -1712,25 +1555,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       final rendererLog = p.join(storage.paths.logs, 'renderer-$stamp.log');
       final lanLog = p.join(storage.paths.logs, 'lan-$stamp.log');
       if (dragonRuntime != null) {
-        _activeWine = p.join(dragonRuntime, 'bin/wine');
+        _runtime.activeRuntime = dragonRuntime;
       }
-      final gameApplication = Platform.isMacOS
-          ? await prepareWineGameApplication(
-              dragonRuntime ?? runtime,
-              metal: dragonRuntime != null,
-              sessionId: sessionId,
-              displayName: gameDisplayName,
-            )
-          : null;
-      final inputGuard = Platform.isMacOS && !fullscreenShortcut
-          ? await prepareFullscreenShortcutGuard(storage.paths.runtimes)
-          : null;
-      final chrome = gameApplication != null
-          ? await prepareGameWindowChrome(storage.paths.runtimes)
-          : null;
-      final inputEnvironment = inputGuard != null
-          ? fullscreenShortcutEnvironment(inputGuard.path)
-          : <String, String>{};
       _control?.check();
       _joinTarget?.requireHost();
       if (_joinTarget != null) {
@@ -1748,46 +1574,55 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         if (_stopRequested) throw DownloadCancelled();
       });
       _control?.check();
-      _game = await Process.start(
-        gameApplication?.loader ?? wine,
-        [_winPath(executable), ...args],
+      _game = await _runtime.start(
+        executable: executable,
+        arguments: args,
+        version: game.version,
+        displayName: gameDisplayName,
+        renderer: (menuOnly ? GameRenderer.openGL : effectiveRenderer).label,
+        fullscreenShortcut: fullscreenShortcut,
         workingDirectory: gameDirectory,
-        environment: _env(
-          gamePrefix,
-          overrides: {
-            if (gameApplication != null) ...gameApplication.environment,
-            ...inputEnvironment,
-            if (lanFiles != null) ...{
-              'MCDEV_LAN_PATCH_LOG': _winPath(lanLog),
-              'MCDEV_LAN_ROLE': _joinTarget == null ? 'host' : 'guest',
-            },
-            if (chrome != null)
-              ...chrome.environment(
-                loader: gameApplication!.loader,
-                version: game.version,
-                displayName: gameDisplayName,
-                renderer:
-                    (menuOnly ? GameRenderer.openGL : effectiveRenderer).label,
-                inherited: {...Platform.environment, ...inputEnvironment},
-              ),
-            if (rendererFiles != null) ...{
-              ...renderDragonEnvironment,
-              'MCDEV_RENDERER_LOG': _winPath(rendererLog),
-              'MCDEV_VIBRANT': vibrantVisuals ? '1' : '0',
-            },
-            if (performanceFiles != null) ...{
-              'MCDEV_PERFORMANCE_LOG': _winPath(performanceLog),
-              'MCDEV_PERFORMANCE_LIMIT': limit60Fps ? '1' : '0',
-            },
+        overrides: {
+          if (lanFiles != null) ...{
+            'MCDEV_LAN_PATCH_LOG': _winPath(lanLog),
+            'MCDEV_LAN_ROLE': _joinTarget == null ? 'host' : 'guest',
+          },
+          if (rendererFiles != null) ...{
+            ...renderDragonEnvironment,
+            'MCDEV_RENDERER_LOG': _winPath(rendererLog),
+            'MCDEV_VIBRANT': vibrantVisuals ? '1' : '0',
+          },
+          if (performanceFiles != null) ...{
+            'MCDEV_PERFORMANCE_LOG': _winPath(performanceLog),
+            'MCDEV_PERFORMANCE_LIMIT': limit60Fps ? '1' : '0',
+          },
+        },
+      );
+      running = true;
+      output.writeln('[INFO] 游戏进程已创建，PID=${_game!.pid}；等待世界加载。');
+      subscriptions.add(
+        diagnostics.watch().listen(
+          (event) {
+            if (generation != _launchGeneration) return;
+            output?.write(event.logLine);
+            if (event.fatal && runtimeFailure == null) {
+              runtimeFailure = event.message;
+              error = event.message;
+              notice = null;
+              _notify();
+              unawaited(_runtime.stop(_game!).catchError((Object _) {}));
+            }
+          },
+          onError: (Object _) {
+            output?.writeln('[WARN] 游戏诊断采集已中断。');
           },
         ),
       );
-      running = true;
       final launchedAt = DateTime.now().toUtc();
       busy = false;
       final actualRenderer = menuOnly ? GameRenderer.openGL : effectiveRenderer;
       notice =
-          '测试游戏已启动（${actualRenderer.label} · ${limit60Fps ? '60 帧上限' : '不限帧'}）。';
+          '游戏进程已启动，正在加载（${actualRenderer.label} · ${limit60Fps ? '60 帧上限' : '不限帧'}）。';
       _notify();
       final drains = <Future<void>>[];
       for (final stream in [_game!.stdout, _game!.stderr]) {
@@ -1876,14 +1711,19 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         });
       }
       final code = await _game!.exitCode;
+      output.writeln(
+        '[${code == 0 ? 'INFO' : 'ERROR'}] 游戏进程退出：$code（0x${(code & 0xffffffff).toRadixString(16).padLeft(8, '0')}）。',
+      );
       busy = true;
       await _stopLanGuests();
       try {
         await drained.timeout(const Duration(seconds: 10));
       } on TimeoutException {
-        await _killPrefix(gamePrefix);
+        await _runtime.terminateHelpers();
       }
-      if (code != 0 && !_stopRequested) {
+      if (runtimeFailure != null) {
+        error = runtimeFailure;
+      } else if (code != 0 && !_stopRequested) {
         error = '测试游戏退出（$code），请打开日志查看。';
       } else {
         notice = '测试游戏已退出，存档保留在当前容器中。';
@@ -1906,6 +1746,11 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         await subscription.cancel();
       }
       try {
+        await _runtime.terminateHelpers();
+      } catch (_) {
+        output?.writeln('[WARN] 运行环境清理失败，下次启动将尝试恢复。');
+      }
+      try {
         await modLogs?.close();
         for (final filter in nativeFilters) {
           filter.close();
@@ -1917,7 +1762,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         _lanBridge = null;
         running = false;
         _game = null;
-        _activeWine = null;
+        _runtime.activeRuntime = null;
         if (adaptedDragon && await options.exists()) {
           try {
             // The prefix is shared across versions. Restore only the two
@@ -1949,6 +1794,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     try {
       final loaded = await injectPerformancePatch(
         wine: wine,
+        targetPid: target.pid,
         environment: _env(gamePrefix),
         helper: _winPath(p.join(files.path, lanInjectorFile)),
         dll: _winPath(p.join(files.path, 'lan-patch.dll')),
@@ -2004,6 +1850,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     try {
       final loaded = await injectPerformancePatch(
         wine: wine,
+        targetPid: target.pid,
         environment: _env(
           gamePrefix,
           overrides: {
@@ -2062,6 +1909,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     try {
       final loaded = await injectPerformancePatch(
         wine: wine,
+        targetPid: target.pid,
         environment: _env(gamePrefix),
         helper: _winPath(p.join(files.path, 'performance-inject.exe')),
         dll: _winPath(p.join(files.path, 'graphics-patch.dll')),
@@ -2109,39 +1957,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     await rpc?.close();
   }
 
-  Future<void> _requestProcessExit(Process child) async {
-    try {
-      // WM_CLOSE first; only this application's isolated prefix is targeted.
-      await _wineRun(gamePrefix, [
-        'taskkill',
-        '/im',
-        'Minecraft.Windows.exe',
-      ], timeout: const Duration(seconds: 15));
-      await child.exitCode.timeout(const Duration(seconds: 20));
-      return;
-    } catch (_) {
-      // Includes a missing wine binary or a disconnected data volume, as well
-      // as a timeout. Such failures must not enter an unbounded lifetime wait.
-    }
-    try {
-      await _killPrefix(gamePrefix);
-    } catch (_) {
-      // The already-created Process remains addressable if its runtime moved.
-    }
-    try {
-      await child.exitCode.timeout(const Duration(seconds: 5));
-      return;
-    } on TimeoutException {
-      child.kill(ProcessSignal.sigterm);
-    }
-    try {
-      await child.exitCode.timeout(const Duration(seconds: 5));
-      return;
-    } on TimeoutException {
-      child.kill(ProcessSignal.sigkill);
-    }
-    await child.exitCode.timeout(const Duration(seconds: 5));
-  }
+  Future<void> _requestProcessExit(Process child) => _runtime.stop(child);
 
   @override
   Future<void> stopGame() async {
@@ -2238,128 +2054,6 @@ class _LanGuest {
   bool finished = false;
   bool everJoined = false;
   String? failure;
-}
-
-String safeArchivePath(String name) {
-  final value = name.replaceAll('\\', '/');
-  if (value.isEmpty ||
-      value.startsWith('/') ||
-      RegExp(r'^[A-Za-z]:').hasMatch(value) ||
-      value.split('/').contains('..') ||
-      value.contains('\u0000')) {
-    throw const DevelopmentStorageException('归档包含越界路径，未安装。');
-  }
-  return p.posix.normalize(value);
-}
-
-Future<void> extractZipSafe(
-  Archive archive,
-  String target, {
-  DownloadControl? control,
-}) async {
-  final seen = <String>{};
-  // Validate every entry before any write, including case-insensitive macOS conflicts.
-  for (final entry in archive) {
-    final relative = safeArchivePath(entry.name);
-    if (entry.isSymbolicLink || !seen.add(relative.toLowerCase())) {
-      throw const DevelopmentStorageException('归档包含链接或重复路径，未安装。');
-    }
-  }
-  await Directory(target).create(recursive: true);
-  for (final entry in archive) {
-    control?.check();
-    final relative = safeArchivePath(entry.name);
-    final out = p.join(target, relative);
-    if (!p.isWithin(p.normalize(target), p.normalize(out))) {
-      throw const DevelopmentStorageException('归档路径不合法。');
-    }
-    if (entry.isFile) {
-      await File(out).parent.create(recursive: true);
-      final stream = OutputFileStream(out);
-      try {
-        entry.writeContent(stream);
-      } finally {
-        stream.close();
-      }
-    } else {
-      await Directory(out).create(recursive: true);
-    }
-  }
-}
-
-Map<String, String> parseGamePatch(String text) {
-  final data = jsonDecode(text);
-  final entries = data['md5'];
-  if (entries is! Map || entries.isEmpty) {
-    throw const DevelopmentStorageException('游戏补丁清单无效。');
-  }
-  final hashes = <String, String>{};
-  final lower = <String>{};
-  for (final entry in entries.entries) {
-    final key = safeArchivePath(entry.key as String);
-    if (entry.value is! String ||
-        !RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(entry.value) ||
-        !lower.add(key.toLowerCase())) {
-      throw const DevelopmentStorageException('游戏清单包含无效摘要或重复路径。');
-    }
-    hashes[key] = entry.value.toLowerCase();
-  }
-  if (!hashes.containsKey('Minecraft.Windows.exe')) {
-    throw const DevelopmentStorageException('游戏清单缺少主程序。');
-  }
-  return hashes;
-}
-
-Future<void> verifyGameFiles(
-  String root,
-  Map<String, String> hashes, {
-  DownloadControl? control,
-  void Function(StorageMigrationProgress)? onProgress,
-}) async {
-  await rejectTreeLinks(root);
-  // The authoritative patch is the allowlist: extra DLLs must not be loaded.
-  await for (final entity in Directory(
-    root,
-  ).list(recursive: true, followLinks: false)) {
-    if (entity is File) {
-      final relative = p.relative(entity.path, from: root);
-      if (!hashes.containsKey(relative) &&
-          !['patch.json', '.mcdev-game.json'].contains(relative)) {
-        await entity.delete();
-      }
-    }
-  }
-  var count = 0;
-  for (final entry in hashes.entries) {
-    control?.check();
-    final path = p.join(root, entry.key);
-    if (await FileSystemEntity.type(path, followLinks: false) !=
-            FileSystemEntityType.file ||
-        (await md5.bind(File(path).openRead()).first).toString() !=
-            entry.value) {
-      throw DevelopmentStorageException('游戏文件校验失败：${entry.key}');
-    }
-    count++;
-    if (count % 100 == 0 || count == hashes.length) {
-      onProgress?.call(
-        StorageMigrationProgress(
-          '校验游戏文件',
-          completed: count,
-          total: hashes.length,
-        ),
-      );
-    }
-  }
-}
-
-Future<void> rejectTreeLinks(String root) async {
-  await for (final entity in Directory(
-    root,
-  ).list(recursive: true, followLinks: false)) {
-    if (entity is Link) {
-      throw const DevelopmentStorageException('游戏或模组文件包含符号链接，请使用完整的实际文件。');
-    }
-  }
 }
 
 Future<String> _readModPackTitle(String directory, String fallback) async {

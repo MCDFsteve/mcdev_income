@@ -61,6 +61,26 @@ typedef LanPortProbe =
       required bool allowBarePong,
     });
 
+/// netstat uses the same UDP/address/PID columns across Windows UI languages.
+List<int> parseWindowsLanProcessPorts(String listing, int pid) {
+  if (pid <= 0 || listing.length > 256 * 1024) return const [];
+  final ports = <int>{};
+  for (final line in const LineSplitter().convert(listing)) {
+    final columns = line.trim().split(RegExp(r'\s+'));
+    if (columns.length != 4 ||
+        columns[0] != 'UDP' ||
+        int.tryParse(columns[3]) != pid) {
+      continue;
+    }
+    final match = RegExp(
+      r'^(?:0\.0\.0\.0|127\.0\.0\.1):([0-9]{1,5})$',
+    ).firstMatch(columns[1]);
+    final port = match == null ? null : int.tryParse(match[1]!);
+    if (port != null && port >= 1 && port <= 65535) ports.add(port);
+  }
+  return ports.toList(growable: false);
+}
+
 /// Extract IPv4 UDP sockets that can receive a probe to 127.0.0.1 from lsof's
 /// machine-readable output. The caller must query with -i4UDP so a wildcard
 /// cannot refer to an IPv6-only listener. Connected peers and other local
@@ -100,12 +120,14 @@ Future<LanEndpoint?> discoverLanEndpointForProcess(
   Duration probeTimeout = const Duration(milliseconds: 350),
   LanSocketRunner? socketRunner,
   LanPortProbe? portProbe,
+  bool? windows,
 }) async {
+  final useWindows = windows ?? (socketRunner == null && Platform.isWindows);
   if (pid <= 0 ||
       timeout <= Duration.zero ||
       commandTimeout <= Duration.zero ||
       probeTimeout <= Duration.zero ||
-      (!Platform.isMacOS && socketRunner == null)) {
+      (!Platform.isMacOS && !useWindows && socketRunner == null)) {
     return null;
   }
   final watch = Stopwatch()..start();
@@ -117,14 +139,22 @@ Future<LanEndpoint?> discoverLanEndpointForProcess(
   try {
     final limit = remaining(commandTimeout);
     if (limit <= Duration.zero) return null;
-    final args = ['-nP', '-a', '-p', '$pid', '-i4UDP', '-Fn'];
+    final args = useWindows
+        ? ['-ano', '-p', 'udp']
+        : ['-nP', '-a', '-p', '$pid', '-i4UDP', '-Fn'];
     final result =
         await (socketRunner != null
                 ? socketRunner(args)
-                : _runLsof(args, limit))
+                : _runSocketListing(
+                    useWindows ? 'netstat.exe' : '/usr/sbin/lsof',
+                    args,
+                    limit,
+                  ))
             .timeout(limit);
     if (result.exitCode != 0 || result.stdout is! String) return null;
-    final ports = parseLanProcessPorts(result.stdout as String, pid);
+    final ports = (useWindows
+        ? parseWindowsLanProcessPorts
+        : parseLanProcessPorts)(result.stdout as String, pid);
     for (final port in ports) {
       final limit = remaining(probeTimeout);
       if (limit <= Duration.zero) break;
@@ -156,8 +186,12 @@ Future<LanEndpoint?> discoverLanEndpointForProcess(
   return null;
 }
 
-Future<ProcessResult> _runLsof(List<String> args, Duration timeout) async {
-  final process = await Process.start('/usr/sbin/lsof', args);
+Future<ProcessResult> _runSocketListing(
+  String command,
+  List<String> args,
+  Duration timeout,
+) async {
+  final process = await Process.start(command, args);
   var done = false;
   Future<String> read(Stream<List<int>> stream) async {
     final bytes = BytesBuilder(copy: false);

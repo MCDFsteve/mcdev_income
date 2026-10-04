@@ -6,12 +6,19 @@ import 'mod_log_filter.dart';
 /// MCS's separate UTF-8 developer log channel (`loggingIP` / `loggingPort`).
 /// The launcher-control RPC and the game's native stdout are not mod logs.
 class ModLogServer {
-  ModLogServer._(this._server, this._onText, this._marker, this._sources);
+  ModLogServer._(
+    this._server,
+    this._onText,
+    this._marker,
+    this._sources,
+    this._onNativeLine,
+  );
 
   final ServerSocket _server;
   final void Function(String) _onText;
   final String _marker;
   final ModLogSources _sources;
+  final void Function(String)? _onNativeLine;
   final Set<Socket> _peers = {};
   final Map<Socket, ModLogDecoder> _decoders = {};
   final Map<Socket, ModLogFilter> _filters = {};
@@ -25,9 +32,10 @@ class ModLogServer {
     required void Function(String) onText,
     required String marker,
     required ModLogSources sources,
+    void Function(String)? onNativeLine,
   }) async {
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-    final logs = ModLogServer._(server, onText, marker, sources);
+    final logs = ModLogServer._(server, onText, marker, sources, onNativeLine);
     server.listen(logs._accept, onError: (Object _) {});
     return logs;
   }
@@ -49,7 +57,17 @@ class ModLogServer {
         if (!_closed) _onText(text);
       },
     );
-    final decoder = ModLogDecoder(filter.add);
+    var nativeTail = '';
+    final decoder = ModLogDecoder((text) {
+      filter.add(text);
+      if (_onNativeLine == null) return;
+      final lines = '$nativeTail$text'.split('\n');
+      nativeTail = lines.removeLast();
+      if (nativeTail.length > 65536) nativeTail = '';
+      for (final line in lines) {
+        _onNativeLine(line);
+      }
+    });
     _filters[peer] = filter;
     _decoders[peer] = decoder;
     void finish() {

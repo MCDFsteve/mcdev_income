@@ -58,6 +58,7 @@ Future<void> main(List<String> arguments) async {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      await initializeDesktopWindow();
       await app_logger.init(appFolderName: 'ConsMelt');
 
       FlutterError.onError = (details) {

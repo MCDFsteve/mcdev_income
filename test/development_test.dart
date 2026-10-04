@@ -182,7 +182,7 @@ void main() {
   );
 
   test(
-    'install requested beta exactly, keep installed versions and persist active selection',
+    'retry a corrupt cached beta, install its wrapped archive and preserve active selection',
     () async {
       await storage.initialize();
       const stableVersion = '3.8.0.1', betaVersion = '3.9.0.7';
@@ -199,7 +199,11 @@ void main() {
       });
       final archive = Archive()
         ..add(
-          ArchiveFile('Minecraft.Windows.exe', executable.length, executable),
+          ArchiveFile(
+            'Win64.official_full_patch/Minecraft.Windows.exe',
+            executable.length,
+            executable,
+          ),
         );
       final zip = ZipEncoder().encode(archive);
       final downloads = <String>[];
@@ -264,6 +268,18 @@ void main() {
       );
       await first.refresh();
       expect(first.selectedVersion, stableVersion);
+      final cached = File(
+        p.join(storage.paths.downloads, 'minecraft-$betaVersion.zip'),
+      );
+      final corrupt = Archive()
+        ..add(ArchiveFile('Minecraft.Windows.exe', 3, [0, 0, 0]));
+      await cached.writeAsBytes(ZipEncoder().encode(corrupt));
+      await first.installVersion(betaVersion);
+      expect(first.error, contains('游戏文件校验失败'));
+      expect(first.error, contains('重新下载'));
+      expect(await cached.exists(), false);
+      expect(first.games.map((game) => game.version), [stableVersion]);
+      expect(downloads, ['/Win64.$betaVersion/patch.json']);
       await first.installVersion(betaVersion);
       expect(first.error, isNull);
       expect(downloads, [
@@ -654,6 +670,7 @@ void main() {
       expect(await Link(p.join(target, 'prefixes', 'z:')).target(), '/');
       expect((await storage.inspect()).initialized, true);
     },
+    skip: Platform.isWindows, // Unix executable bits and Wine drive links.
   );
   test(
     'failed preference commit retains the original and verified destination',

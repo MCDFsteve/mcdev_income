@@ -49,6 +49,7 @@ dependencies:
   shared_preferences: ^2.2.3
   flutter_widget_from_html_core: ^0.17.4
   url_launcher: ^6.3.2
+  window_manager: ^0.5.2
 
 dev_dependencies:
   flutter_test:

@@ -1,12 +1,72 @@
-# Apple 芯片 Mac 本地模组开发
+# Windows / Apple 芯片 Mac 本地模组开发
 
-“开发”页面提供开发数据路径管理、按需下载 Wine 和游戏、导入本地模组及启动测试世界。界面使用现有 Flutter 和 OreUI；账号共用软件已有的登录流程，测试时只启动游戏，无须启动 MCS 编辑器。开发入口仅在 Apple 芯片 macOS 显示，在 Rosetta 下运行客户端时也能识别。
+“开发”页面提供开发数据路径管理、按需下载游戏、导入本地模组及启动测试世界。界面使用现有 Flutter 和 OreUI；账号共用软件已有的登录流程，测试时只启动游戏，无须启动 MCS 编辑器。入口在 Windows 和 Apple 芯片 macOS 显示，Mac 在 Rosetta 下运行客户端时也能识别。Windows 直接运行官方 `Minecraft.Windows.exe`，不安装 Wine、DXMT 或 macOS 窗口组件。
+
+## 平台模块与窗口管理
+
+- `lib/desktop/window_controller.dart`：管理器在 Windows、macOS、Linux 上统一使用 `window_manager` 初始化无系统标题栏的窗口、拖动、最大化、最小化和关闭；安卓及 Web 不调用桌面插件。Mac 保留系统红绿灯，Windows / Linux 使用 OreUI 窗口按钮。Mac 管理器原有的 Swift 拖动层和窗口操作通道已移除。
+- `lib/development/platform/game_runtime_io.dart`：每个测试页的运行环境接口，负责准备目录、路径转换、进程环境、启动和退出。`windows_game_runtime.dart` 与 `macos_game_runtime.dart` 提供实现，`runtime_factory_io.dart` 是后端选择入口。
+- `GameWindowBackend`：统一的游戏窗口准备、附着、关闭及诊断接口。Mac 后端装配 Wine 应用身份和原有 Cocoa 游戏顶栏；Windows 后端启动独立 Flutter 宿主，由 `window_manager` 管理窗口，Win32 适配器只负责验证进程身份并嵌入游戏 HWND。共用 OreUI 顶栏，游戏图标来自同一 Bedrock 图标源。
+- `GameChromeBackend` / `WindowController`：顶栏只面向接口调用；平台工厂选择窗口操作、原生菜单与按钮样式。`GameDiagnostics` 提供运行环境事件，公共启动器不读取平台专属目录。
+- `development_capabilities.dart`：界面按后端能力显示设置。Windows 隐藏 Wine 安装、Mac 图形补丁、Metal 适配和 Command + Shift 设置，保留游戏本身的渲染器选择、限帧和模组功能。
+- `host_files_io.dart`：平台文件操作。Windows 使用系统 `robocopy` 并行复制，Mac 使用 `ditto`；独立游戏准备优先使用 APFS 克隆。迁移保持逐文件校验，Windows 的临时会话锁不复制。
+- `game_archive_io.dart`：统一进行归档路径检查、解压及官方文件清单校验。游戏包的外层构建目录在解压时移除，Windows 文件遍历使用扩展路径，避免长路径被误报为目录不可读。
+- 公共启动器继续负责官方清单与下载、账号、游戏校验、模组装配、世界配置及日志。Windows 的 LAN 注入辅助程序由 CMake 随应用编译，按 PID 和完整路径验证目标；退出也只针对当前测试页的进程。
+
+Linux 和安卓的游戏启动后端尚未启用。后续适配在运行环境工厂中增加实现及能力声明，下载、项目管理与界面无需各自添加系统判断。独立游戏进程的 macOS 嵌入式顶栏仍通过 `WindowController` 的游戏窗口适配器控制其所属 Wine 窗口；它不属于管理器的主窗口。
+
+## Windows 数据与验证
+
+默认开发目录为 `%LOCALAPPDATA%\mcdev_income\development`。每个测试页在 `prefixes/game[-<会话ID>]/` 下保存独立游戏副本、`users/Developer/AppData/Roaming/MinecraftPE_Netease/` 游戏数据和 `MCDevTests/` 启动配置。旧版 `profile/` 会在首次启动时整体迁移到 `users/Developer/`，保留存档；新旧目录同时存在时报告冲突，不覆盖数据。
+
+Windows 后端为运行中的会话分配一个未占用的虚拟盘符，游戏看到标准层级的 `X:\users\Developer\AppData\Roaming`，文件仍在所选开发目录中。这样可兼容网易 Python 加载器对用户目录层级的假设，避免把隔离目录误拼进模块名。子进程环境和游戏路径由后端统一转换。退出时仅移除指向该会话的映射；异常退出后下次启动复用该会话的原映射。多个测试页独占不同盘符，盘符耗尽时会明确提示。系统环境、用户的真实 AppData 和网易启动器目录不被修改。
+
+下载流程与 Mac 相同：查询官方完整清单，按用户选定版本下载并验证全部游戏文件。不会自动使用本机 MCStudio 安装，也不包含开发机上的固定路径。首次启动要复制独立游戏文件，耗时与磁盘速度、文件数量有关；后续启动复用此副本。
+
+安装重试复用已完整下载的 ZIP，仍按最新官方补丁清单逐文件校验。损坏的压缩包缓存会失效，下一次重试重新下载；磁盘或权限错误保留缓存，并显示失败阶段、系统错误和路径。
+
+Windows 实机烟雾测试（显式启用，复制到 `build/windows-runtime-smoke`，不读取登录凭证）：
+
+```powershell
+$env:MCDEV_WINDOWS_GAME = '你的开发版游戏目录\3.10.0.420447'
+flutter test test/live_windows_runtime.dart
+```
+
+该测试检查真实游戏启动、在隔离目录创建数据以及正常请求退出，不代表登录后的世界、皮肤或多人联机均已实机验收。
+
+### 2026-10-04 Windows 启动修复与验收
+
+原黑屏现场先记录 `set skin file not found`，随后主动请求退出，在退出阶段出现 `0xc0000005` 和 `ucrtbase.dll / 0xc0000409`，留下无响应进程。最初通过绝对皮肤路径排除了该启动退出链，随后 Windows 改用下述内置皮肤入口修复白色回退皮肤。进一步修正用户目录层级后，辅助模组能够正常导入并持续报告玩家状态。
+
+已接入的处理：
+
+- Windows 游戏宿主使用指定测试名称、Bedrock 图标和独立任务栏身份，提供 OreUI 无边框顶栏。只附着到当前会话的 PID 和实际 EXE 文件；窗口响应后附着，并回报成功。关闭先通知游戏，超时才结束持有句柄的该游戏进程。
+- 启动提示区分“进程已创建、正在加载”和世界已加载。日志包含生命周期、窗口就绪、引擎关键错误、世界脚本状态及退出码。平台诊断增量读取原生日志和 Base64 `mcp.log`，发现新的崩溃转储后报告错误并结束挂起的会话。SDK 原始账号载荷不会写入开发日志。
+- 游戏输出管道在等待窗口就绪期间仍被持续消费，避免原生 SDK 输出填满管道而阻塞游戏启动。模组来源筛选保持有效。
+
+只读诊断工具位于 `tools/windows/diagnostics`，独立 CMake 构建后，以 `mcdev_game_diagnostics.exe <游戏 PID> [minidump 路径]` 运行，检查该进程的窗口及可选崩溃栈。全程未使用 Computer Use。
+
+实机验收使用 `test/live_windows_world.dart`：3.10.0.420447 的 OpenGL 与渲染龙均进入新世界、连续得到 15 次递增的玩家状态报告且没有崩溃；窗口验证为已嵌入、无边框、图标存在、指定标题、前台且无响应检测正常。渲染龙测试另验证原生 LAN DLL 成功加载并报告 ready；这不替代多人加入测试。测试输出保存在本机 `build/windows-world-chrome-drained.log` 和 `build/windows-world-dragon-lan.log`。macOS 原生窗口行为需要在 Mac 上回归；本机覆盖了共用菜单、顶栏和接口测试。
+
+最终回归为 339 项通过、12 项平台相关跳过，修改范围的静态检查通过，Windows Release 构建成功。`build/windows-world-complete.log` 还验证了诊断事件采集。该官方客户端在窗口关闭后的清理阶段仍返回过 `0xc0000409`；本次运行中验收没有把这个退出码认定为正常退出，也未验证多人加入或崩溃后的存档恢复。保存进度仍应通过游戏内的“保存并退出”。
+
+2026-10-04 皮肤与按钮补充验收：管理器和游戏宿主共用的最小化、最大化、关闭按钮默认硬编码白色，图标继承按钮的 `IconTheme`，悬浮／键盘聚焦使用 OreUI 悬浮色，按下使用强调色。`WindowCaptionButtons` 通过 `WindowController.watchMaximized` 监听原生窗口状态，最大化后显示旋转 180° 的 `filter_none_rounded` 双窗口还原图标（参考 NipaPlay-Reload），普通窗口显示 `crop_square_rounded`；标题栏双击和系统快捷键也会更新图标。Windows 导入官方 PNG 时，读取、解码、上传显卡均成功仍可能显示 `Standard.Dummy`；更换 `sync` 或关闭受信任皮肤过滤也未改善。`WindowsGameRuntime.prepareSkin` 现改为选择内置 `steve` / `alex`，不携带 PNG 导入身份字段，Mac/Wine 继续由自己的后端复制原始 PNG。
+
+用户实际确认了 OpenGL 的史蒂夫、艾利克斯和渲染龙的艾利克斯均显示正常。隔离实机测试均持续收到 15 次递增玩家报告，验证了游戏主窗口无边框、带图标且有响应；记录位于 `build/skin-native-pack-steve.log`、`build/skin-fixed-alex-opengl.log`、`build/skin-fixed-alex-dragon-retry.log`。渲染龙首次测试在渲染初始化阶段卡住，独立新会话复测成功；关闭阶段仍有上述官方客户端退出异常。这次没有使用 Computer Use。可选的 `MCDEV_CHECK_SKIN=1` 只检查纹理解码和 OpenGL 上传，不作为玩家已经选中该皮肤的证明。
+
+已有官方下载缓存的解压和校验验证（无需登录或再次下载，结果保留在 `build/windows-install-smoke`）：
+
+```powershell
+$env:MCDEV_GAME_ZIP = '完整游戏包.zip 的绝对路径'
+$env:MCDEV_GAME_PATCH = '对应 patch.json 的绝对路径'
+flutter test test/live_windows_install.dart
+```
 
 ## 首次使用
 
 1. 使用软件已有的“设置”登录开发者账号。
-2. 打开“开发”，创建默认开发目录，或选择一个新的空目录。
-3. 点击“下载 Wine 与启动补丁”。Wine 11.0_1 压缩包约 185 MB，下载后自动校验、解压和应用兼容补丁。运行 Wine 需要 Mac 已安装 Rosetta 2。
+2. 打开“开发”，自动创建默认开发目录并显示游戏版本、项目和测试入口；可在“管理目录”中改用其他位置。已有目录异常或保存的位置不可访问时会保留原设置，显示恢复入口。
+3. Mac 点击“下载 Wine 与启动补丁”。Wine 11.0_1 压缩包约 185 MB，下载后自动校验、解压和应用兼容补丁，需要已安装 Rosetta 2。Windows 跳过此步。
 4. 点击“浏览可下载版本”，按版本号、架构和渠道查找需要的游戏版本，然后安装。客户端实时读取官方完整清单，校验补丁清单及每个游戏文件后才完成安装。
 5. 导入项目文件夹或 `.mcpack`、`.mcaddon`、ZIP 归档，勾选要测试的项目。同一项目的行为包与资源包合成一项，一起启用。
 6. 在顶部“启动游戏”区域选择一个已安装版本，直接填写世界名称、选择生存或创造，然后点击“启动测试”。测试前会重新读取并复制所选包的最新文件。
@@ -53,7 +113,7 @@ MCDEV_TEST_WINE_RUNTIME='/absolute/runtimes/wine-11.0_1-mcs-v1' \
 
 - **渲染器**：3.9 及以上可选择 OpenGL 或渲染龙，按游戏版本分别保存。旧版本使用 OpenGL。此开关遵循 MCS 1.1.59.13193 的版本判断与 `render_engine` 枚举；测试世界配置另传入与所下载客户端相符的 `client_type`。
 - **灵动视效（实验性）**：`3.10.0.420447` Haldra x64 选择渲染龙后可启用，使用独立 DXMT/Metal 运行环境，首次启动下载约 18 MB 组件。按版本保存，当前要求 macOS 14+；详见 [渲染龙与灵动视效](render-dragon.md)。
-- **玩家皮肤**：可选史蒂夫（粗手臂）或艾利克斯（细手臂），默认史蒂夫。全局保存，启动测试世界时将所选版本自带的 `steve.png` 或 `alex.png` 原样复制到容器内的 `C:\MCDevTests\skins\`，以该 Windows 路径加载，避免默认 `Application Support` 等含空格的外部路径导致纹理回退为史蒂夫、仅手臂变细。每次启动重新复制，缺少所选纹理时报告错误。同时写入 `slim`、`sync=true`、`in_package=false` 和 MCS 对应的 `skin_iid`（史蒂夫 `-1`、艾利克斯 `-2`），明确指定纹理、手臂模型与皮肤身份。仅打开主菜单时不应用测试皮肤。
+- **玩家皮肤**：可选史蒂夫（粗手臂）或艾利克斯（细手臂），默认史蒂夫，按测试页保存。公共启动器调用 `GameRuntime.prepareSkin`，由系统后端生成配置。Windows 直接使用 `skin: "steve" / "alex"` 和 `in_package: true` 选择官方内置皮肤，由皮肤包提供模型与身份；不传 PNG 导入专用的 `skin_iid`，否则客户端会把名称当作文件路径校验。Mac/Wine 保留 PNG 导入：将所选版本自带纹理原样复制到容器的 `C:\MCDevTests\skins\`，规避 `Application Support` 等含空格的路径；每次启动刷新，缺少纹理时报告错误，并写入 `slim`、`sync=true`、`in_package=false` 及 `skin_iid`（史蒂夫 `-1`、艾利克斯 `-2`）。官方 PNG 必须保留原始字节，重新编码可能触发客户端资源校验失败。仅打开主菜单时不应用测试皮肤。
 - **图形性能优化**：目前只对已验证的 `3.8.0.313229` x64 OpenGL 启用缓冲上传补丁；不支持的版本或渲染路径隐藏此设置，保留已保存的优化偏好。
 - **限制 60 帧**：默认开启；关闭后保留图形优化，并取消启动器的帧率上限。该偏好全局保存，游戏退出后修改、下次启动生效。60 是上限，实际速度仍取决于场景和硬件。
 - **显示开发控制台**：与游戏“调试”中的同名选项一致，默认关闭。全局保存，启动前写入 `dev_showDevConsoleButton:0/1`，下次启动生效。

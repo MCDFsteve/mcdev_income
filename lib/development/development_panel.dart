@@ -597,7 +597,7 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
                 ? null
                 : launcher.runtimeReady
                 ? () => _run(launcher.refresh)
-                : () => _run(launcher.installWine),
+                : () => _run(launcher.installRuntime),
             primary: !launcher.runtimeReady,
           ),
         ]),
@@ -1036,7 +1036,9 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
           : _menuOnly
           ? '渲染器选择用于测试世界；主菜单沿用游戏默认渲染器。'
           : launcher.effectiveRenderer == GameRenderer.renderDragon
-          ? launcher.renderDragonCompatibilitySupported
+          ? !launcher.capabilities.requiresWine
+                ? '使用 Windows 原生渲染龙，重启游戏后生效。'
+                : launcher.renderDragonCompatibilitySupported
                 ? '此版本使用 Metal 适配；首次启动下载约 18 MB 组件，重启游戏后生效。'
                 : '渲染龙的 Wine 兼容性随版本而异；若无法启动，可切回 OpenGL。'
           : '按当前游戏版本保存，重启游戏后生效。';
@@ -1198,16 +1200,17 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
             key: const ValueKey('development-disable-companion'),
             hint: '默认勾选，关闭测试世界中的我的伙伴。重启游戏后生效。',
           ),
-          toggle(
-            'Shift + Command 切换全屏',
-            launcher.fullscreenShortcut,
-            blocked
-                ? null
-                : (value) => _run(
-                    () => launcher.chooseFullscreenShortcut(value ?? false),
-                  ),
-            hint: '默认关闭，避免与 macOS 截图快捷键冲突。重启游戏后生效。',
-          ),
+          if (launcher.capabilities.commandShiftFullscreen)
+            toggle(
+              'Shift + Command 切换全屏',
+              launcher.fullscreenShortcut,
+              blocked
+                  ? null
+                  : (value) => _run(
+                      () => launcher.chooseFullscreenShortcut(value ?? false),
+                    ),
+              hint: '默认关闭，避免与 macOS 截图快捷键冲突。重启游戏后生效。',
+            ),
         ],
       );
     },
@@ -1233,7 +1236,7 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
           : noGame
           ? () => _showVersions(downloads: true)
           : !launcher.runtimeReady
-          ? () => _run(launcher.installWine)
+          ? () => _run(launcher.installRuntime)
           : () => _run(
               () => launcher.launchTest(
                 worldName: _world.text,
@@ -1454,7 +1457,8 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
               launcher.busy || launcher.running || _picking || _savingWorldMode;
           final environment = [
             ?widget.storageSection,
-            _wineCard(launcher, blocked),
+            if (launcher.capabilities.requiresWine)
+              _wineCard(launcher, blocked),
             _gameCard(launcher, blocked),
           ];
           // Launch controls come first. The status strip always reserves the

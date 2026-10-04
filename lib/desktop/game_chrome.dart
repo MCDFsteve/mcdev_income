@@ -1,14 +1,23 @@
 import 'package:flutter/services.dart';
 import '../ui/ore_material.dart';
 import 'window_title_bar.dart';
+import 'game_chrome_backend.dart';
 
-void runGameChrome(List<String> arguments) {
+Future<void> runGameChrome(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
-  WidgetsBinding.instance.platformMenuDelegate = DefaultPlatformMenuDelegate(
-    channel: gameMenuChannel,
-  );
+  final backend = createGameChromeBackend();
+  final title = arguments.length > 2 && arguments[2].isNotEmpty
+      ? arguments[2]
+      : '我的世界测试';
+  if (backend.nativeMenus) {
+    WidgetsBinding.instance.platformMenuDelegate = DefaultPlatformMenuDelegate(
+      channel: gameMenuChannel,
+    );
+  }
+  await backend.initialize(title);
   runApp(
     GameChromeApp(
+      backend: backend,
       gameVersion: arguments.isNotEmpty ? arguments.first : '',
       subtitle: arguments
           .take(2)
@@ -31,7 +40,7 @@ class GameMenuItem extends PlatformMenuItem {
     required this.action,
     this.argument,
     super.shortcut,
-    DesktopWindowBridge bridge = const DesktopWindowBridge(),
+    WindowController bridge = const DesktopWindowBridge(),
   }) : super(onSelected: () => bridge.invoke(action, argument));
 
   final String action;
@@ -51,7 +60,7 @@ class GameMenuItem extends PlatformMenuItem {
 }
 
 List<PlatformMenuItem> gamePlatformMenus(
-  DesktopWindowBridge bridge, {
+  WindowController bridge, {
   String displayName = '我的世界测试',
   String gameVersion = '',
 }) => [
@@ -172,25 +181,24 @@ class GameChromeApp extends StatelessWidget {
     this.subtitle = '',
     this.displayName = '我的世界测试',
     this.gameVersion = '',
+    this.backend,
   });
   final String subtitle;
   final String displayName;
   final String gameVersion;
+  final GameChromeBackend? backend;
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    debugShowCheckedModeBanner: false,
-    theme: oreAppTheme(),
-    darkTheme: oreAppTheme(brightness: Brightness.dark),
-    home: PlatformMenuBar(
-      menus: gamePlatformMenus(
-        const DesktopWindowBridge(),
-        displayName: displayName,
-        gameVersion: gameVersion,
-      ),
-      child: Material(
-        type: MaterialType.transparency,
+  Widget build(BuildContext context) {
+    final platform = backend ?? createGameChromeBackend();
+    final bridge = platform.window;
+    final content = Material(
+      type: MaterialType.transparency,
+      child: Align(
+        alignment: Alignment.topCenter,
         child: OreWindowTitleBar(
+          bridge: bridge,
+          trafficLights: platform.trafficLights,
           title: displayName,
           subtitle: subtitle.isEmpty ? null : subtitle,
           actions: [
@@ -198,18 +206,32 @@ class GameChromeApp extends StatelessWidget {
               color: Colors.white,
               icon: const Icon(Icons.pause, color: Colors.white),
               tooltip: '暂停 / 返回',
-              onPressed: () =>
-                  const DesktopWindowBridge().invoke('sendKey', 'escape'),
+              onPressed: () => bridge.invoke('sendKey', 'escape'),
             ),
             OreIconButton(
               color: Colors.white,
               icon: const Icon(Icons.fullscreen, color: Colors.white),
               tooltip: '切换全屏',
-              onPressed: () => const DesktopWindowBridge().invoke('fullscreen'),
+              onPressed: () => bridge.invoke('fullscreen'),
             ),
           ],
         ),
       ),
-    ),
-  );
+    );
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: oreAppTheme(),
+      darkTheme: oreAppTheme(brightness: Brightness.dark),
+      home: platform.nativeMenus
+          ? PlatformMenuBar(
+              menus: gamePlatformMenus(
+                bridge,
+                displayName: displayName,
+                gameVersion: gameVersion,
+              ),
+              child: content,
+            )
+          : content,
+    );
+  }
 }

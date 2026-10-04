@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:mcdev_income/desktop/game_chrome_backend.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -114,6 +115,7 @@ void main() {
       );
       await tester.pumpWidget(
         const GameChromeApp(
+          backend: MacGameChromeBackend(),
           gameVersion: '3.10.0.420447',
           subtitle: '3.10.0.420447 · 渲染龙',
           displayName: '我的世界测试 · 草地方块与海洋世界',
@@ -211,7 +213,12 @@ void main() {
       );
       expect(
         env['MCDEV_CHROME_APP'],
-        '/Applications/管理器.app/Contents/Frameworks/App.framework',
+        p.join(
+          '/Applications/管理器.app',
+          'Contents',
+          'Frameworks',
+          'App.framework',
+        ),
       );
       expect(env['MCDEV_CHROME_DISPLAY_NAME'], '我的世界测试 · 草地');
     },
@@ -250,5 +257,7 @@ void main() {
         gameWindowChromeHash,
       );
     },
+    skip:
+        Platform.isWindows, // dylib search paths cannot contain a drive colon.
   );
 }
