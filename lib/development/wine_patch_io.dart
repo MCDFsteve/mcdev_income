@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
+
 import 'development_storage.dart';
 
 const wineArchiveUrl =
@@ -10,25 +12,62 @@ const wineArchiveHash =
     'b50dc50ec7f41d58b115a6b685d4d1315ba3c797bd3aa0f49213f2703cb82388';
 const wineMacOriginal =
     '7687c4095ea6dba1761052ac19d46db3409a36f2bc827b79c6e32bf779df59f4';
-const wineMacPatched =
-    'd210208bf0f38bc828f0379b9a2bf36bf0015bf1655f654df6766b4eddd3e009';
+// Hash of the patched Mach-O after codesign --remove-signature, with the
+// original __LINKEDIT reservation. Signing tools can resize that reservation;
+// executable content remains pinned independently of signing metadata.
+const wineMacPatchedUnsigned =
+    'e3679793f1020d743d6e82b2760c9c90d4de8198493b148a8eda09aa5f1c8035';
 const wineGlOriginal =
     '5b6c30a03d988793dc6657b9dc2baa6057908b93e121cdb029165384154bae12';
 const wineGlPatched =
     'd216354b5f6e953ca50f763ee59a4b0cdbf92ad49c5241f61f7705550fc51a56';
 
 Future<bool> patchedWineReady(String root) async {
-  for (final entry in {
-    'lib/wine/x86_64-unix/winemac.so': wineMacPatched,
-    'lib/wine/x86_64-windows/opengl32.dll': wineGlPatched,
-  }.entries) {
-    final file = File(p.join(root, entry.key));
-    if (!await file.exists() ||
-        (await sha256.bind(file.openRead()).first).toString() != entry.value) {
-      return false;
-    }
+  final mac = File(p.join(root, 'lib/wine/x86_64-unix/winemac.so'));
+  final gl = File(p.join(root, 'lib/wine/x86_64-windows/opengl32.dll'));
+  if (!await mac.exists() ||
+      !await gl.exists() ||
+      (await sha256.bind(gl.openRead()).first).toString() != wineGlPatched) {
+    return false;
   }
-  return File(p.join(root, 'bin/wine')).exists();
+  return await _patchedWineMacReady(mac) &&
+      await File(p.join(root, 'bin/wine')).exists();
+}
+
+Future<bool> _patchedWineMacReady(File mac) async {
+  Directory? temp;
+  try {
+    // Validate the actual installed file before stripping only a scratch copy.
+    final verified = await Process.run('/usr/bin/codesign', [
+      '--verify',
+      '--strict',
+      mac.path,
+    ]);
+    if (verified.exitCode != 0) return false;
+    temp = await Directory.systemTemp.createTemp('mcdev-wine-signature-');
+    final unsigned = await mac.copy(p.join(temp.path, 'winemac.so'));
+    final removed = await Process.run('/usr/bin/codesign', [
+      '--remove-signature',
+      unsigned.path,
+    ]);
+    if (removed.exitCode != 0) return false;
+    final bytes = await unsigned.readAsBytes();
+    if (bytes.length < 0x9e0) return false;
+    final view = ByteData.sublistView(bytes);
+    // Wine 11.0_1's __LINKEDIT vmsize is at this pinned offset. macOS 27
+    // codesign shrinks its reservation from 64 KiB to 48 KiB. Accept only
+    // these known layouts, then normalize this scratch buffer for hashing.
+    final linkeditSize = view.getUint64(0x9d8, Endian.little);
+    if (linkeditSize != 0x10000 && linkeditSize != 0xc000) return false;
+    view.setUint64(0x9d8, 0x10000, Endian.little);
+    return sha256.convert(bytes).toString() == wineMacPatchedUnsigned;
+  } on ProcessException {
+    return false;
+  } on FileSystemException {
+    return false;
+  } finally {
+    if (temp != null) await temp.delete(recursive: true);
+  }
 }
 
 void _replace(Uint8List data, int offset, List<int> before, List<int> after) {
@@ -73,8 +112,12 @@ Future<void> patchWine11(String root) async {
     '-',
     mac.path,
   ]);
-  if (signed.exitCode != 0 ||
-      (await sha256.bind(mac.openRead()).first).toString() != wineMacPatched) {
+  if (signed.exitCode != 0) {
+    throw DevelopmentStorageException(
+      'Wine 补丁签名失败：${signed.stderr.toString().trim()}',
+    );
+  }
+  if (!await _patchedWineMacReady(mac)) {
     throw const DevelopmentStorageException('Wine 补丁签名校验失败。');
   }
   final result = buildPatchedOpenGl(glData);

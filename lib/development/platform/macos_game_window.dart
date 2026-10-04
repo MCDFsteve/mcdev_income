@@ -1,6 +1,7 @@
 import 'dart:io';
 import '../wine_game_app_io.dart';
 import '../input_guard_io.dart';
+import '../wine_network_io.dart';
 import '../game_window_chrome_io.dart';
 import 'game_window_backend.dart';
 
@@ -23,24 +24,31 @@ class MacGameWindow extends GameWindowBackend {
       sessionId: sessionId,
       displayName: request.displayName,
     );
+    final network = await prepareWineNetworkLibrary(runtimes);
+    final nativeEnvironment = wineNetworkEnvironment(network.path);
     final guard = !request.fullscreenShortcut
         ? await prepareFullscreenShortcutGuard(runtimes)
         : null;
-    final input = guard == null
-        ? <String, String>{}
-        : fullscreenShortcutEnvironment(guard.path);
+    if (guard != null) {
+      nativeEnvironment.addAll(
+        fullscreenShortcutEnvironment(
+          guard.path,
+          inherited: {...Platform.environment, ...nativeEnvironment},
+        ),
+      );
+    }
     final chrome = await prepareGameWindowChrome(runtimes);
     return GameWindowLaunch(
       loader: app.loader,
       environment: {
         ...app.environment,
-        ...input,
+        ...nativeEnvironment,
         ...chrome.environment(
           loader: app.loader,
           version: request.version,
           displayName: request.displayName,
           renderer: request.renderer,
-          inherited: {...Platform.environment, ...input},
+          inherited: {...Platform.environment, ...nativeEnvironment},
         ),
       },
     );

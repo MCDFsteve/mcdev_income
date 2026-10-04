@@ -198,7 +198,7 @@ MCS 在“仅打开主菜单”模式下不传测试配置；因此该模式使�
 
 Wine 游戏环境来自 [Gcenx macOS Wine builds 11.0_1](https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.0_1)。原始下载 SHA256 为 `b50dc50ec7f41d58b115a6b685d4d1315ba3c797bd3aa0f49213f2703cb82388`。
 
-补丁实现位于 [`lib/development/wine_patch_io.dart`](../lib/development/wine_patch_io.dart)。它只接受指定原始文件哈希，修改 Wine 的 `winemac.so` 和 `opengl32.dll`，对修改后的 macOS 文件进行本机临时签名，并再次验证结果哈希。游戏可执行文件保持官方下载内容。未来 Wine 或游戏版本可能需要重新适配；新版本安装保留旧版本供回退。
+补丁实现位于 [`lib/development/wine_patch_io.dart`](../lib/development/wine_patch_io.dart)。它只接受指定原始文件哈希，修改 Wine 的 `winemac.so` 和 `opengl32.dll`，对修改后的 macOS 文件进行本机临时签名并验证签名有效性；仅在临时副本中移除签名，将已知的 `__LINKEDIT` 48／64 KiB 保留空间统一为原始值后核对固定的补丁内容哈希，避免不同签名工具或标识产生误报。macOS 27 的签名工具会缩小这处保留空间；其他内容及未知布局仍须通过校验。已安装文件不会因校验而改动，OpenGL 文件仍核对完整哈希。游戏可执行文件保持官方下载内容。未来 Wine 或游戏版本可能需要重新适配；新版本安装保留旧版本供回退。
 
 对已测试的 `3.8.0.313229` x64，还提供默认启用的图形性能优化，60 帧上限为独立开关。它通过小型 DLL 在运行时优化缓冲上传，不改写游戏 EXE；其他版本继续使用普通启动流程。测量结果、适配范围、CPU 代价和验收状态见 [游戏性能补丁](game-performance.md)。
 
@@ -240,6 +240,15 @@ MCDEV_LIVE_DEVELOPMENT=1 MCDEV_LIVE_LAUNCH=1 flutter test test/live_development_
 
 这些命令使用本机开发目录和账号，须明确启用；测试程序不输出 Cookie、访问令牌或密码。
 
+
+Wine 补丁签名回归测试可使用已下载并解压的原始 Wine 11.0_1（路径指向含 `lib/wine/` 的目录）。测试仅在临时目录复制、修改和签名两个文件，不启动 Wine 或游戏，也不读取账号：
+
+```sh
+MCDEV_TEST_WINE_ORIGINAL=/absolute/original/Wine\ Stable.app/Contents/Resources/wine \
+flutter test test/wine_patch_test.dart --no-pub
+```
+
+覆盖不同签名标识、无效或缺失签名、被篡改后重新签名的代码，以及校验不修改已安装文件。
 
 ## 多开测试 Tab
 

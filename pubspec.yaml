@@ -134,12 +134,15 @@ flutter:
     - assets/development/lan-patch.dll
     - assets/development/winemac-dxmt.so
     - assets/development/fullscreen-shortcut.dylib
+    - assets/development/ipv6-discovery.dylib
     - assets/development/minecraft-bedrock-icon.icns
     - assets/development/game-window-chrome.dylib
     - tools/windowing/build.py
     - tools/windowing/native/
     - tools/input/build.py
     - tools/input/native/
+    - tools/network/build.py
+    - tools/network/native/
     - tools/renderer/build.py
     - tools/renderer/native/
     - tools/renderer/wine/
