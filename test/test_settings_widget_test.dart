@@ -9,6 +9,56 @@ import 'development_widget_test.dart' show FakeLauncher, FakeStorage, host;
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets(
+    'mute sits in launch options, works in menu mode, and is disabled while running',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final launcher = FakeLauncher()..selectedVersion = '3.10.0.420447';
+      await tester.pumpWidget(
+        host(
+          DevelopmentEnvironmentPanel(
+            storage: FakeStorage(),
+            launcherFactory: () async => launcher,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final sound = find.byKey(const ValueKey('development-disable-sound'));
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('development-test-options')),
+          matching: sound,
+        ),
+        findsOneWidget,
+      );
+      expect(tester.widget<OreCheckboxListTile>(sound).value, isFalse);
+      await tester.ensureVisible(sound);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('关闭声音'));
+      await tester.pumpAndSettle();
+      expect(launcher.disableSound, isTrue);
+      await tester.tap(find.text('仅打开游戏主菜单'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<OreCheckboxListTile>(sound).onChanged, isNotNull);
+      tester.view.physicalSize = const Size(390, 844);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(sound);
+      await tester.pumpAndSettle();
+      expect(sound.hitTestable(), findsOneWidget);
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('development-launch')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('development-launch')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<OreCheckboxListTile>(sound).onChanged, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final dark in [false, true]) {
     testWidgets(
       'new world and seed are first-level controls, responsive and disabled while running ($dark)',

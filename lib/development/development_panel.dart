@@ -1329,6 +1329,19 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
             key: const ValueKey('development-disable-companion'),
             hint: '默认勾选，关闭测试世界中的我的伙伴。重启游戏后生效。',
           ),
+          toggle(
+            '关闭声音',
+            launcher.disableSound,
+            blocked ||
+                    (!launcher.disableSoundSupported && !launcher.disableSound)
+                ? null
+                : (value) =>
+                      _run(() => launcher.chooseDisableSound(value ?? false)),
+            key: const ValueKey('development-disable-sound'),
+            hint: launcher.disableSoundSupported
+                ? '关闭游戏的所有声音，重启游戏后生效。'
+                : '当前仅支持 3.10.0.420447 x64，请选择受支持版本或取消勾选。',
+          ),
           if (launcher.capabilities.commandShiftFullscreen)
             toggle(
               'Shift + Command 切换全屏',

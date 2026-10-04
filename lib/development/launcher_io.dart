@@ -37,6 +37,7 @@ import 'platform/host_files_io.dart';
 import 'platform/game_diagnostics.dart' show classifyNativeDiagnostic;
 import 'mod_manifest_io.dart';
 import 'python_reload_io.dart';
+import 'sound_patch_io.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -73,6 +74,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     limit60Fps = this.preferences.getInt(_frameLimitKey) != 0;
     showDeveloperConsole = this.preferences.getInt(_developerConsoleKey) == 1;
     disableCompanion = this.preferences.getInt(_disableCompanionKey) != 0;
+    disableSound = this.preferences.getInt(_disableSoundKey) == 1;
     fullscreenShortcut = this.preferences.getInt(_fullscreenShortcutKey) == 1;
     useNewWorld = this.preferences.getInt(_newWorldKey) == 1;
     newWorldSeed = this.preferences.getString(_worldSeedKey) ?? '';
@@ -109,6 +111,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   static const _frameLimitKey = 'development_frame_limit_60_v1';
   static const _developerConsoleKey = 'development_show_developer_console_v1';
   static const _disableCompanionKey = 'development_disable_companion_v1';
+  static const _disableSoundKey = 'development_disable_sound_v1';
   static const _fullscreenShortcutKey = 'development_fullscreen_shortcut_v1';
   static const _playerSkinKey = 'development_player_skin_v1';
   static const _newWorldKey = 'development_new_world_v1';
@@ -139,6 +142,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   bool _disposed = false;
   DownloadControl? _control;
   Process? _game;
+  Process? _soundTarget;
+  Future<void>? _soundActivation;
   bool _stopRequested = false;
   bool _stopping = false;
   LanGameRpc? _rpc;
@@ -444,6 +449,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       ..vibrantVisuals = vibrantVisuals
       ..showDeveloperConsole = showDeveloperConsole
       ..disableCompanion = disableCompanion
+      ..disableSound = disableSound
       ..fullscreenShortcut = fullscreenShortcut
       ..playerSkin = skin
       ..useNewWorld = false
@@ -681,6 +687,21 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       throw const DevelopmentStorageException('无法保存全屏快捷键设置。');
     }
     fullscreenShortcut = enabled;
+    _notify();
+  }
+
+  @override
+  Future<void> chooseDisableSound(bool disabled) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改关闭声音设置。');
+    }
+    if (disabled && !disableSoundSupported) {
+      throw const DevelopmentStorageException('关闭声音仅支持 3.10.0.420447 x64 游戏。');
+    }
+    if (!await preferences.setInt(_disableSoundKey, disabled ? 1 : 0)) {
+      throw const DevelopmentStorageException('无法保存关闭声音设置。');
+    }
+    disableSound = disabled;
     _notify();
   }
 
@@ -1507,6 +1528,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     Directory? lanFiles;
     Directory? rendererFiles;
     Directory? pythonFiles;
+    Directory? soundFiles;
     String? dragonRuntime;
     final adaptedDragon =
         capabilities.metalRenderer &&
@@ -1520,6 +1542,11 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       version: game.version,
     );
     final executable = p.join(gameDirectory, 'Minecraft.Windows.exe');
+    if (disableSound) {
+      _update(const StorageMigrationProgress('校验关闭声音组件'));
+      await validateSoundGame(game.version, File(executable));
+      soundFiles = await prepareSoundPatch(storage.paths.runtimes);
+    }
     _lanTransportReady = false;
     if (!menuOnly && supportsLanPatch(game.version)) {
       _update(const StorageMigrationProgress('校验局域网兼容组件'));
@@ -1558,6 +1585,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       ),
     );
     await options.parent.create(recursive: true);
+    final soundOptions = SoundOptionsGuard(options);
+    // Recover a startup-volume override left by an interrupted app session.
+    await soundOptions.restore();
     final originalOptions = await options.exists()
         ? await options.readAsString(encoding: gameOptionsEncoding)
         : '';
@@ -1568,8 +1598,10 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     final subscriptions = <StreamSubscription<Object?>>[];
     String? runtimeFailure;
     try {
+      if (soundFiles != null) await soundOptions.capture(originalOptions);
       await stagingOptions.writeAsString(
         mergeGameOptions(originalOptions, {
+          if (soundFiles != null) 'audio_main': '0',
           ...frameLimitOptions(
             limit60Fps,
             nativePacing: performanceFiles != null,
@@ -1866,6 +1898,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       );
       final rendererLog = p.join(storage.paths.logs, 'renderer-$stamp.log');
       final lanLog = p.join(storage.paths.logs, 'lan-$stamp.log');
+      final soundLog = File(p.join(storage.paths.logs, 'sound-$stamp.json'));
       if (dragonRuntime != null) {
         _runtime.activeRuntime = dragonRuntime;
       }
@@ -1895,6 +1928,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         fullscreenShortcut: fullscreenShortcut,
         workingDirectory: gameDirectory,
         overrides: {
+          if (soundFiles != null) 'MCDEV_SOUND_LOG': _winPath(soundLog.path),
           if (_pythonReloadBridge != null) ..._pythonReloadBridge!.environment,
           if (lanFiles != null) ...{
             'MCDEV_LAN_PATCH_LOG': _winPath(lanLog),
@@ -1967,6 +2001,41 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         drained.then<void>((_) {}, onError: (Object _, StackTrace _) {}),
       );
       progress = null;
+      if (soundFiles != null) {
+        final target = _game!;
+        _soundTarget = target;
+        bool current() => running && identical(_soundTarget, target);
+        _soundActivation =
+            activateSoundPatch(
+              files: soundFiles,
+              executable: executable,
+              wine: _runtime.wine,
+              targetPid: target.pid,
+              environment: _env(gamePrefix),
+              gamePath: _winPath,
+              log: soundLog,
+              exited: target.exitCode.then<void>((_) {}),
+              current: current,
+              onReady: () {
+                output?.writeln('[INFO] 关闭声音 DLL 已就绪，游戏使用无声输出。');
+              },
+            ).catchError((Object e) async {
+              if (!current()) return;
+              runtimeFailure = '关闭声音失败，已停止本次测试：$e';
+              error = runtimeFailure;
+              notice = null;
+              output?.writeln('[ERROR] $runtimeFailure');
+              _notify();
+              try {
+                await _runtime.stop(target);
+              } catch (_) {
+                if (current()) {
+                  error = '$runtimeFailure 游戏窗口尚未退出，请点击退出测试。';
+                  _notify();
+                }
+              }
+            });
+      }
       if (lanFiles != null) {
         unawaited(_activateLan(lanFiles, executable, lanLog, _game!));
       }
@@ -2069,6 +2138,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       // stop writing before the log sink closes.
       busy = true;
       _closingLan = true;
+      _soundTarget = null;
+      await _soundActivation;
+      _soundActivation = null;
       _lanTimer?.cancel();
       _lanTimer = null;
       _lanBridge = null;
@@ -2109,6 +2181,11 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         running = false;
         _game = null;
         _runtime.activeRuntime = null;
+        try {
+          await soundOptions.restore();
+        } catch (_) {
+          error ??= '游戏音量设置恢复失败，下次启动将再次尝试恢复。';
+        }
         if (adaptedDragon && await options.exists()) {
           try {
             // The prefix is shared across versions. Restore only the two

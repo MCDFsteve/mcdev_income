@@ -6,6 +6,7 @@ import '../core/preferences.dart';
 import 'development_storage.dart';
 import 'mcs_api.dart';
 import 'performance_patch.dart';
+import 'sound_patch.dart';
 import 'game_graphics.dart';
 import 'render_dragon.dart';
 import 'platform/development_capabilities.dart';
@@ -311,6 +312,8 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   bool vibrantVisuals = false;
   bool showDeveloperConsole = false;
   bool disableCompanion = true;
+  bool disableSound = false;
+  bool get disableSoundSupported => supportsSoundPatch(selectedVersion);
   bool fullscreenShortcut = false;
   bool useNewWorld = false;
   String newWorldSeed = '';
@@ -413,6 +416,11 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
 
   Future<void> chooseDisableCompanion(bool disabled) async {
     disableCompanion = disabled;
+    notifyListeners();
+  }
+
+  Future<void> chooseDisableSound(bool disabled) async {
+    disableSound = disabled;
     notifyListeners();
   }
 

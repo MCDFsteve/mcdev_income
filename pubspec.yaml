@@ -133,6 +133,7 @@ flutter:
     - assets/development/renderer-inject.exe
     - assets/development/lan-patch.dll
     - assets/development/python-reload.dll
+    - assets/development/sound-patch.dll
     - tools/python_reload/runtime.py
     - assets/development/winemac-dxmt.so
     - assets/development/fullscreen-shortcut.dylib
