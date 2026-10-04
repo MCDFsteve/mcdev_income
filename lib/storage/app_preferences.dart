@@ -15,7 +15,9 @@ class AppPreferences implements PreferenceStore {
         if (key.startsWith('login_') ||
             key.startsWith('resource_draft_v1:') ||
             key == 'theme_mode' ||
-            key == 'income_presets_v1')
+            key == 'income_presets_v1' ||
+            key == 'income_selected_preset_v1' ||
+            key == 'income_date_range_v1')
           key: prefs.get(key)!,
     };
     return await desktop.openDesktopPreferences(seed) ?? AppPreferences(prefs);

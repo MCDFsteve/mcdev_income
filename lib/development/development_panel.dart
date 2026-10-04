@@ -6,6 +6,7 @@ import '../ui/ore_material.dart';
 import 'development_storage.dart';
 import 'launcher_service.dart';
 import 'log_dialog.dart';
+import 'project_icon.dart';
 import 'version_dialog.dart';
 
 class DevelopmentEnvironmentPanel extends StatefulWidget {
@@ -473,6 +474,7 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
   final _environmentScroll = ScrollController();
   final _projectScroll = ScrollController();
   final _compactProjectScroll = ScrollController();
+  final _launchScroll = ScrollController();
   final _pageScroll = ScrollController();
   @override
   void initState() {
@@ -504,6 +506,7 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
     _environmentScroll.dispose();
     _projectScroll.dispose();
     _compactProjectScroll.dispose();
+    _launchScroll.dispose();
     _pageScroll.dispose();
     super.dispose();
   }
@@ -830,11 +833,21 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
                 ),
                 leading: ExcludeFocus(
                   child: IgnorePointer(
-                    child: OreCheckbox(
-                      value: selected,
-                      tristate: true,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: blocked ? null : (_) => toggle(),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        OreCheckbox(
+                          value: selected,
+                          tristate: true,
+                          contentPadding: EdgeInsets.zero,
+                          onChanged: blocked ? null : (_) => toggle(),
+                        ),
+                        const SizedBox(width: 8),
+                        ModProjectIcon(
+                          key: ValueKey('project-icon-${project.id}'),
+                          project: project,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -868,7 +881,7 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
     bool blocked, {
     bool scroll = false,
   }) {
-    final projects = launcher.projects;
+    final projects = launcher.sortedProjects;
     final selected = projects
         .where((project) => project.selection(launcher.selectedPacks) != false)
         .length;
@@ -910,11 +923,66 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
         else
           ...rows,
       ],
-      trailing: Text(
-        '$selected / ${projects.length} 已选',
-        style: OreTheme.of(context).typography.caption,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$selected / ${projects.length} 已选',
+            style: OreTheme.of(context).typography.caption,
+          ),
+          const SizedBox(width: 8),
+          OreIconButton(
+            key: const ValueKey('development-project-sort'),
+            icon: const Icon(Icons.sort),
+            tooltip: '项目排序 · ${launcher.projectSortOrder.label}',
+            onPressed: _showProjectSort,
+          ),
+        ],
       ),
     );
+  }
+
+  Future<void> _showProjectSort() async {
+    var selected = _launcher.projectSortOrder;
+    final result = await showOreDialog<ProjectSortOrder>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => OreAlertDialog(
+          title: const Text('本地项目排序'),
+          maxWidth: 420,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final order in ProjectSortOrder.values)
+                Semantics(
+                  inMutuallyExclusiveGroup: true,
+                  child: OreCheckboxListTile(
+                    key: ValueKey('project-sort-${order.name}'),
+                    value: selected == order,
+                    dense: true,
+                    title: Text(order.label),
+                    onChanged: (_) => setDialogState(() => selected = order),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              _hint('启动时间按项目最近一次启动测试记录，未启动过的项目排在最后。'),
+            ],
+          ),
+          actions: [
+            _button('取消', () => Navigator.of(dialogContext).pop()),
+            _button(
+              '应用',
+              () => Navigator.of(dialogContext).pop(selected),
+              primary: true,
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      await _run(() => _launcher.chooseProjectSortOrder(result));
+    }
   }
 
   Widget _testOptions(
@@ -1118,6 +1186,17 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
                     () => launcher.chooseDeveloperConsole(value ?? false),
                   ),
             hint: '与游戏“调试”中的同名选项一致，默认关闭，重启游戏后生效。',
+          ),
+          toggle(
+            '关闭我的伙伴',
+            launcher.disableCompanion,
+            blocked || _menuOnly
+                ? null
+                : (value) => _run(
+                    () => launcher.chooseDisableCompanion(value ?? true),
+                  ),
+            key: const ValueKey('development-disable-companion'),
+            hint: '默认勾选，关闭测试世界中的我的伙伴。重启游戏后生效。',
           ),
           toggle(
             'Shift + Command 切换全屏',
@@ -1380,45 +1459,68 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
           ];
           // Launch controls come first. The status strip always reserves the
           // same space, so progress, notices and errors cannot resize the panes.
+          final textScale = (MediaQuery.textScalerOf(context).scale(14) / 14)
+              .clamp(1.0, double.infinity);
           final desktop =
               constraints.hasBoundedHeight &&
-              constraints.maxWidth >= 1000 &&
-              constraints.maxHeight >= 680 &&
-              MediaQuery.textScalerOf(context).scale(14) <= 18;
+              constraints.maxWidth >= 720 * textScale;
           if (desktop) {
+            // Each desktop region owns its scrolling. Cap the launch card so
+            // short windows still leave room for both independent panes.
+            final bodyHeight = (constraints.maxHeight - 88).clamp(
+              0.0,
+              double.infinity,
+            );
+            final panes = Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: (constraints.maxWidth * .34).clamp(
+                    300 * textScale,
+                    380 * textScale,
+                  ),
+                  child: _scroll(
+                    _environmentScroll,
+                    environment,
+                    key: const PageStorageKey('development-environment'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, paneConstraints) =>
+                        paneConstraints.maxHeight >= 240 * textScale
+                        ? _projectCard(launcher, blocked, scroll: true)
+                        : _scroll(
+                            _compactProjectScroll,
+                            [_projectCard(launcher, blocked)],
+                            key: const PageStorageKey(
+                              'development-projects-compact',
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            );
             return Column(
               key: const ValueKey('development-desktop'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _testCard(launcher, blocked),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        width: (constraints.maxWidth * .34).clamp(300, 380),
-                        child: _scroll(
-                          _environmentScroll,
-                          environment,
-                          key: const PageStorageKey('development-environment'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: constraints.maxHeight >= 520
-                            ? _projectCard(launcher, blocked, scroll: true)
-                            : _scroll(
-                                _compactProjectScroll,
-                                [_projectCard(launcher, blocked)],
-                                key: const PageStorageKey(
-                                  'development-projects-compact',
-                                ),
-                              ),
-                      ),
-                    ],
+                ConstrainedBox(
+                  key: const ValueKey('development-launch-region'),
+                  constraints: BoxConstraints(maxHeight: bodyHeight * .55),
+                  child: OreScrollbar(
+                    controller: _launchScroll,
+                    child: SingleChildScrollView(
+                      key: const PageStorageKey('development-launch-controls'),
+                      controller: _launchScroll,
+                      padding: const EdgeInsets.only(right: 14),
+                      child: _testCard(launcher, blocked),
+                    ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                Expanded(child: panes),
                 const SizedBox(height: 12),
                 _statusBar(launcher),
               ],

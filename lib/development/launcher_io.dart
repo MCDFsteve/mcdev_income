@@ -29,6 +29,9 @@ import 'lan_bridge_io.dart';
 import 'lan_endpoint_io.dart';
 import 'lan_join_io.dart';
 import 'lan_patch_io.dart';
+import 'mod_log_io.dart';
+import 'mod_log_filter.dart';
+import 'mod_log_capture_io.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -62,9 +65,18 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     performanceOptimization = this.preferences.getInt(_performanceKey) != 0;
     limit60Fps = this.preferences.getInt(_frameLimitKey) != 0;
     showDeveloperConsole = this.preferences.getInt(_developerConsoleKey) == 1;
+    disableCompanion = this.preferences.getInt(_disableCompanionKey) != 0;
     fullscreenShortcut = this.preferences.getInt(_fullscreenShortcutKey) == 1;
     useNewWorld = this.preferences.getInt(_newWorldKey) == 1;
     newWorldSeed = this.preferences.getString(_worldSeedKey) ?? '';
+    projectSortOrder =
+        ProjectSortOrder.values
+            .where(
+              (value) =>
+                  value.name == this.preferences.getString(_projectSortKey),
+            )
+            .firstOrNull ??
+        ProjectSortOrder.importedNewest;
     playerSkin =
         TestPlayerSkin.values
             .where(
@@ -86,11 +98,13 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   static const _performanceKey = 'development_performance_patch_v1';
   static const _frameLimitKey = 'development_frame_limit_60_v1';
   static const _developerConsoleKey = 'development_show_developer_console_v1';
+  static const _disableCompanionKey = 'development_disable_companion_v1';
   static const _fullscreenShortcutKey = 'development_fullscreen_shortcut_v1';
   static const _playerSkinKey = 'development_player_skin_v1';
   static const _newWorldKey = 'development_new_world_v1';
   static const _worldSeedKey = 'development_world_seed_v1';
   static const _selectionKey = 'development_selected_packs_v1';
+  static const _projectSortKey = 'development_project_sort_v1';
   String get _rendererKey => 'development_renderer_v1_$selectedVersion';
   String get _vibrantKey => 'development_vibrant_visuals_v1_$selectedVersion';
 
@@ -101,6 +115,15 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
             .firstOrNull ??
         GameRenderer.openGL;
     vibrantVisuals = preferences.getInt(_vibrantKey) == 1;
+  }
+
+  @override
+  Future<void> chooseProjectSortOrder(ProjectSortOrder value) async {
+    if (!await preferences.setString(_projectSortKey, value.name)) {
+      throw const DevelopmentStorageException('无法保存项目排序方式。');
+    }
+    projectSortOrder = value;
+    _notify();
   }
 
   bool _disposed = false;
@@ -267,6 +290,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       ..limit60Fps = limit60Fps
       ..vibrantVisuals = vibrantVisuals
       ..showDeveloperConsole = showDeveloperConsole
+      ..disableCompanion = disableCompanion
       ..fullscreenShortcut = fullscreenShortcut
       ..playerSkin = skin
       ..useNewWorld = false
@@ -487,6 +511,18 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   }
 
   @override
+  Future<void> chooseDisableCompanion(bool disabled) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改我的伙伴设置。');
+    }
+    if (!await preferences.setInt(_disableCompanionKey, disabled ? 1 : 0)) {
+      throw const DevelopmentStorageException('无法保存我的伙伴设置。');
+    }
+    disableCompanion = disabled;
+    _notify();
+  }
+
+  @override
   Future<void> chooseFullscreenShortcut(bool enabled) async {
     if (busy || running) {
       throw const DevelopmentStorageException('请在游戏退出后修改全屏快捷键设置。');
@@ -671,6 +707,10 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
             projectRoot: row['projectRoot'] is String
                 ? _expandProject(row['projectRoot'])
                 : null,
+            importedAt: DateTime.tryParse(row['importedAt']?.toString() ?? ''),
+            lastLaunchedAt: DateTime.tryParse(
+              row['lastLaunchedAt']?.toString() ?? '',
+            ),
           ),
         );
       }
@@ -723,6 +763,10 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'uuid': pack.uuid,
         'version': pack.version,
         'type': pack.type,
+        if (pack.importedAt != null)
+          'importedAt': pack.importedAt!.toUtc().toIso8601String(),
+        if (pack.lastLaunchedAt != null)
+          'lastLaunchedAt': pack.lastLaunchedAt!.toUtc().toIso8601String(),
         'path': p.isWithin(storage.paths.root, pack.directory)
             ? p.relative(pack.directory, from: storage.paths.root)
             : pack.directory,
@@ -732,6 +776,28 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
               : pack.projectRoot,
       },
   ]);
+
+  // Called while startup still owns the shared preparation lock. Reload first
+  // so another tab's imports or launch history are never overwritten.
+  Future<void> _recordProjectLaunch(
+    Iterable<String> uuids,
+    DateTime time,
+  ) async {
+    final ids = uuids.toSet();
+    if (ids.isEmpty) return;
+    await _readProjects();
+    final previous = packs;
+    packs = [
+      for (final pack in packs)
+        if (ids.contains(pack.uuid)) pack.withLastLaunch(time) else pack,
+    ];
+    try {
+      await _saveProjects();
+    } catch (_) {
+      packs = previous;
+      rethrow;
+    }
+  }
 
   @override
   Future<void> chooseVersion(String version) => _operation(() async {
@@ -1156,6 +1222,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         await stage.rename(committed);
       }
       final next = [...packs];
+      final importedAt = DateTime.now().toUtc();
       for (final pack in imported) {
         final previous = next.where((old) => old.uuid == pack.uuid).firstOrNull;
         next.removeWhere((old) => old.uuid == pack.uuid);
@@ -1169,6 +1236,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
             version: pack.version,
             type: pack.type,
             directory: actual,
+            importedAt: previous == null ? importedAt : previous.importedAt,
+            lastLaunchedAt: previous?.lastLaunchedAt,
             projectRoot: pack.projectRoot == null
                 ? previous?.projectRoot
                 : committed == null
@@ -1360,8 +1429,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         : '';
     final stagingOptions = File('${options.path}.mcdev-tmp');
     IOSink? output;
-    var rpcLoggingOpen = true;
-    final subscriptions = <StreamSubscription<List<int>>>[];
+    ModLogServer? modLogs;
+    final nativeFilters = <ModNativeErrorFilter>[];
+    final subscriptions = <StreamSubscription<Object?>>[];
     try {
       await stagingOptions.writeAsString(
         mergeGameOptions(originalOptions, {
@@ -1394,6 +1464,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       );
       if (_joinTarget == null) _hostPackRoot = dataRoot;
       final behavior = <String>[], resources = <String>[];
+      final modSnapshots = <Directory>[];
       for (final pack in chosen) {
         _control?.check();
         final name = 'mcdev_${pack.uuid}';
@@ -1448,7 +1519,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           if (await staging.exists()) await staging.delete(recursive: true);
         }
         (pack.type == 'resources' ? resources : behavior).add(name);
+        modSnapshots.add(target);
       }
+      final modCapture = await prepareModLogCapture(modSnapshots);
       if (_joinTarget case final target?) {
         target.requireHost();
         await target.bridge.copyToGuest(
@@ -1457,23 +1530,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         behavior.add(target.bridge.directoryName);
         target.requireHost();
       }
-      _rpc = await LanGameRpc.start(
-        // Legacy endpoint replies are not sufficient proof that the socket
-        // belongs to this Tab. The host poll verifies the exact game PID.
-        onPacket: (packet) {
-          // Only protocol metadata, never packet bodies or login keys.
-          if (rpcLoggingOpen && generation == _launchGeneration) {
-            output?.writeln(
-              '[MCDev RPC] command=${packet.command} bytes=${packet.payload.length}',
-            );
-          }
-        },
-        onError: (message) {
-          if (rpcLoggingOpen && generation == _launchGeneration) {
-            output?.writeln('[MCDev RPC] $message');
-          }
-        },
-      );
+      // Legacy endpoint replies alone do not prove ownership. _pollLan still
+      // verifies the exact game PID. Protocol diagnostics are not mod output.
+      _rpc = await LanGameRpc.start();
       final stamp = '$sessionId-${DateTime.now().microsecondsSinceEpoch}';
       final config = File(
         p.join(gamePrefix, 'drive_c', 'MCDevTests', 'test.cppconfig'),
@@ -1533,6 +1592,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
                   game.clientType,
             ),
           'MainComponentId': '',
+          // 3.10 Launch::launch forwards this object to SunshineManager;
+          // PetSysClient reads it before creating UI or scheduling its summon.
+          'launch_params': {'close_pet_addon': disableCompanion},
           'LocalComponentPathsDict': {},
           'path': _winPath(config.path),
           'world_info': world == null
@@ -1635,6 +1697,14 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'AssertCacheDir': _winPath(assertDir.path),
       });
       output = File(logPath!).openWrite();
+      modLogs = await ModLogServer.start(
+        marker: modCapture.marker,
+        sources: modCapture.sources,
+        onText: (text) {
+          if (generation == _launchGeneration) output?.write(text);
+        },
+      );
+      args.addAll(['loggingIP=127.0.0.1', 'loggingPort=${modLogs.port}']);
       final performanceLog = p.join(
         storage.paths.logs,
         'performance-$stamp.log',
@@ -1713,6 +1783,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         ),
       );
       running = true;
+      final launchedAt = DateTime.now().toUtc();
       busy = false;
       final actualRenderer = menuOnly ? GameRenderer.openGL : effectiveRenderer;
       notice =
@@ -1720,17 +1791,25 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       _notify();
       final drains = <Future<void>>[];
       for (final stream in [_game!.stdout, _game!.stderr]) {
+        final filter = ModNativeErrorFilter(
+          modCapture.sources,
+          (text) => output?.write(text),
+        );
+        nativeFilters.add(filter);
         final done = Completer<void>();
         subscriptions.add(
-          stream.listen(
-            output.add,
-            onError: (Object e, StackTrace st) {
-              if (!done.isCompleted) done.completeError(e, st);
-            },
-            onDone: () {
-              if (!done.isCompleted) done.complete();
-            },
-          ),
+          stream
+              .transform(const Utf8Decoder(allowMalformed: true))
+              .listen(
+                filter.add,
+                onError: (Object e, StackTrace st) {
+                  if (!done.isCompleted) done.completeError(e, st);
+                },
+                onDone: () {
+                  filter.close();
+                  if (!done.isCompleted) done.complete();
+                },
+              ),
         );
         drains.add(done.future);
       }
@@ -1757,6 +1836,20 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         unawaited(
           _activateRenderer(rendererFiles, executable, rendererLog, _game!),
         );
+      }
+      if (!menuOnly &&
+          _joinTarget == null &&
+          !_stopRequested &&
+          _control?.cancelled != true) {
+        try {
+          await _recordProjectLaunch(
+            chosen.map((pack) => pack.uuid),
+            launchedAt,
+          );
+        } catch (e) {
+          error = '游戏已启动，但无法保存项目启动时间：$e';
+        }
+        _notify();
       }
       releasePreparation();
       // Cancellation can arrive while Process.start is awaiting the OS. At
@@ -1800,7 +1893,6 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       // stop writing before the log sink closes.
       busy = true;
       _closingLan = true;
-      rpcLoggingOpen = false;
       _lanTimer?.cancel();
       _lanTimer = null;
       _lanBridge = null;
@@ -1814,6 +1906,10 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         await subscription.cancel();
       }
       try {
+        await modLogs?.close();
+        for (final filter in nativeFilters) {
+          filter.close();
+        }
         await output?.close();
       } finally {
         _lanPort = null;

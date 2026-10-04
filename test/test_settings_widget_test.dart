@@ -101,6 +101,15 @@ void main() {
       expect(launcher.playerSkin, TestPlayerSkin.alex);
 
       final console = find.widgetWithText(OreCheckboxListTile, '显示开发控制台');
+      final companion = find.byKey(
+        const ValueKey('development-disable-companion'),
+      );
+      expect(tester.widget<OreCheckboxListTile>(companion).value, isTrue);
+      await tester.ensureVisible(companion);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('关闭我的伙伴'));
+      await tester.pumpAndSettle();
+      expect(launcher.disableCompanion, isFalse);
       expect(tester.widget<OreCheckboxListTile>(console).value, isFalse);
       await tester.ensureVisible(console);
       await tester.pumpAndSettle();
@@ -128,6 +137,7 @@ void main() {
       await tester.tap(find.text('仅打开游戏主菜单'));
       await tester.pumpAndSettle();
       expect(tester.widget<OreChoiceButtons>(skin).onChanged, isNull);
+      expect(tester.widget<OreCheckboxListTile>(companion).onChanged, isNull);
       expect(launcher.playerSkin, TestPlayerSkin.alex);
       tester.view.physicalSize = const Size(390, 844);
       await tester.pumpAndSettle();
@@ -137,6 +147,10 @@ void main() {
       await tester.ensureVisible(shortcut);
       await tester.pumpAndSettle();
       expect(shortcut.hitTestable(), findsOneWidget);
+      await tester.ensureVisible(companion);
+      await tester.pumpAndSettle();
+      expect(companion.hitTestable(), findsOneWidget);
+      expect(tester.widget<OreCheckboxListTile>(companion).value, isFalse);
       expect(tester.takeException(), isNull);
     },
   );

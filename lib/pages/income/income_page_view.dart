@@ -17,8 +17,8 @@ extension _IncomePageView on _IncomePageState {
     final defaultNeteaseParse = _parseRate(
       _defaultNeteaseRatioController.text,
       fieldName: '默认网易分成',
-      defaultValue: 1.0,
-      invalidValue: 1.0,
+      defaultValue: 0.39,
+      invalidValue: 0.39,
     );
     final taxParse = _parseRate(
       _taxRateController.text,
@@ -201,9 +201,7 @@ extension _IncomePageView on _IncomePageState {
                     ],
                     onChanged: (value) {
                       if (value == null || value == noPresetValue) {
-                        setState(() {
-                          _selectedPresetId = null;
-                        });
+                        _applyPresetById(null);
                         return;
                       }
                       _applyPresetById(value);
@@ -397,7 +395,7 @@ extension _IncomePageView on _IncomePageState {
                         ),
                         decoration: InputDecoration(
                           labelText: '默认网易分成',
-                          hintText: '默认 1.0',
+                          hintText: '默认 0.39',
                           border: const OutlineInputBorder(),
                           isDense: true,
                           errorText: defaultNeteaseParse.isValid

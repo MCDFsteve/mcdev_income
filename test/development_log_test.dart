@@ -101,6 +101,40 @@ Future<void> openLogs(
 
 void main() {
   test(
+    'default log source prefers a mod session over newer diagnostics',
+    () async {
+      final store = MemoryLogs()
+        ..put('renderer-new.log', 'renderer details\n')
+        ..put('test-last.log', 'mod output\n');
+      final controller = DevelopmentLogController(store);
+      await controller.refresh();
+      expect(controller.selectedPath, '/test/development/logs/test-last.log');
+      expect(controller.entries.single.text, 'mod output');
+      expect(controller.files.last.label, startsWith('模组 ·'));
+      controller.dispose();
+    },
+  );
+
+  test('mod traceback header and native errors keep their error level', () {
+    final buffer = DevelopmentLogBuffer();
+    buffer.add(
+      Uint8List.fromList(
+        utf8.encode(
+          'Traceback (most recent call last):\n'
+          '  File "MyModScripts.modMain", line 7\n'
+          'RuntimeError: failed\n'
+          '[2026-10-03 11:00:00:123 ERROR ENTITY 1 2] bad mod JSON\n'
+          '  source frame\n',
+        ),
+      ),
+    );
+    expect(
+      buffer.entries.map((entry) => entry.level),
+      everyElement(DevelopmentLogLevel.error),
+    );
+    buffer.close();
+  });
+  test(
     'macOS log export uses the owned native save panel and preserves cancellation',
     () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;

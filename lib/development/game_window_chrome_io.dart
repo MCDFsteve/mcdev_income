@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 import 'development_storage.dart';
 
 const gameWindowChromeHash =
-    '9f1e6d9cfae7f4b224b386cb245045e4d16b4b9163c04bfdb6f0d990ee2c7651';
+    '562d542cafd8356d46196ab36f6532d31cc6b454fb4f044b9d586afa11d20b06';
 const _asset = 'assets/development/game-window-chrome.dylib';
 
 class GameWindowChrome {

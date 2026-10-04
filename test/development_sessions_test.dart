@@ -116,6 +116,7 @@ void main() {
       await first.chooseNewWorld(true);
       await first.chooseDeveloperConsole(true);
       await first.chooseFullscreenShortcut(true);
+      await first.chooseDisableCompanion(false);
       await second.chooseVersion('3.10.0.420447');
       await second.choosePerformanceOptimization(false);
       expect(first.error, isNull);
@@ -129,6 +130,7 @@ void main() {
       expect(reopenedFirst.useNewWorld, isTrue);
       expect(reopenedFirst.showDeveloperConsole, isTrue);
       expect(reopenedFirst.fullscreenShortcut, isTrue);
+      expect(reopenedFirst.disableCompanion, isFalse);
       expect(reopenedFirst.performanceOptimization, isTrue);
       expect(reopenedSecond.selectedVersion, '3.10.0.420447');
       expect(reopenedSecond.renderer, GameRenderer.openGL);
@@ -137,6 +139,7 @@ void main() {
       expect(reopenedSecond.useNewWorld, isFalse);
       expect(reopenedSecond.showDeveloperConsole, isFalse);
       expect(reopenedSecond.fullscreenShortcut, isFalse);
+      expect(reopenedSecond.disableCompanion, isTrue);
       expect(reopenedSecond.performanceOptimization, isFalse);
     },
   );

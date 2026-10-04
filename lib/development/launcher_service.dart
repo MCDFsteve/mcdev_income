@@ -65,6 +65,8 @@ class ModPack {
     required this.type,
     required this.directory,
     this.projectRoot,
+    this.importedAt,
+    this.lastLaunchedAt,
   });
   final String name;
   final String uuid;
@@ -74,6 +76,19 @@ class ModPack {
 
   /// Source project directory. Absent in older registrations / single packs.
   final String? projectRoot;
+  final DateTime? importedAt;
+  final DateTime? lastLaunchedAt;
+
+  ModPack withLastLaunch(DateTime time) => ModPack(
+    name: name,
+    uuid: uuid,
+    version: version,
+    type: type,
+    directory: directory,
+    projectRoot: projectRoot,
+    importedAt: importedAt,
+    lastLaunchedAt: time,
+  );
 }
 
 String modDisplayName(String name) =>
@@ -99,6 +114,24 @@ class ModProject {
   final List<ModPack> packs;
   Iterable<String> get uuids => packs.map((pack) => pack.uuid);
 
+  DateTime? get importedAt => packs
+      .map((pack) => pack.importedAt)
+      .whereType<DateTime>()
+      .fold<DateTime?>(
+        null,
+        (earliest, time) =>
+            earliest == null || time.isBefore(earliest) ? time : earliest,
+      );
+
+  DateTime? get lastLaunchedAt => packs
+      .map((pack) => pack.lastLaunchedAt)
+      .whereType<DateTime>()
+      .fold<DateTime?>(
+        null,
+        (latest, time) =>
+            latest == null || time.isAfter(latest) ? time : latest,
+      );
+
   bool? selection(Set<String> selected) {
     final count = uuids.where(selected.contains).length;
     return count == 0
@@ -107,6 +140,72 @@ class ModProject {
         ? true
         : null;
   }
+}
+
+enum ProjectSortOrder {
+  importedNewest('导入时间：最新在前'),
+  importedOldest('导入时间：最早在前'),
+  launchedNewest('启动时间：最近在前'),
+  launchedOldest('启动时间：最早在前'),
+  nameAscending('名称字母：A → Z'),
+  nameDescending('名称字母：Z → A');
+
+  const ProjectSortOrder(this.label);
+  final String label;
+}
+
+List<ModProject> sortModProjects(
+  Iterable<ModProject> projects,
+  ProjectSortOrder order,
+) {
+  final indexed = projects.indexed.toList();
+  int imported((int, ModProject) a, (int, ModProject) b) {
+    final first = a.$2.importedAt;
+    final second = b.$2.importedAt;
+    // Legacy registrations have no timestamps. Their saved insertion order
+    // remains the best available history, before newly imported projects.
+    final comparison = first == null
+        ? (second == null ? 0 : -1)
+        : second == null
+        ? 1
+        : first.compareTo(second);
+    return comparison != 0 ? comparison : a.$1.compareTo(b.$1);
+  }
+
+  indexed.sort((a, b) {
+    switch (order) {
+      case ProjectSortOrder.importedNewest:
+        return imported(b, a);
+      case ProjectSortOrder.importedOldest:
+        return imported(a, b);
+      case ProjectSortOrder.launchedNewest:
+      case ProjectSortOrder.launchedOldest:
+        final first = a.$2.lastLaunchedAt;
+        final second = b.$2.lastLaunchedAt;
+        // Unlaunched projects always follow launched ones, in either direction.
+        if (first == null && second != null) return 1;
+        if (second == null && first != null) return -1;
+        final comparison = first == null ? 0 : first.compareTo(second!);
+        if (comparison != 0) {
+          return order == ProjectSortOrder.launchedNewest
+              ? -comparison
+              : comparison;
+        }
+        return imported(b, a);
+      case ProjectSortOrder.nameAscending:
+      case ProjectSortOrder.nameDescending:
+        final comparison = a.$2.name.toLowerCase().compareTo(
+          b.$2.name.toLowerCase(),
+        );
+        if (comparison != 0) {
+          return order == ProjectSortOrder.nameAscending
+              ? comparison
+              : -comparison;
+        }
+        return a.$1.compareTo(b.$1);
+    }
+  });
+  return indexed.map((entry) => entry.$2).toList();
 }
 
 List<ModProject> groupModProjects(Iterable<ModPack> packs) {
@@ -210,6 +309,7 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   bool limit60Fps = true;
   bool vibrantVisuals = false;
   bool showDeveloperConsole = false;
+  bool disableCompanion = true;
   bool fullscreenShortcut = false;
   bool useNewWorld = false;
   String newWorldSeed = '';
@@ -227,7 +327,10 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
       renderDragonCompatibilitySupported &&
       effectiveRenderer == GameRenderer.renderDragon;
   final Set<String> selectedPacks = {};
+  ProjectSortOrder projectSortOrder = ProjectSortOrder.importedNewest;
   List<ModProject> get projects => groupModProjects(packs);
+  List<ModProject> get sortedProjects =>
+      sortModProjects(projects, projectSortOrder);
   String get tabTitle {
     final names = projects
         .where((project) => project.uuids.any(selectedPacks.contains))
@@ -264,6 +367,11 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   });
   Future<void> stopGame();
   void cancel();
+  Future<void> chooseProjectSortOrder(ProjectSortOrder value) async {
+    projectSortOrder = value;
+    notifyListeners();
+  }
+
   Future<void> chooseNewWorld(bool enabled) async {
     useNewWorld = enabled;
     notifyListeners();
@@ -281,6 +389,11 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
 
   Future<void> chooseDeveloperConsole(bool enabled) async {
     showDeveloperConsole = enabled;
+    notifyListeners();
+  }
+
+  Future<void> chooseDisableCompanion(bool disabled) async {
+    disableCompanion = disabled;
     notifyListeners();
   }
 

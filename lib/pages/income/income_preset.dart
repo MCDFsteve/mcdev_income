@@ -58,7 +58,7 @@ class IncomePreset {
     final defaultInternalRatio =
         _tryParseDouble(json['defaultInternalRatio']) ?? 1.0;
     final defaultNeteaseRatio =
-        _tryParseDouble(json['defaultNeteaseRatio']) ?? 1.0;
+        _tryParseDouble(json['defaultNeteaseRatio']) ?? 0.39;
     final taxRate = _tryParseDouble(json['taxRate']) ?? 0.16;
     final updatedAt = DateTime.tryParse(json['updatedAt']?.toString() ?? '');
 

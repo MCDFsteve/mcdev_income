@@ -142,7 +142,7 @@ extension _LocalCommands on McdevCli {
         'internalRatios': <String, dynamic>{},
         'neteaseRatios': <String, dynamic>{},
         'defaultInternalRatio': 1.0,
-        'defaultNeteaseRatio': 1.0,
+        'defaultNeteaseRatio': 0.39,
         'taxRate': 0.16,
         ...?existing,
         ...source,

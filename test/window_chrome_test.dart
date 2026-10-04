@@ -24,12 +24,26 @@ void main() {
         () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(DesktopWindowBridge.channel, null),
       );
-      final menus = gamePlatformMenus(const DesktopWindowBridge());
+      final menus = gamePlatformMenus(
+        const DesktopWindowBridge(),
+        gameVersion: '3.10.0.420447',
+      );
       final keys = menus.whereType<PlatformMenu>().singleWhere(
         (menu) => menu.label == '功能键',
       );
       expect(keys.menus.map((item) => item.label), [
-        for (var i = 1; i <= 12; i++) 'F$i',
+        '显示 / 隐藏界面（F1）',
+        '截图（F2）',
+        '调试信息下一页（F3）',
+        '调试信息上一页（F4）',
+        '切换视角（F5）',
+        '穿墙飞行（F6，调试）',
+        '未发现默认单键功能（F7）',
+        '显示 / 隐藏纸娃娃（F8）',
+        '模拟挂起 / 恢复（F9，调试）',
+        '录像 / 显示隐藏提示（F10）',
+        '渲染帧捕获（F11，需 RenderDoc）',
+        '播放回放（F12）',
       ]);
       for (final item in keys.menus) {
         item.onSelected!();
@@ -48,6 +62,20 @@ void main() {
     },
   );
 
+  test('F11 only names RenderDoc for the verified game build', () {
+    String f11Label(String version) =>
+        gamePlatformMenus(const DesktopWindowBridge(), gameVersion: version)
+            .whereType<PlatformMenu>()
+            .singleWhere((menu) => menu.label == '功能键')
+            .menus
+            .whereType<GameMenuItem>()
+            .singleWhere((item) => item.argument == 'F11')
+            .label;
+
+    expect(f11Label('3.8.0.313229'), '未发现默认单键功能（F11）');
+    expect(f11Label('unknown'), '默认功能待核对（F11）');
+  });
+
   testWidgets(
     'game titlebar registers native menus and fits a narrow window',
     (tester) async {
@@ -57,6 +85,13 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final menuCalls = <MethodCall>[];
       final windowCalls = <MethodCall>[];
+      final previousDelegate = WidgetsBinding.instance.platformMenuDelegate;
+      WidgetsBinding.instance.platformMenuDelegate =
+          DefaultPlatformMenuDelegate(channel: gameMenuChannel);
+      addTearDown(() {
+        WidgetsBinding.instance.platformMenuDelegate = previousDelegate;
+        gameMenuChannel.setMethodCallHandler(null);
+      });
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         DesktopWindowBridge.channel,
         (call) async {
@@ -71,7 +106,7 @@ void main() {
         ),
       );
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        const MethodChannel('flutter/menu'),
+        gameMenuChannel,
         (call) async {
           menuCalls.add(call);
           return null;
@@ -79,6 +114,7 @@ void main() {
       );
       await tester.pumpWidget(
         const GameChromeApp(
+          gameVersion: '3.10.0.420447',
           subtitle: '3.10.0.420447 · 渲染龙',
           displayName: '我的世界测试 · 草地方块与海洋世界',
         ),
@@ -92,6 +128,45 @@ void main() {
       expect(find.byType(Material), findsWidgets);
       expect(menuCalls.any((call) => call.method == 'Menu.setMenus'), isTrue);
       expect(menuCalls.last.arguments.toString(), contains('草地方块与海洋世界'));
+      final representation = menuCalls.last.arguments as Map;
+      final leaves = <Map>[];
+      void collect(List items) {
+        for (final item in items.cast<Map>()) {
+          if (item['children'] is List) {
+            collect(item['children'] as List);
+          } else if (item['isDivider'] != true) {
+            leaves.add(item);
+          }
+        }
+      }
+
+      collect(representation['0'] as List);
+      expect(leaves, hasLength(25));
+      expect(
+        leaves.singleWhere((item) => item['argument'] == 'F11')['label'],
+        '渲染帧捕获（F11，需 RenderDoc）',
+      );
+      expect(leaves.every((item) => item['action'] != null), isTrue);
+      expect(
+        leaves
+            .where((item) => item['action'] == 'sendKey')
+            .map((item) => item['argument']),
+        [
+          'escape',
+          'inventory',
+          'chat',
+          'command',
+          'F5',
+          'F1',
+          for (var i = 1; i <= 12; i++) 'F$i',
+        ],
+      );
+      expect(
+        leaves.singleWhere(
+          (item) => item['action'] == 'close',
+        )['shortcutTrigger'],
+        LogicalKeyboardKey.keyQ.keyId,
+      );
       final region =
           windowCalls
                   .singleWhere((call) => call.method == 'setDragRegion')
@@ -105,7 +180,7 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        const MethodChannel('flutter/menu'),
+        gameMenuChannel,
         null,
       );
     },

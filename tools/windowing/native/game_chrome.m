@@ -9,6 +9,13 @@
 static const CGFloat chromeHeight = 48;
 static const void *chromeKey = &chromeKey;
 
+static id flutter_method_not_implemented(void)
+{
+    // Flutter is loaded lazily after the Wine loader starts.
+    id __unsafe_unretained *value = (id __unsafe_unretained *)dlsym(RTLD_DEFAULT, "FlutterMethodNotImplemented");
+    return value ? *value : nil;
+}
+
 static NSString *game_display_name(void)
 {
     const char *value = getenv("MCDEV_CHROME_DISPLAY_NAME");
@@ -17,6 +24,7 @@ static NSString *game_display_name(void)
 
 @interface NSWindow (MCDevWineInput)
 - (void)postKeyEvent:(NSEvent *)event;
+- (void)postKey:(uint16_t)code pressed:(BOOL)pressed modifiers:(NSUInteger)modifiers event:(NSEvent *)event;
 @end
 
 @interface NSObject (MCDevWineFocus)
@@ -34,8 +42,14 @@ static BOOL chrome_accepts_focus(id owner, SEL selector, NSView *view)
 
 static void deliver_game_key(NSWindow *window, NSEvent *event)
 {
-    if ([window respondsToSelector:@selector(postKeyEvent:)])
-        [window postKeyEvent:event];
+    if ([window respondsToSelector:@selector(postKey:pressed:modifiers:event:)]) {
+        // A constructed NSEvent reports keyboard type 0. Wine treats that as a
+        // layout change and broadcasts WM_CANCELMODE before the key arrives.
+        // Keep the physical keyboard's layout when sending a menu command.
+        [window flagsChanged:event];
+        [window postKey:event.keyCode pressed:event.type == NSEventTypeKeyDown
+            modifiers:event.modifierFlags event:event];
+    } else if ([window respondsToSelector:@selector(postKeyEvent:)]) [window postKeyEvent:event];
     else [NSApp postEvent:event atStart:NO]; // Standalone Cocoa fixture.
 }
 
@@ -55,6 +69,7 @@ static void deliver_game_key(NSWindow *window, NSEvent *event)
 @property(nonatomic, strong) FlutterEngine *engine;
 @property(nonatomic, strong) FlutterViewController *flutter;
 @property(nonatomic, strong) FlutterMethodChannel *channel;
+@property(nonatomic, strong) FlutterMethodChannel *menuChannel;
 @property(nonatomic, strong) NSView *container;
 @property(nonatomic, weak) NSView *titlebar;
 @property(nonatomic, strong) NSTitlebarAccessoryViewController *accessory;
@@ -66,6 +81,8 @@ static void deliver_game_key(NSWindow *window, NSEvent *event)
 - (void)layout;
 - (void)updateTitle;
 - (void)sendKey:(NSString *)key;
+- (BOOL)performAction:(NSString *)action argument:(id)argument;
+- (void)setMenus:(NSDictionary *)representation;
 @end
 
 @implementation MCDevGameChrome
@@ -88,32 +105,100 @@ static void deliver_game_key(NSWindow *window, NSEvent *event)
     else return;
 
     NSWindow *window = self.window;
-    [NSApp activateIgnoringOtherApps:YES];
-    [window makeKeyAndOrderFront:nil];
-    [window makeFirstResponder:window.contentView];
-    // Wine's makeKeyAndOrderFront skips its Windows focus notification when
-    // Cocoa already considers the window key. A native menu can reach that
-    // state before the game receives a content click, so synchronize both.
-    Class controllerClass = NSClassFromString(@"WineApplicationController");
-    if ([controllerClass respondsToSelector:@selector(sharedController)]) {
-        id controller = [controllerClass sharedController];
-        if ([controller respondsToSelector:@selector(windowGotFocus:)])
-            [controller windowGotFocus:window];
-    }
-    // Use Wine's own event queue, never a system-wide keyboard event.
-    for (NSNumber *pressed in @[@YES, @NO]) {
-        // Menu tracking and Wine focus changes complete asynchronously. Keep a
-        // short pulse long enough for the game's polled keyboard state too.
-        int delay = pressed.boolValue ? 100 : 350;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-            NSEvent *event = [NSEvent keyEventWithType:pressed.boolValue ? NSEventTypeKeyDown : NSEventTypeKeyUp
-                location:NSZeroPoint modifierFlags:flags timestamp:NSProcessInfo.processInfo.systemUptime
-                windowNumber:window.windowNumber context:nil characters:characters
-                charactersIgnoringModifiers:characters isARepeat:NO keyCode:code];
-            deliver_game_key(window, event);
-        });
-    }
+    // Restore focus after the menu has closed, not while AppKit is tracking it.
+    // Wine's makeKeyAndOrderFront does not itself make a Cocoa window key.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        if (!window.visible) return;
+        [NSApp activateIgnoringOtherApps:YES];
+        [window makeKeyAndOrderFront:nil];
+        [window makeKeyWindow];
+        [window makeFirstResponder:window.contentView];
+        Class controllerClass = NSClassFromString(@"WineApplicationController");
+        if ([controllerClass respondsToSelector:@selector(sharedController)]) {
+            id controller = [controllerClass sharedController];
+            if ([controller respondsToSelector:@selector(windowGotFocus:)])
+                [controller windowGotFocus:window];
+        }
+        // Use Wine's own event queue. Start the pulse only after the Windows
+        // focus notification, then release the same key even if focus changes.
+        for (NSNumber *pressed in @[@YES, @NO]) {
+            int delay = pressed.boolValue ? 100 : 350;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+                NSEvent *event = [NSEvent keyEventWithType:pressed.boolValue ? NSEventTypeKeyDown : NSEventTypeKeyUp
+                    location:NSZeroPoint modifierFlags:flags timestamp:NSProcessInfo.processInfo.systemUptime
+                    windowNumber:window.windowNumber context:nil characters:characters
+                    charactersIgnoringModifiers:characters isARepeat:NO keyCode:code];
+                deliver_game_key(window, event);
+            });
+        }
+    });
     fprintf(stderr, "[MCDev chrome] key %s\n", key.UTF8String);
+}
+
+- (BOOL)performAction:(NSString *)action argument:(id)argument
+{
+    NSWindow *target = self.window;
+    if ([action isEqualToString:@"sendKey"] && [argument isKindOfClass:NSString.class]) [self sendKey:argument];
+    else if ([action isEqualToString:@"minimize"]) [target performMiniaturize:nil];
+    else if ([action isEqualToString:@"zoom"]) [target performZoom:nil];
+    else if ([action isEqualToString:@"fullscreen"]) [target toggleFullScreen:nil];
+    else if ([action isEqualToString:@"close"]) [target performClose:nil];
+    else if ([action isEqualToString:@"hide"]) [NSApp hide:nil];
+    else if ([action isEqualToString:@"showAll"]) [NSApp unhideAllApplications:nil];
+    else if ([action isEqualToString:@"about"]) [NSApp orderFrontStandardAboutPanelWithOptions:@{
+        NSAboutPanelOptionApplicationName: game_display_name(),
+        NSAboutPanelOptionApplicationVersion: @(getenv("MCDEV_CHROME_VERSION") ?: ""),
+    }];
+    else return NO;
+    return YES;
+}
+
+- (void)menuItemSelected:(NSMenuItem *)item
+{
+    NSDictionary *command = item.representedObject;
+    // Menu operations run locally; they never wait for a callback through Dart.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self performAction:command[@"action"] argument:command[@"argument"]];
+    });
+}
+
+- (NSMenuItem *)menuItem:(NSDictionary *)description
+{
+    if ([description[@"isDivider"] boolValue]) return NSMenuItem.separatorItem;
+    NSString *equivalent = description[@"shortcutCharacter"];
+    if (!equivalent && description[@"shortcutTrigger"]) {
+        unsigned long long trigger = [description[@"shortcutTrigger"] unsignedLongLongValue];
+        if (trigger <= 0xffff) equivalent = [NSString stringWithFormat:@"%C", (unichar)trigger];
+    }
+    NSString *action = description[@"action"];
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:description[@"label"] ?: @""
+        action:action ? @selector(menuItemSelected:) : NULL keyEquivalent:equivalent.lowercaseString ?: @""];
+    item.target = action ? self : nil;
+    item.representedObject = description;
+    item.enabled = [description[@"enabled"] boolValue];
+    NSUInteger modifiers = [description[@"shortcutModifiers"] unsignedIntegerValue];
+    item.keyEquivalentModifierMask =
+        (modifiers & 1 ? NSEventModifierFlagCommand : 0) |
+        (modifiers & 2 ? NSEventModifierFlagShift : 0) |
+        (modifiers & 4 ? NSEventModifierFlagOption : 0) |
+        (modifiers & 8 ? NSEventModifierFlagControl : 0);
+    NSArray *children = description[@"children"];
+    if (children) {
+        NSMenu *submenu = [[NSMenu alloc] initWithTitle:item.title];
+        submenu.autoenablesItems = NO;
+        for (NSDictionary *child in children) [submenu addItem:[self menuItem:child]];
+        item.submenu = submenu;
+        item.enabled = YES;
+    }
+    return item;
+}
+
+- (void)setMenus:(NSDictionary *)representation
+{
+    NSMenu *menu = [NSMenu new];
+    menu.autoenablesItems = NO;
+    for (NSDictionary *description in representation[@"0"]) [menu addItem:[self menuItem:description]];
+    NSApp.mainMenu = menu;
 }
 
 - (void)updateTitle
@@ -201,25 +286,25 @@ static void deliver_game_key(NSWindow *window, NSEvent *event)
     __weak MCDevGameChrome *weakSelf = self;
     [self.channel setMethodCallHandler:^(FlutterMethodCall *call, FlutterResult result) {
         MCDevGameChrome *owner = weakSelf;
-        NSWindow *target = owner.window;
-        if ([call.method isEqualToString:@"sendKey"] && [call.arguments isKindOfClass:NSString.class])
-            [owner sendKey:call.arguments];
-        else if ([call.method isEqualToString:@"setDragRegion"] && [call.arguments isKindOfClass:NSDictionary.class]) {
+        if ([call.method isEqualToString:@"setDragRegion"] && [call.arguments isKindOfClass:NSDictionary.class]) {
             NSDictionary *rect = call.arguments;
             owner.dragRegion = NSMakeRect([rect[@"x"] doubleValue], [rect[@"y"] doubleValue],
                 [rect[@"width"] doubleValue], [rect[@"height"] doubleValue]);
             [owner layout];
-        } else if ([call.method isEqualToString:@"minimize"]) [target performMiniaturize:nil];
-        else if ([call.method isEqualToString:@"zoom"]) [target performZoom:nil];
-        else if ([call.method isEqualToString:@"fullscreen"]) [target toggleFullScreen:nil];
-        else if ([call.method isEqualToString:@"close"]) [target performClose:nil];
-        else if ([call.method isEqualToString:@"hide"]) [NSApp hide:nil];
-        else if ([call.method isEqualToString:@"showAll"]) [NSApp unhideAllApplications:nil];
-        else if ([call.method isEqualToString:@"about"]) [NSApp orderFrontStandardAboutPanelWithOptions:@{
-            NSAboutPanelOptionApplicationName: game_display_name(),
-            NSAboutPanelOptionApplicationVersion: @(getenv("MCDEV_CHROME_VERSION") ?: ""),
-        }];
+        } else if (![owner performAction:call.method argument:call.arguments]) {
+            result(flutter_method_not_implemented());
+            return;
+        }
         result(nil);
+    }];
+    self.menuChannel = [NSClassFromString(@"FlutterMethodChannel") methodChannelWithName:@"mcdev_income/game_menu"
+        binaryMessenger:self.engine.binaryMessenger];
+    [self.menuChannel setMethodCallHandler:^(FlutterMethodCall *call, FlutterResult result) {
+        if ([call.method isEqualToString:@"Menu.setMenus"] && [call.arguments isKindOfClass:NSDictionary.class]) {
+            [weakSelf setMenus:call.arguments];
+            result(nil);
+        } else if ([call.method isEqualToString:@"Menu.isPluginAvailable"]) result(@YES);
+        else result(flutter_method_not_implemented());
     }];
     if (![self.engine runWithEntrypoint:@"gameChromeMain"]) return NO;
 
