@@ -17,7 +17,14 @@
 - 无头命令行：桌面 GUI 可执行文件追加 `--headless` 即可运行命令，支持 JSON 输出、文件路径上传、图片默认裁剪、提审和失败恢复，方便 Agent 调用
 
 ## 截图
-![应用截图](assets/截图.png)
+
+Windows 开发页面：
+
+![Windows 开发页面](docs/screenshots/development-windows.png)
+
+macOS 开发页面：
+
+![macOS 开发页面](docs/screenshots/development-macos.png)
 
 应用图标取自 [Minecraft 官方 X 账号头像](https://x.com/Minecraft)（2026-09-27），原始图片保存在 [`assets/minecraft_x_avatar.jpg`](assets/minecraft_x_avatar.jpg)。
 
