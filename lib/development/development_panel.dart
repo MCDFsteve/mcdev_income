@@ -473,6 +473,7 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
   bool _picking = false;
   final _environmentScroll = ScrollController();
   final _projectScroll = ScrollController();
+  final _expandedProjectScroll = ScrollController();
   final _compactProjectScroll = ScrollController();
   final _launchScroll = ScrollController();
   final _pageScroll = ScrollController();
@@ -505,6 +506,7 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
     _seed.dispose();
     _environmentScroll.dispose();
     _projectScroll.dispose();
+    _expandedProjectScroll.dispose();
     _compactProjectScroll.dispose();
     _launchScroll.dispose();
     _pageScroll.dispose();
@@ -512,7 +514,10 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
   }
 
   Future<void> _pick({required bool mod, required bool archive}) async {
-    setState(() => _picking = true);
+    setState(() {
+      _picking = true;
+      _error = null;
+    });
     try {
       final path = archive
           ? (await FilePicker.platform.pickFiles(
@@ -523,13 +528,40 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
               dialogTitle: mod ? '选择模组项目或包目录' : '选择完整游戏版本目录',
             );
       if (path != null && mounted) {
-        await (mod ? _launcher.importMods(path) : _launcher.importGame(path));
+        await (mod
+            ? _launcher.importMods(
+                path,
+                confirmUuidRefresh: _confirmUuidRefresh,
+              )
+            : _launcher.importGame(path));
       }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _picking = false);
     }
+  }
+
+  Future<bool> _confirmUuidRefresh() async {
+    if (!mounted) return false;
+    return await showOreDialog<bool>(
+          context: context,
+          builder: (dialogContext) => OreAlertDialog(
+            title: const Text('项目 UUID 重复'),
+            content: const Text(
+              '项目中存在重复 UUID，是否随机刷新 UUID 后继续导入？'
+              '\n将更新包、模块的 UUID 和项目内的包依赖。文件夹导入会修改源 manifest.json。',
+            ),
+            actions: [
+              _button('取消导入', () => Navigator.of(dialogContext).pop(false)),
+              _button(
+                '刷新 UUID 并导入',
+                () => Navigator.of(dialogContext).pop(true),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -768,43 +800,79 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
       context: context,
       builder: (dialogContext) => ListenableBuilder(
         listenable: launcher,
-        builder: (context, _) => OreAlertDialog(
-          title: Text(project.name),
-          maxWidth: 680,
-          content: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _hint('项目统一启用；测试前同步以下包的最新文件。'),
-              for (final pack in project.packs) ...[
-                const SizedBox(height: 16),
-                Text(
-                  pack.type == 'resources' ? '资源包' : '行为 / 脚本包',
-                  style: OreTheme.of(context).typography.label,
-                ),
-                Text(
-                  '${modDisplayName(pack.name)} · ${pack.version.join('.')}',
-                ),
-                const SizedBox(height: 6),
-                OreSelectableText(pack.directory),
-                const SizedBox(height: 6),
-                _hint('UUID：${pack.uuid}'),
+        builder: (context, _) {
+          final current = launcher.projects
+              .where((item) => item.id == project.id)
+              .firstOrNull;
+          final blocked =
+              launcher.busy || launcher.running || _picking || current == null;
+          return OreAlertDialog(
+            title: Text(current?.name ?? project.name),
+            maxWidth: 680,
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _hint('项目统一启用；测试前同步以下包的最新文件。'),
+                const SizedBox(height: 8),
+                _hint('以下操作会修改源 manifest.json，并同步项目内的包依赖。'),
+                const SizedBox(height: 8),
+                _actions([
+                  _button(
+                    '随机 UUID',
+                    blocked
+                        ? null
+                        : () => _run(
+                            () => launcher.randomizeProjectUuids(project.id),
+                          ),
+                  ),
+                  _button(
+                    '升级版本号',
+                    blocked
+                        ? null
+                        : () => _run(
+                            () => launcher.upgradeProjectVersion(project.id),
+                          ),
+                  ),
+                ]),
+                _hint('升级版本号：每个包的末位加 1（例如 1.0.0 → 1.0.1）。'),
+                if (launcher.error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(launcher.error!),
+                ] else if (launcher.notice != null) ...[
+                  const SizedBox(height: 8),
+                  _hint(launcher.notice!),
+                ],
+                for (final pack in current?.packs ?? project.packs) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    pack.type == 'resources' ? '资源包' : '行为 / 脚本包',
+                    style: OreTheme.of(context).typography.label,
+                  ),
+                  Text(
+                    '${modDisplayName(pack.name)} · ${pack.version.join('.')}',
+                  ),
+                  const SizedBox(height: 6),
+                  OreSelectableText(pack.directory),
+                  const SizedBox(height: 6),
+                  _hint('UUID：${pack.uuid}'),
+                ],
               ],
-            ],
-          ),
-          actions: [
-            _button(
-              '移除项目',
-              launcher.busy || launcher.running || _picking
-                  ? null
-                  : () async {
-                      Navigator.of(dialogContext).pop();
-                      await _run(() => launcher.removePacks(project.uuids));
-                    },
             ),
-            _button('关闭', () => Navigator.of(dialogContext).pop()),
-          ],
-        ),
+            actions: [
+              _button(
+                '移除项目',
+                blocked
+                    ? null
+                    : () async {
+                        Navigator.of(dialogContext).pop();
+                        await _run(() => launcher.removePacks(current.uuids));
+                      },
+              ),
+              _button('关闭', () => Navigator.of(dialogContext).pop()),
+            ],
+          );
+        },
       ),
     );
   }
@@ -880,29 +948,49 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
     DevelopmentLauncher launcher,
     bool blocked, {
     bool scroll = false,
+    VoidCallback? onClose,
+    Future<void> Function(bool archive)? onImport,
   }) {
+    final expanded = onClose != null;
+    final controller = expanded ? _expandedProjectScroll : _projectScroll;
     final projects = launcher.sortedProjects;
     final selected = projects
         .where((project) => project.selection(launcher.selectedPacks) != false)
         .length;
-    final rows = [
-      for (final project in projects) _projectRow(project, launcher, blocked),
-    ];
     return _card(
       '本地项目',
       [
         _actions([
           _button(
             '导入项目文件夹',
-            blocked ? null : () => _pick(mod: true, archive: false),
+            blocked
+                ? null
+                : () => onImport != null
+                      ? onImport(false)
+                      : _pick(mod: true, archive: false),
           ),
           _button(
             '导入模组归档',
-            blocked ? null : () => _pick(mod: true, archive: true),
+            blocked
+                ? null
+                : () => onImport != null
+                      ? onImport(true)
+                      : _pick(mod: true, archive: true),
           ),
+          _button(expanded ? '关闭' : '展开查看', onClose ?? _showProjects),
         ]),
         const SizedBox(height: 8),
         _hint('勾选项目一起测试，文件夹项目保留在原位置。'),
+        _hint('选择单包目录，或直接包含行为包、资源包目录的模组文件夹。'),
+        if (expanded && (launcher.error ?? _error) != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            launcher.error ?? _error!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ],
         if (projects.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 20),
@@ -911,17 +999,24 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
         if (scroll)
           Expanded(
             child: OreScrollbar(
-              controller: _projectScroll,
-              child: ListView(
-                key: const PageStorageKey('development-projects'),
-                controller: _projectScroll,
+              controller: controller,
+              child: ListView.builder(
+                key: PageStorageKey(
+                  expanded
+                      ? 'development-projects-expanded'
+                      : 'development-projects',
+                ),
+                controller: controller,
                 padding: const EdgeInsets.only(right: 14),
-                children: rows,
+                itemCount: projects.length,
+                itemBuilder: (context, index) =>
+                    _projectRow(projects[index], launcher, blocked),
               ),
             ),
           )
         else
-          ...rows,
+          for (final project in projects)
+            _projectRow(project, launcher, blocked),
       ],
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -941,6 +1036,40 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
       ),
     );
   }
+
+  Future<void> _showProjects() => showOreDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => ListenableBuilder(
+        listenable: _launcher,
+        builder: (context, _) => OreDialog(
+          key: const ValueKey('development-projects-dialog'),
+          maxWidth: 1100,
+          insetPadding: const EdgeInsets.all(16),
+          surface: false,
+          child: SizedBox(
+            width: double.infinity,
+            height: MediaQuery.sizeOf(context).height * .9,
+            child: _projectCard(
+              _launcher,
+              _launcher.busy ||
+                  _launcher.running ||
+                  _picking ||
+                  _savingWorldMode,
+              scroll: true,
+              onClose: () => Navigator.of(dialogContext).pop(),
+              onImport: (archive) async {
+                final picking = _pick(mod: true, archive: archive);
+                setDialogState(() {});
+                await picking;
+                if (dialogContext.mounted) setDialogState(() {});
+              },
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 
   Future<void> _showProjectSort() async {
     var selected = _launcher.projectSortOrder;
