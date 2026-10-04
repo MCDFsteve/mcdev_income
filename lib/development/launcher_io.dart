@@ -35,6 +35,7 @@ import 'platform/game_runtime_io.dart';
 import 'platform/runtime_factory_io.dart';
 import 'platform/host_files_io.dart';
 import 'platform/game_diagnostics.dart' show classifyNativeDiagnostic;
+import 'mod_manifest_io.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -1047,38 +1048,60 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   });
 
   @override
-  Future<void> importMods(String path) => _operation(() async {
+  Future<void> importMods(
+    String path, {
+    Future<bool> Function()? confirmUuidRefresh,
+  }) => _operation(() async {
     await _readProjects();
     var source = p.absolute(path);
     final type = await FileSystemEntity.type(source);
     Directory? stage;
-    if (type == FileSystemEntityType.file) {
-      final projects = await Directory(
-        p.join(storage.paths.root, 'projects'),
-      ).create(recursive: true);
-      stage = await projects.createTemp('.import-');
-      final input = InputFileStream(source);
-      try {
-        await extractZipSafe(
-          ZipDecoder().decodeStream(input),
-          stage.path,
-          control: _control,
-        );
-      } finally {
-        await input.close();
-      }
-      source = stage.path;
-    } else if (type != FileSystemEntityType.directory) {
-      throw const DevelopmentStorageException('模组路径不可访问。');
-    }
+    ModManifestChanges? changes;
+    String? committed;
+    var registered = false;
     try {
-      final imported = await discoverModPacks(source);
+      if (type == FileSystemEntityType.file) {
+        final projects = await Directory(
+          p.join(storage.paths.root, 'projects'),
+        ).create(recursive: true);
+        stage = await projects.createTemp('.import-');
+        final input = InputFileStream(source);
+        try {
+          await extractZipSafe(
+            ZipDecoder().decodeStream(input),
+            stage.path,
+            control: _control,
+          );
+        } finally {
+          input.close();
+        }
+        source = stage.path;
+      } else if (type != FileSystemEntityType.directory) {
+        throw const DevelopmentStorageException('模组路径不可访问。');
+      }
+      List<ModPack> imported;
+      try {
+        imported = await discoverModPacks(source);
+      } on DuplicateModUuidException {
+        if (confirmUuidRefresh == null) rethrow;
+        if (!await confirmUuidRefresh()) {
+          notice = '已取消导入，UUID 未修改。';
+          return;
+        }
+        imported = await discoverModPacks(source, allowDuplicateUuids: true);
+        changes = await ModManifestChanges.prepare(
+          imported,
+          refreshUuids: true,
+        );
+        await changes.write();
+        imported = changes.packs;
+      }
       if (imported.isEmpty) {
         throw const DevelopmentStorageException(
-          '没有找到有效 manifest.json；支持资源包、行为包、mcpack 和 mcaddon。',
+          '选中目录或其直接子目录中没有找到有效 manifest.json；'
+          '请选择单包目录，或直接包含行为包、资源包目录的模组文件夹。',
         );
       }
-      String? committed;
       if (stage != null) {
         committed = p.join(
           stage.parent.path,
@@ -1087,13 +1110,24 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         await stage.rename(committed);
       }
       final next = [...packs];
+      final previousPacks = packs;
+      final previousSelection = {...selectedPacks};
       final importedAt = DateTime.now().toUtc();
       for (final pack in imported) {
-        final previous = next.where((old) => old.uuid == pack.uuid).firstOrNull;
-        next.removeWhere((old) => old.uuid == pack.uuid);
         final actual = committed == null
             ? pack.directory
             : p.join(committed, p.relative(pack.directory, from: source));
+        final previous = next
+            .where(
+              (old) => old.uuid == pack.uuid || p.equals(old.directory, actual),
+            )
+            .firstOrNull;
+        next.removeWhere(
+          (old) => old.uuid == pack.uuid || p.equals(old.directory, actual),
+        );
+        if (previous != null && previous.uuid != pack.uuid) {
+          selectedPacks.remove(previous.uuid);
+        }
         next.add(
           ModPack(
             name: pack.name,
@@ -1116,13 +1150,110 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         selectedPacks.add(pack.uuid);
       }
       packs = next;
-      await _saveProjects();
-      await _saveSelection();
+      var savedRegistry = false;
+      try {
+        await _saveProjects();
+        savedRegistry = true;
+        await _saveSelection();
+      } catch (_) {
+        packs = previousPacks;
+        selectedPacks
+          ..clear()
+          ..addAll(previousSelection);
+        if (savedRegistry) await _saveProjects();
+        rethrow;
+      }
+      registered = true;
       notice = '已导入 ${groupModProjects(imported).length} 个项目。测试前同步源文件。';
     } finally {
+      if (!registered) {
+        if (committed != null) {
+          final directory = Directory(committed);
+          if (await directory.exists()) await directory.delete(recursive: true);
+        } else {
+          await changes?.rollback();
+        }
+      }
       if (stage != null && await stage.exists()) {
         await stage.delete(recursive: true);
       }
+    }
+  });
+
+  @override
+  Future<void> randomizeProjectUuids(String projectId) =>
+      _editProjectManifests(projectId, refreshUuids: true);
+
+  @override
+  Future<void> upgradeProjectVersion(String projectId) =>
+      _editProjectManifests(projectId, upgradeVersion: true);
+
+  Future<void> _editProjectManifests(
+    String projectId, {
+    bool refreshUuids = false,
+    bool upgradeVersion = false,
+  }) => _operation(() async {
+    await _readProjects();
+    final project = projects.where((p) => p.id == projectId).firstOrNull;
+    if (project == null) {
+      throw const DevelopmentStorageException('项目已被移除，请重新打开详情。');
+    }
+    // Validate all source manifests before preparing any changes.
+    for (final pack in project.packs) {
+      await discoverModPacks(pack.directory, allowDuplicateUuids: refreshUuids);
+    }
+    final changes = await ModManifestChanges.prepare(
+      project.packs,
+      refreshUuids: refreshUuids,
+      upgradeVersion: upgradeVersion,
+    );
+    final replacements = {
+      for (final pack in changes.packs) pack.directory: pack,
+    };
+    final previousPacks = packs;
+    final previousSelection = {...selectedPacks};
+    final store = (preferences as TestSessionPreferences).store;
+    final selectionChanges = <String, Object?>{};
+    final mapping = changes.uuidReplacements;
+    if (mapping.entries.any((entry) => entry.key != entry.value)) {
+      for (final key in store.getKeys()) {
+        if (key != _selectionKey &&
+            !(key.startsWith('development_session_') &&
+                key.endsWith('_$_selectionKey'))) {
+          continue;
+        }
+        final raw = store.getString(key);
+        if (raw == null) continue;
+        final ids = (jsonDecode(raw) as List).cast<String>();
+        if (ids.any(mapping.containsKey)) {
+          selectionChanges[key] = jsonEncode([
+            for (final id in ids) mapping[id] ?? id,
+          ]);
+        }
+      }
+      final selected = selectedPacks.map((id) => mapping[id] ?? id).toSet();
+      selectedPacks
+        ..clear()
+        ..addAll(selected);
+    }
+    var savedRegistry = false;
+    try {
+      await changes.write();
+      packs = [for (final pack in packs) replacements[pack.directory] ?? pack];
+      await _saveProjects();
+      savedRegistry = true;
+      if (selectionChanges.isNotEmpty) await store.apply(selectionChanges);
+      notice = refreshUuids
+          ? '项目 UUID 已随机刷新，包依赖已同步。'
+          : '项目版本号已升级，末位加 1，模块和包依赖已同步。';
+    } catch (_) {
+      packs = previousPacks;
+      selectedPacks
+        ..clear()
+        ..addAll(previousSelection);
+      await changes.rollback();
+      if (savedRegistry) await _saveProjects();
+      rethrow;
     }
   });
 
@@ -2072,15 +2203,19 @@ Future<String> _readModPackTitle(String directory, String fallback) async {
   return fallback;
 }
 
-Future<List<ModPack>> discoverModPacks(String root) async {
+Future<List<ModPack>> discoverModPacks(
+  String root, {
+  bool allowDuplicateUuids = false,
+}) async {
   final result = <ModPack>[];
   final uuids = <String>{};
-  Future<void> visit(String directory, int depth) async {
+  var duplicateUuids = false;
+  Future<bool> readPack(String directory) async {
     final file = File(p.join(directory, 'manifest.json'));
     if (await file.exists()) {
       final manifest = jsonDecode(await file.readAsString());
-      final header = manifest['header'];
-      final modules = manifest['modules'];
+      final header = manifest is Map ? manifest['header'] : null;
+      final modules = manifest is Map ? manifest['modules'] : null;
       if (header is! Map || modules is! List) {
         throw const DevelopmentStorageException('模组 manifest.json 结构无效。');
       }
@@ -2108,8 +2243,12 @@ Future<List<ModPack>> discoverModPacks(String root) async {
       if (type == null) {
         throw const DevelopmentStorageException('模组不包含可测试的资源、行为或脚本模块。');
       }
-      if (!uuids.add(uuid.toLowerCase())) {
-        throw const DevelopmentStorageException('项目中存在重复 UUID。');
+      for (final id in [
+        uuid,
+        for (final module in modules)
+          if (module['uuid'] is String) module['uuid'] as String,
+      ]) {
+        if (!uuids.add(id.toLowerCase())) duplicateUuids = true;
       }
       result.add(
         ModPack(
@@ -2120,22 +2259,38 @@ Future<List<ModPack>> discoverModPacks(String root) async {
           directory: directory,
         ),
       );
-      return;
+      return true;
     }
-    if (depth == 0) return;
-    await for (final entry in Directory(directory).list(followLinks: false)) {
-      if (entry is Directory &&
-          !p.basename(entry.path).startsWith('.') &&
-          !['build', 'node_modules'].contains(p.basename(entry.path))) {
-        await visit(entry.path, depth - 1);
-      }
-    }
+    return false;
   }
 
-  await visit(await Directory(root).resolveSymbolicLinks(), 4);
-  // Each directory containing sibling packs is a project. Standard BP/RP
-  // containers share their outer project directory. A single-pack import keeps
-  // legacy name-based matching, allowing its companion to be imported later.
+  final directory = await Directory(root).resolveSymbolicLinks();
+  // The selected directory is either a single pack or a project whose packs
+  // live immediately below it. Never walk into backups or nested projects.
+  if (await readPack(directory)) {
+    if (duplicateUuids && !allowDuplicateUuids) {
+      throw const DuplicateModUuidException();
+    }
+    return result;
+  }
+  await for (final entry in Directory(directory).list(followLinks: false)) {
+    if (entry is Directory &&
+        !p.basename(entry.path).startsWith('.') &&
+        !['build', 'node_modules'].contains(p.basename(entry.path))) {
+      await readPack(entry.path);
+    }
+  }
+  if (result.where((pack) => pack.type == 'data').length > 1 ||
+      result.where((pack) => pack.type == 'resources').length > 1) {
+    throw const DevelopmentStorageException(
+      '选中目录包含多个行为包或资源包，请选择具体模组项目目录或单包目录。',
+    );
+  }
+  if (duplicateUuids && !allowDuplicateUuids) {
+    throw const DuplicateModUuidException();
+  }
+  // A single-pack import keeps legacy name-based matching, allowing its
+  // companion to be imported later. A pair belongs to the selected project.
   if (result.length < 2) return result;
   return [
     for (final pack in result)
@@ -2145,13 +2300,7 @@ Future<List<ModPack>> discoverModPacks(String root) async {
         version: pack.version,
         type: pack.type,
         directory: pack.directory,
-        projectRoot:
-            [
-              'behavior_packs',
-              'resource_packs',
-            ].contains(p.basename(p.dirname(pack.directory)).toLowerCase())
-            ? p.dirname(p.dirname(pack.directory))
-            : p.dirname(pack.directory),
+        projectRoot: directory,
       ),
   ];
 }

@@ -90,7 +90,10 @@ class FakeLauncher extends DevelopmentLauncher {
   @override
   Future<void> importGame(String directory) async {}
   @override
-  Future<void> importMods(String path) async {}
+  Future<void> importMods(
+    String path, {
+    Future<bool> Function()? confirmUuidRefresh,
+  }) async {}
   @override
   Future<void> removePack(String uuid) async {
     packs.removeWhere((pack) => pack.uuid == uuid);

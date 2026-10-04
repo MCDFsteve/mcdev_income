@@ -363,7 +363,14 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   Future<void> queryVersions();
   Future<void> installVersion(String version);
   Future<void> importGame(String directory);
-  Future<void> importMods(String path);
+  Future<void> importMods(
+    String path, {
+    Future<bool> Function()? confirmUuidRefresh,
+  });
+  Future<void> randomizeProjectUuids(String projectId) =>
+      Future.error(const DevelopmentStorageException('当前环境不支持修改项目 UUID。'));
+  Future<void> upgradeProjectVersion(String projectId) =>
+      Future.error(const DevelopmentStorageException('当前环境不支持升级项目版本。'));
   Future<void> removePack(String uuid);
   Future<void> launchTest({
     required String worldName,
