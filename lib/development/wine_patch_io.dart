@@ -17,6 +17,9 @@ const wineMacOriginal =
 // executable content remains pinned independently of signing metadata.
 const wineMacPatchedUnsigned =
     'e3679793f1020d743d6e82b2760c9c90d4de8198493b148a8eda09aa5f1c8035';
+// Verified after strict codesign validation on macOS 15.7.4.
+const wineMacPatchedUnsignedMacOs15 =
+    '4644219c17c222929181849c8d3e33155a46e3160fde7a2deecb41f95b534e14';
 const wineGlOriginal =
     '5b6c30a03d988793dc6657b9dc2baa6057908b93e121cdb029165384154bae12';
 const wineGlPatched =
@@ -60,7 +63,9 @@ Future<bool> _patchedWineMacReady(File mac) async {
     final linkeditSize = view.getUint64(0x9d8, Endian.little);
     if (linkeditSize != 0x10000 && linkeditSize != 0xc000) return false;
     view.setUint64(0x9d8, 0x10000, Endian.little);
-    return sha256.convert(bytes).toString() == wineMacPatchedUnsigned;
+    final hash = sha256.convert(bytes).toString();
+    return hash == wineMacPatchedUnsigned ||
+        hash == wineMacPatchedUnsignedMacOs15;
   } on ProcessException {
     return false;
   } on FileSystemException {
