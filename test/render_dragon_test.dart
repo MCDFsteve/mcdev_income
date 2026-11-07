@@ -17,6 +17,8 @@ class DiskAssets extends CachingAssetBundle {
       ByteData.sublistView(await File(key).readAsBytes());
 }
 
+const dragonVersion = '3.10.0.448891';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('leaving RenderDragon restores GL settings without losing game changes', () {
@@ -58,11 +60,11 @@ void main() {
         runtimeBackend: MacWineRuntime(storage, 'default'),
       );
       launcher.games = [
-        const LocalGame(renderDragonPatchVersion, '/test/dragon'),
+        const LocalGame(dragonVersion, '/test/dragon'),
         const LocalGame('3.8.0.313229', '/test/gl'),
       ];
       try {
-        await launcher.chooseVersion(renderDragonPatchVersion);
+        await launcher.chooseVersion(dragonVersion);
         await launcher.chooseRenderer(GameRenderer.renderDragon);
         await launcher.chooseVibrantVisuals(true);
         expect(launcher.vibrantVisualsSupported, isTrue);
@@ -73,6 +75,7 @@ void main() {
         );
         expect(launcher.vibrantVisuals, isTrue);
         launcher.running = false;
+        expect(launcher.renderDragonCompatibilitySupported, isTrue);
         await launcher.chooseVersion('3.8.0.313229');
         expect(launcher.effectiveRenderer, GameRenderer.openGL);
         expect(launcher.vibrantVisualsSupported, isFalse);
@@ -81,7 +84,7 @@ void main() {
           launcher.chooseVibrantVisuals(true),
           throwsA(isA<DevelopmentStorageException>()),
         );
-        await launcher.chooseVersion(renderDragonPatchVersion);
+        await launcher.chooseVersion(dragonVersion);
         final reopened = NativeDevelopmentLauncher(
           storage,
           prefs,
@@ -96,47 +99,31 @@ void main() {
       }
     },
   );
-  test(
-    'changed game and Metal files cannot reach injection or replace prefix DLL',
-    () async {
-      final temp = await Directory.systemTemp.createTemp(
-        'mcdev-renderer-guard-',
+  test('changed Metal files cannot replace prefix DLL', () async {
+    final temp = await Directory.systemTemp.createTemp('mcdev-renderer-guard-');
+    try {
+      final source = File(
+        p.join(temp.path, 'runtime/lib/wine/x86_64-windows/winemetal.dll'),
       );
-      try {
-        final game = await File(
-          p.join(temp.path, 'game.exe'),
-        ).writeAsString('changed');
-        await expectLater(
-          validateRenderDragonGame(renderDragonPatchVersion, game),
-          throwsA(isA<DevelopmentStorageException>()),
-        );
-        await expectLater(
-          validateRenderDragonGame('3.8.0.313229', game),
-          throwsA(isA<DevelopmentStorageException>()),
-        );
-        final source = File(
-          p.join(temp.path, 'runtime/lib/wine/x86_64-windows/winemetal.dll'),
-        );
-        await source.parent.create(recursive: true);
-        await source.writeAsString('corrupt');
-        final target = File(
-          p.join(temp.path, 'prefix/drive_c/windows/system32/winemetal.dll'),
-        );
-        await target.parent.create(recursive: true);
-        await target.writeAsString('keep');
-        await expectLater(
-          prepareWineMetalPrefix(
-            p.join(temp.path, 'runtime'),
-            p.join(temp.path, 'prefix'),
-          ),
-          throwsA(isA<DevelopmentStorageException>()),
-        );
-        expect(await target.readAsString(), 'keep');
-      } finally {
-        await temp.delete(recursive: true);
-      }
-    },
-  );
+      await source.parent.create(recursive: true);
+      await source.writeAsString('corrupt');
+      final target = File(
+        p.join(temp.path, 'prefix/drive_c/windows/system32/winemetal.dll'),
+      );
+      await target.parent.create(recursive: true);
+      await target.writeAsString('keep');
+      await expectLater(
+        prepareWineMetalPrefix(
+          p.join(temp.path, 'runtime'),
+          p.join(temp.path, 'prefix'),
+        ),
+        throwsA(isA<DevelopmentStorageException>()),
+      );
+      expect(await target.readAsString(), 'keep');
+    } finally {
+      await temp.delete(recursive: true);
+    }
+  });
   test(
     'shipped renderer patch hashes match and a modified cached DLL is repaired',
     () async {

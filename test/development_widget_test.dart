@@ -737,54 +737,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final supported in [true, false]) {
-    testWidgets(
-      'Vibrant Visuals is gated by the adapted version ($supported)',
-      (tester) async {
-        tester.view.physicalSize = const Size(1024, 600);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        final launcher = FakeLauncher();
-        final version = supported ? '3.10.0.420447' : '3.9.0.1';
-        launcher.games = [LocalGame(version, '/game')];
-        launcher.selectedVersion = version;
-        await tester.pumpWidget(
-          host(
-            DevelopmentEnvironmentPanel(
-              storage: FakeStorage(),
-              launcherFactory: () async => launcher,
-            ),
+  for (final version in ['3.10.0.420447', '3.9.0.401155', '3.10.0.448891']) {
+    testWidgets('Vibrant Visuals follows RenderDragon on $version', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1024, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final launcher = FakeLauncher();
+      launcher.games = [LocalGame(version, '/game')];
+      launcher.selectedVersion = version;
+      await tester.pumpWidget(
+        host(
+          DevelopmentEnvironmentPanel(
+            storage: FakeStorage(),
+            launcherFactory: () async => launcher,
           ),
-        );
-        await tester.pumpAndSettle();
-        await tester.pumpAndSettle();
-        expect(find.text('灵动视效（实验性）'), findsNothing);
-        await tester.tap(find.text('渲染龙'));
-        await tester.pumpAndSettle();
-        final toggle = find.widgetWithText(OreCheckboxListTile, '灵动视效（实验性）');
-        expect(toggle, findsOneWidget);
-        final widget = tester.widget<OreCheckboxListTile>(toggle);
-        expect(widget.onChanged != null, supported);
-        if (supported) {
-          await tester.ensureVisible(toggle);
-          await tester.pumpAndSettle();
-          await tester.tap(toggle);
-          await tester.pumpAndSettle();
-          expect(launcher.vibrantVisuals, isTrue);
-        } else {
-          expect(
-            find.byWidgetPredicate(
-              (widget) =>
-                  widget is OreTooltip &&
-                  widget.message.contains('当前版本尚未适配灵动视效'),
-            ),
-            findsOneWidget,
-          );
-        }
-        expect(tester.takeException(), isNull);
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
+      expect(find.text('灵动视效（实验性）'), findsNothing);
+      await tester.tap(find.text('渲染龙'));
+      await tester.pumpAndSettle();
+      final toggle = find.widgetWithText(OreCheckboxListTile, '灵动视效（实验性）');
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(launcher.vibrantVisuals, isTrue);
+      expect(tester.takeException(), isNull);
+    });
   }
 
   for (final dark in [false, true]) {

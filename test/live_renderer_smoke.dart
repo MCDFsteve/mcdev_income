@@ -10,7 +10,6 @@ import 'package:mcdev_income/core.dart';
 import 'package:mcdev_income/development/development_storage.dart';
 import 'package:mcdev_income/development/launcher_io.dart';
 import 'package:mcdev_income/development/launcher_service.dart';
-import 'package:mcdev_income/development/render_dragon.dart';
 import 'package:mcdev_income/development/storage_backend_io.dart';
 import 'package:mcdev_income/storage/file_preferences.dart';
 import 'live_performance_smoke.dart' show IsolatedGraphicsPreferences;
@@ -333,7 +332,6 @@ void main() {
           'visual_validation': 'pending_direct_window_capture',
           'log_path': gameLog,
           'renderer_log_path': rendererLog,
-          'supported_version': renderDragonPatchVersion,
         };
         await File(
           p.join(

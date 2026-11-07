@@ -1,14 +1,18 @@
-/* Version-scoped RenderDragon / DXMT adapter. MIT, MCDev contributors 2026.
- * Leaves the downloaded game unchanged. Native capability checks remain active. */
+/* RenderDragon / DXMT adapter. MIT, MCDev contributors 2026. Finds its targets
+ * by signature, so it follows game updates that keep this BGFX backend. Leaves
+ * the downloaded game unchanged. Native capability checks remain active. */
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
 #define COBJMACROS
 #include <d3d11.h>
 #include "MinHook.h"
+#include "signatures.h"
 
 static FILE *log_file;
 static BYTE *image;
+static BYTE *caps;
+static UINT structured_table;
 static int vibrant_requested;
 static int capability_logged;
 static void *(*original_init)(void *,void *,void *);
@@ -22,8 +26,8 @@ static HRESULT (WINAPI *original_create_device)(IDXGIAdapter *,D3D_DRIVER_TYPE,H
     const D3D_FEATURE_LEVEL *,UINT,UINT,ID3D11Device **,D3D_FEATURE_LEVEL *,ID3D11DeviceContext **);
 
 static int renderer_type(void);
-/* BGFX's 3.10 D3D11 structured table has 4096 32-byte entries. These
- * offsets are only used after the exact executable and entry signatures pass. */
+/* BGFX's D3D11 structured table has 32-byte entries; the matched code supplies
+ * its offset in the renderer. */
 typedef struct {
     ID3D11Buffer *buffer;
     ID3D11ShaderResourceView *srv;
@@ -35,7 +39,7 @@ typedef struct {
 } StructuredBuffer;
 typedef struct { const void *data; UINT size; } BufferMemory;
 static StructuredBuffer *structured_entry(void *renderer,WORD handle) {
-    return (StructuredBuffer *)((BYTE *)renderer+0x55448)+(UINT)handle;
+    return (StructuredBuffer *)((BYTE *)renderer+structured_table)+(UINT)handle;
 }
 static void create_structured(void *renderer,WORD handle,UINT size,UINT stride,WORD flags) {
     /* This backend receives flags=0 for the deferred storage buffers. Its
@@ -52,14 +56,14 @@ static void create_structured(void *renderer,WORD handle,UINT size,UINT stride,W
 static void update_structured(void *renderer,WORD handle,const void *memory) {
     StructuredBuffer *entry=structured_entry(renderer,handle);
     const BufferMemory *source=memory;
-    if(!entry->uav) {
+    ID3D11DeviceContext *context=immediate_context;
+    if(!entry->uav || !context) {
         original_structured_update(renderer,handle,memory);
         return;
     }
     /* A DEFAULT/UAV resource cannot use the original WRITE_DISCARD upload.
      * UpdateSubresource copies the supplied bytes before returning and preserves
      * GPU ordering. Use a byte-range box so a short update keeps the tail. */
-    ID3D11DeviceContext *context=*(ID3D11DeviceContext **)((BYTE *)renderer+0x350);
     if(source && source->size && source->data && source->size<=entry->byte_width) {
         D3D11_BOX box={0,0,0,source->size,1,1};
         ID3D11DeviceContext_UpdateSubresource(context,(ID3D11Resource *)entry->buffer,
@@ -109,12 +113,12 @@ static void destroy_shader(void *object) {
     original_shader_destroy(object);
 }
 
-static int renderer_type(void) { return ((int (*)(void))(image+0x0e703540))(); }
+/* Caps starts with the renderer type; these fields match in every checked build. */
+static int renderer_type(void) { return *(int *)caps; }
 static int deferred_supported(void) {
     int result=original_deferred();
-    BYTE *caps=((void *(*)(void))(image+0x0e702f20))();
-    uint64_t feature=((uint64_t (*)(void))(image+0x0e703550))();
-    uint32_t mask=caps ? *(uint32_t *)(caps+0x238) : 0;
+    uint64_t feature=*(uint64_t *)(caps+0x228);
+    uint32_t mask=*(uint32_t *)(caps+0x238);
     /* This release excludes D3D11 in its backend whitelist. It ships official
      * SM5 bytecode for all deferred passes. Use the same native capability bit
      * as its Metal backend and require a real D3D11 feature level >= 11.0. */
@@ -138,11 +142,23 @@ static void *request_d3d11(void *context,void *state,void *description) {
     fflush(log_file);
     return result;
 }
-static int executable_signature(BYTE *address,const BYTE *bytes,size_t length) {
+static BYTE *find_code(const char *text) {
+    Signature signature;
+    if(!signature_parse(text,&signature))return NULL;
+    IMAGE_NT_HEADERS64 *nt=(void *)(image+((IMAGE_DOS_HEADER *)image)->e_lfanew);
+    BYTE *address=image,*end=image+nt->OptionalHeader.SizeOfImage;
+    const uint8_t *found=NULL;
+    int hits=0;
     MEMORY_BASIC_INFORMATION info;
-    if(!VirtualQuery(address,&info,sizeof(info)) || info.State!=MEM_COMMIT ||
-       !(info.Protect & (PAGE_EXECUTE|PAGE_EXECUTE_READ|PAGE_EXECUTE_READWRITE|PAGE_EXECUTE_WRITECOPY)))return 0;
-    return !memcmp(address,bytes,length);
+    while(address<end && VirtualQuery(address,&info,sizeof(info))) {
+        BYTE *next=(BYTE *)info.BaseAddress+info.RegionSize;
+        if(info.State==MEM_COMMIT && !(info.Protect&PAGE_GUARD) &&
+           (info.Protect&(PAGE_EXECUTE|PAGE_EXECUTE_READ|PAGE_EXECUTE_READWRITE|PAGE_EXECUTE_WRITECOPY))) {
+            hits+=signature_search(address,(next<end?next:end)-address,&signature,hits?NULL:&found);
+        }
+        address=next;
+    }
+    return hits==1 ? (BYTE *)found : NULL;
 }
 static DWORD WINAPI setup(void *module) {
     wchar_t path[32768];
@@ -150,22 +166,29 @@ static DWORD WINAPI setup(void *module) {
     log_file=_wfopen(path,L"w");if(!log_file)return 1;
     char flag[8]={0};GetEnvironmentVariableA("MCDEV_VIBRANT",flag,sizeof(flag));vibrant_requested=!strcmp(flag,"1");
     image=(BYTE *)GetModuleHandleW(NULL);
-    IMAGE_NT_HEADERS64 *nt=(void *)(image+((IMAGE_DOS_HEADER *)image)->e_lfanew);
-    if(nt->OptionalHeader.SizeOfImage!=0x1d28e000) {
-        fprintf(log_file,"{\"renderer_patch\":\"unsupported\"}\n");fflush(log_file);return 2;
-    }
-    const BYTE init_signature[]={0x48,0x89,0x5c,0x24,0x20,0x55,0x56,0x57,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57,0x48,0x8d,0xac,0x24,0xe0,0xfd,0xff,0xff};
-    const BYTE deferred_signature[]={0x40,0x53,0x48,0x83,0xec,0x30,0xe8,0x75,0x12,0x11,0x00};
-    const BYTE destroy_signature[]={0x48,0x89,0x5c,0x24,0x10,0x56,0x48,0x83,0xec,0x30,0x48,0x8b,0x51,0x18};
-    const BYTE structured_create_signature[]={0x48,0x83,0xec,0x38,0x0f,0xb7,0xc2,0x45,0x8b,0xd0,0x48,0xc1,0xe0,0x05,0x48,0x81,0xc1,0x48,0x54,0x05,0x00};
-    const BYTE structured_update_signature[]={0x48,0x83,0xec,0x38,0x4d,0x8b,0x08,0x48,0x81,0xc1,0x48,0x54,0x05,0x00,0x45,0x8b,0x40,0x08};
-    BYTE *init=image+0x0e65ac00,*deferred=image+0x0e5f1ca0,*destroy=image+0x0e736fc0,*structured_create=image+0x0e7366c0,*structured_update=image+0x0e745e40;
-    for(int i=0;i<6000;i++) {
-        if(executable_signature(init,init_signature,sizeof(init_signature)) &&
-           executable_signature(deferred,deferred_signature,sizeof(deferred_signature)) &&
-           executable_signature(destroy,destroy_signature,sizeof(destroy_signature)) &&
-           executable_signature(structured_create,structured_create_signature,sizeof(structured_create_signature)) &&
-           executable_signature(structured_update,structured_update_signature,sizeof(structured_update_signature))) {
+    BYTE *init=NULL,*deferred=NULL,*destroy=NULL,*structured_create=NULL,*structured_update=NULL;
+    const char *missing="";
+    for(int i=0;i<600;i++) {
+        init=find_code(SIGNATURE_INIT);
+        deferred=find_code(SIGNATURE_DEFERRED);
+        destroy=find_code(SIGNATURE_DESTROY);
+        structured_create=find_code(SIGNATURE_STRUCTURED_CREATE);
+        structured_update=find_code(SIGNATURE_STRUCTURED_UPDATE);
+        missing=!init?"init":!deferred?"deferred":!destroy?"destroy":
+            !structured_create?"structured_create":!structured_update?"structured_update":"";
+        if(!*missing) {
+            Signature getter;
+            BYTE *caps_getter=deferred+11+*(int32_t *)(deferred+7);
+            structured_table=*(UINT *)(structured_create+17);
+            if(!signature_parse(SIGNATURE_CAPS_GETTER,&getter) || !signature_matches(caps_getter,&getter)) {
+                missing="caps";
+                break;
+            }
+            if(*(UINT *)(structured_update+10)!=structured_table) {
+                missing="structured_table";
+                break;
+            }
+            caps=caps_getter+7+*(int32_t *)(caps_getter+3);
             HMODULE d3d11=LoadLibraryW(L"d3d11.dll");
             void *create=d3d11 ? (void *)GetProcAddress(d3d11,"D3D11CreateDevice") : NULL;
             if(!create) {
@@ -189,9 +212,10 @@ static DWORD WINAPI setup(void *module) {
             fprintf(log_file,"{\"renderer_patch\":\"%s\",\"hook_status\":%d}\n",status==MH_OK?"ready":"failed",status);
             fflush(log_file);return status!=MH_OK;
         }
-        Sleep(10);
+        Sleep(100);
     }
-    fprintf(log_file,"{\"renderer_patch\":\"unsupported\",\"reason\":\"signature_timeout\"}\n");fflush(log_file);return 3;
+    fprintf(log_file,"{\"renderer_patch\":\"unsupported\",\"reason\":\"signature_missing\",\"signature\":\"%s\"}\n",missing);
+    fflush(log_file);return 3;
 }
 BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,void *reserved) {
     if(reason==DLL_PROCESS_ATTACH) {

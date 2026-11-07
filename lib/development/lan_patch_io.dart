@@ -15,7 +15,7 @@ const lanPatchHash =
 // unpacked code before loading the DLL. Its renderer DLL is not needed here.
 const lanInjectorFile = 'renderer-inject.exe';
 const lanInjectorHash =
-    '8a8fbedd6b058e02c0994c10a957c8185ace161181c6740f0989268f70153f8f';
+    'de618afb0d517506f83decebb34dc2456e829ae6ef50ed97fe522127319fb48b';
 const lanPatchAssets = {
   'lan-patch.dll': lanPatchHash,
   lanInjectorFile: lanInjectorHash,

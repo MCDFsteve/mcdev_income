@@ -16,7 +16,7 @@ void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
   HttpOverrides.global = null;
   test(
-    'checked launch injects NOSOUND and unchecked launch restores sound settings',
+    'checked launch mutes the master volume and unchecked launch restores it',
     () async {
       final target = Platform.environment['MCDEV_LIVE_SOUND_ROOT'];
       final source = Platform.environment['MCDEV_LIVE_SOUND_SOURCE'];
@@ -133,48 +133,14 @@ void main() {
           seed: '20261004',
         );
         await waitFor(() => host.lanAvailable);
-        final log = File(
-          p.join(
-            storage.paths.logs,
-            p
-                .basename(host.logPath!)
-                .replaceFirst('test-', 'sound-')
-                .replaceFirst('.log', '.json'),
-          ),
-        );
-        for (var i = 0; i < 70; i++) {
-          if (await log.exists() &&
-              (jsonDecode(await log.readAsString()) as Map)['state'] ==
-                  'ready') {
-            break;
-          }
-          if (host.error != null) throw StateError(host.error!);
-          await Future<void>.delayed(const Duration(seconds: 1));
-        }
-        final before = jsonDecode(await log.readAsString()) as Map;
-        expect(before['state'], 'ready');
-        expect(before['output'], 2);
-        expect(before['failures'], 0);
         final options = await optionsFile();
         expect(await options.readAsString(), contains('audio_main:0'));
         final backup = File('${options.path}.mcdev-sound-backup');
         final original =
             (jsonDecode(await backup.readAsString()) as Map)['audio_main'];
+        // The game must keep the value it loaded rather than rewriting it.
         await Future<void>.delayed(const Duration(seconds: 5));
-        final after = jsonDecode(await log.readAsString()) as Map;
-        // A background game can stop audio updates once its world is loaded.
-        // Silence must remain effective even when the update counter pauses.
-        expect(before['updates'], greaterThan(0));
-        expect(
-          after['updates'],
-          greaterThanOrEqualTo(before['updates'] as int),
-        );
-        expect(after['state'], 'ready');
-        expect(after['output'], 2);
-        expect(after['failures'], 0);
-        stdout.writeln(
-          'SOUND: running world uses NOSOUND; updates ${before['updates']} -> ${after['updates']}, failures=0',
-        );
+        expect(await options.readAsString(), contains('audio_main:0'));
         await host.stopGame();
         await lifetime;
         lifetime = null;
@@ -188,22 +154,12 @@ void main() {
         );
         await waitFor(() => host.running);
         expect(await options.readAsString(), contains('audio_main:$original'));
-        final secondSoundLog = File(
-          p.join(
-            storage.paths.logs,
-            p
-                .basename(host.logPath!)
-                .replaceFirst('test-', 'sound-')
-                .replaceFirst('.log', '.json'),
-          ),
-        );
         await Future<void>.delayed(const Duration(seconds: 15));
         expect(host.running, isTrue);
         expect(host.error, isNull);
-        expect(await secondSoundLog.exists(), isFalse);
         expect(await backup.exists(), isFalse);
         stdout.writeln(
-          'SOUND: unchecked menu launch has no mute DLL log and retains audio_main=$original',
+          'SOUND: unchecked menu launch retains audio_main=$original',
         );
       } finally {
         await host.stopGame();

@@ -1,10 +1,37 @@
-/* Version-scoped injector for the 3.10.0.420447 RenderDragon adapter.
- * MCDev contributors 2026, MIT. The executable hash is checked by Dart first. */
+/* Injector for the launcher's adapters. MCDev contributors 2026, MIT. Waits
+ * until the packed game has decoded its code, whatever the build. */
 #include <windows.h>
 #include <tlhelp32.h>
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+#include "signatures.h"
+
+/* Packed pages only become searchable once the game has decoded them. */
+static int code_decoded(HANDLE process, BYTE *base, DWORD size, const Signature *signature) {
+    static BYTE chunk[16<<20];
+    BYTE *address=base,*end=base+size;
+    MEMORY_BASIC_INFORMATION region;
+    while(address<end && VirtualQueryEx(process,address,&region,sizeof(region))) {
+        BYTE *next=(BYTE *)region.BaseAddress+region.RegionSize;
+        if(region.State==MEM_COMMIT && !(region.Protect&PAGE_GUARD) &&
+           (region.Protect&(PAGE_EXECUTE|PAGE_EXECUTE_READ|PAGE_EXECUTE_READWRITE|PAGE_EXECUTE_WRITECOPY))) {
+            BYTE *limit=next<end?next:end;
+            for(BYTE *at=address;at<limit;) {
+                SIZE_T want=(SIZE_T)(limit-at),got=0;
+                if(want>sizeof(chunk))want=sizeof(chunk);
+                if(!ReadProcessMemory(process,at,chunk,want,&got) || got<signature->length)break;
+                if(signature_search(chunk,got,signature,NULL))return 1;
+                if(at+got>=limit)break;
+                /* Keep a match that crosses into the next chunk. */
+                at+=got-(signature->length-1);
+            }
+        }
+        address=next;
+    }
+    return 0;
+}
+
 int wmain(int argc, wchar_t **argv) {
     if (argc != 3) return 1;
     DWORD pid = 0;
@@ -34,25 +61,20 @@ int wmain(int argc, wchar_t **argv) {
     }
     /* Wait for normal initialization, without loading a DLL into the packed
      * startup path. ReadProcessMemory safely rejects uncommitted pages. */
+    Signature signature;
+    if(!signature_parse(SIGNATURE_DEFERRED,&signature)){CloseHandle(process);return 10;}
     int ready=0;
     for(int attempt=0;attempt<360 && !ready;attempt++){
         if(WaitForSingleObject(process,0)==WAIT_OBJECT_0){CloseHandle(process);return 3;}
         HANDLE modules=CreateToolhelp32Snapshot(TH32CS_SNAPMODULE|TH32CS_SNAPMODULE32,pid);
-        MODULEENTRY32W module={.dwSize=sizeof(module)};BYTE *base=NULL;
+        MODULEENTRY32W module={.dwSize=sizeof(module)};BYTE *base=NULL;DWORD image_size=0;
         if(Module32FirstW(modules,&module))do{
-            if(!_wcsicmp(module.szModule,L"Minecraft.Windows.exe"))base=module.modBaseAddr;
+            if(!_wcsicmp(module.szModule,L"Minecraft.Windows.exe")){base=module.modBaseAddr;image_size=module.modBaseSize;}
         }while(Module32NextW(modules,&module));CloseHandle(modules);
-        const BYTE signature[]={0x48,0x89,0x5c,0x24,0x20,0x55,0x56,0x57,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57,0x48,0x8d,0xac,0x24,0xe0,0xfd,0xff,0xff};
-        BYTE bytes[sizeof(signature)];SIZE_T got=0;MEMORY_BASIC_INFORMATION region;
-        BYTE *target=base ? base+0x0e65ac00 : NULL;
-        if(target && VirtualQueryEx(process,target,&region,sizeof(region)) &&
-           region.State==MEM_COMMIT &&
-           (region.Protect & (PAGE_EXECUTE|PAGE_EXECUTE_READ|PAGE_EXECUTE_READWRITE|PAGE_EXECUTE_WRITECOPY)) &&
-           ReadProcessMemory(process,target,bytes,sizeof(bytes),&got) && got==sizeof(bytes) &&
-           !memcmp(bytes,signature,sizeof(signature)))ready=1;
+        if(base && code_decoded(process,base,image_size,&signature))ready=1;
         else Sleep(250);
     }
-    if(!ready){fprintf(stderr,"Supported RenderDragon layout not ready; no injection.\n");CloseHandle(process);return 10;}
+    if(!ready){fprintf(stderr,"Game code not ready; no injection.\n");CloseHandle(process);return 10;}
     SIZE_T size = (wcslen(argv[1])+1)*sizeof(wchar_t), written;
     void *remote = VirtualAllocEx(process,NULL,size,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
     if (!remote || !WriteProcessMemory(process,remote,argv[1],size,&written) || written != size) {

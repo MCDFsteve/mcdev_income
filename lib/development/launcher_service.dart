@@ -6,9 +6,7 @@ import '../core/preferences.dart';
 import 'development_storage.dart';
 import 'mcs_api.dart';
 import 'performance_patch.dart';
-import 'sound_patch.dart';
 import 'game_graphics.dart';
-import 'render_dragon.dart';
 import 'platform/development_capabilities.dart';
 export 'game_graphics.dart' show GameRenderer, GameClientType;
 import 'launcher_stub.dart' if (dart.library.io) 'launcher_io.dart' as backend;
@@ -325,7 +323,6 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   }
 
   void stopAiControl() {}
-  bool get disableSoundSupported => supportsSoundPatch(selectedVersion);
   bool fullscreenShortcut = false;
   bool useNewWorld = false;
   String newWorldSeed = '';
@@ -340,9 +337,8 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
       effectiveRenderer == GameRenderer.openGL &&
       supportsPerformancePatch(selectedVersion);
   bool get renderDragonCompatibilitySupported =>
-      capabilities.metalRenderer && supportsRenderDragonPatch(selectedVersion);
+      capabilities.metalRenderer && rendererSwitchSupported;
   bool get vibrantVisualsSupported =>
-      renderDragonCompatibilitySupported &&
       effectiveRenderer == GameRenderer.renderDragon;
   final Set<String> selectedPacks = {};
   ProjectSortOrder projectSortOrder = ProjectSortOrder.importedNewest;

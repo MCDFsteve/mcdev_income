@@ -1,14 +1,11 @@
-const renderDragonPatchVersion = '3.10.0.420447';
-const renderDragonGameHash =
-    '9be281dbe08bc591336680d5a50f94d87f3c57ee75b3afcb3cabdf03347e0269';
 const dxmtArchiveUrl =
     'https://github.com/3Shain/dxmt/releases/download/v0.80/dxmt-v0.80-builtin.tar.gz';
 const dxmtArchiveHash =
     '8f260e36b5739e68f3bad613381441385c4dc7b85b78ba8de653d5a6a264529d';
 const rendererPatchHash =
-    '71fa0db14a6d1a93d4664c6e81e8c304c13ebfba01121a38119e6ac0a5bef9ae';
+    '5b6d10af9d1914e889d107e3980013af7c1bfc0e584fb122fafa111292957f79';
 const rendererInjectorHash =
-    '8a8fbedd6b058e02c0994c10a957c8185ace161181c6740f0989268f70153f8f';
+    'de618afb0d517506f83decebb34dc2456e829ae6ef50ed97fe522127319fb48b';
 const wineMetalBridgeHash =
     'cb1649390b73064804a87761eee743fe142d6056dc9678eb4c1ee804803ed6bd';
 const dxmtFiles = {
@@ -21,9 +18,6 @@ const dxmtFiles = {
   'x86_64-unix/winemetal.so':
       '3d50d7f39c64778c71d0af2fce1cde818d09ffbce7c4f7b8ae24ae1df567c0ca',
 };
-
-bool supportsRenderDragonPatch(String? version) =>
-    version == renderDragonPatchVersion;
 
 Map<String, String> renderDragonOptions(bool vibrant) => {
   'graphics_mode': vibrant ? '2' : '1',

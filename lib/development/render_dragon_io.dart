@@ -12,15 +12,6 @@ Future<bool> _matches(File file, String digest) async =>
     await file.exists() &&
     (await sha256.bind(file.openRead()).first).toString() == digest;
 
-Future<void> validateRenderDragonGame(String version, File executable) async {
-  if (!supportsRenderDragonPatch(version) ||
-      !await _matches(executable, renderDragonGameHash)) {
-    throw const DevelopmentStorageException(
-      '渲染龙适配与游戏文件不匹配，请重新下载 3.10.0.420447 Haldra x64，或切回 OpenGL。',
-    );
-  }
-}
-
 Future<File> _asset(
   String name,
   String hash,

@@ -1167,9 +1167,7 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
           : launcher.effectiveRenderer == GameRenderer.renderDragon
           ? !launcher.capabilities.requiresWine
                 ? '使用 Windows 原生渲染龙，重启游戏后生效。'
-                : launcher.renderDragonCompatibilitySupported
-                ? '此版本使用 Metal 适配；首次启动下载约 18 MB 组件，重启游戏后生效。'
-                : '渲染龙的 Wine 兼容性随版本而异；若无法启动，可切回 OpenGL。'
+                : '使用 Metal 适配；首次启动下载约 18 MB 组件，重启游戏后生效。'
           : '按当前游戏版本保存，重启游戏后生效。';
       return Wrap(
         key: const ValueKey('development-test-options'),
@@ -1276,15 +1274,13 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
               launcher.effectiveRenderer == GameRenderer.renderDragon)
             toggle(
               '灵动视效（实验性）',
-              launcher.vibrantVisuals && launcher.vibrantVisualsSupported,
-              blocked || !launcher.vibrantVisualsSupported
+              launcher.vibrantVisuals,
+              blocked
                   ? null
                   : (value) => _run(
                       () => launcher.chooseVibrantVisuals(value ?? false),
                     ),
-              hint: launcher.vibrantVisualsSupported
-                  ? '光照、阴影与水面反射；重启生效。当前适配 3.10.0.420447，帧率取决于画质与场景。'
-                  : '当前版本尚未适配灵动视效，请选择 3.10.0.420447 Haldra x64。',
+              hint: '光照、阴影与水面反射；帧率取决于画质与场景。',
             ),
           if (launcher.performanceOptimizationSupported)
             toggle(
@@ -1332,15 +1328,11 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
           toggle(
             '关闭声音',
             launcher.disableSound,
-            blocked ||
-                    (!launcher.disableSoundSupported && !launcher.disableSound)
+            blocked
                 ? null
                 : (value) =>
                       _run(() => launcher.chooseDisableSound(value ?? false)),
             key: const ValueKey('development-disable-sound'),
-            hint: launcher.disableSoundSupported
-                ? '关闭游戏的所有声音，重启游戏后生效。'
-                : '当前仅支持 3.10.0.420447 x64，请选择受支持版本或取消勾选。',
           ),
           toggle(
             '物品信息显示',

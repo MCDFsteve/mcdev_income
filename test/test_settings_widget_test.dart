@@ -55,7 +55,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final launcher = FakeLauncher()..selectedVersion = '3.10.0.420447';
+      final launcher = FakeLauncher()..selectedVersion = '3.8.0.313229';
       await tester.pumpWidget(
         host(
           DevelopmentEnvironmentPanel(
