@@ -10,7 +10,8 @@ on:
 jobs:
   build:
     name: Build Windows
-    runs-on: windows-latest
+    # flutter_inappwebview_windows needs <experimental/coroutine>, which newer MSVC removed.
+    runs-on: windows-2022
     outputs:
       artifact-name: ${{ steps.metadata.outputs.basename }}-windows-x86_64
     steps:
