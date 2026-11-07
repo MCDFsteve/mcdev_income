@@ -2,7 +2,7 @@ name: Release metadata
 description: Read the app version and common release filename prefix
 outputs:
   version:
-    description: App version including its build number
+    description: App version without its build number
     value: ${{ steps.metadata.outputs.version }}
   basename:
     description: Release filename prefix including the app version
@@ -22,6 +22,8 @@ runs:
           echo "Invalid app version: $VERSION" >&2
           exit 1
         fi
+        # The build number only feeds Android versionCode and iOS CFBundleVersion.
+        VERSION="${VERSION%%+*}"
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "basename=mcdev-income-$VERSION" >> "$GITHUB_OUTPUT"
         NOTES="docs/releases/$VERSION.md"
