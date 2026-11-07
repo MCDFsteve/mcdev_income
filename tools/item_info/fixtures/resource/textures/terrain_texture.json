@@ -1,0 +1,8 @@
+{
+  "resource_pack_name": "vanilla",
+  "texture_name": "atlas.terrain",
+  "num_mip_levels": 1,
+  "texture_data": {
+    "mcdev_item_fixture:plain": {"textures": "textures/blocks/stone"}
+  }
+}

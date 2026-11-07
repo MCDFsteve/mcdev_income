@@ -13,6 +13,8 @@ class _LoginPageState extends State<LoginPage> {
   bool _agree = true;
   bool _rememberPassword = true;
   bool _loading = false;
+  bool _verifyingCaptcha = false;
+  Completer<void>? _captchaCancelled;
   String? _error;
   LoginSession? _session;
 
@@ -24,6 +26,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
+    _cancelCaptcha();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -70,6 +73,7 @@ class _LoginPageState extends State<LoginPage> {
         email: email,
         password: password,
         rememberPassword: _rememberPassword,
+        onCaptcha: _verifyCaptcha,
       );
       if (!mounted) {
         return;
@@ -88,6 +92,28 @@ class _LoginPageState extends State<LoginPage> {
         _error = error.toString();
       });
     }
+  }
+
+  Future<String?> _verifyCaptcha(LoginCaptchaChallenge challenge) async {
+    if (!mounted) return null;
+    final cancelled = Completer<void>();
+    _captchaCancelled = cancelled;
+    setState(() => _verifyingCaptcha = true);
+    try {
+      return await WebViewLoginCaptcha.start(
+        captchaId: challenge.captchaId,
+        email: challenge.email,
+        cancelled: cancelled.future,
+      );
+    } finally {
+      _captchaCancelled = null;
+      if (mounted) setState(() => _verifyingCaptcha = false);
+    }
+  }
+
+  void _cancelCaptcha() {
+    final cancelled = _captchaCancelled;
+    if (cancelled != null && !cancelled.isCompleted) cancelled.complete();
   }
 
   Future<void> _clearLogin() async {
@@ -165,6 +191,11 @@ class _LoginPageState extends State<LoginPage> {
             contentPadding: EdgeInsets.zero,
             title: const Text('保存密码用于自动刷新凭证'),
           ),
+          if (_verifyingCaptcha) ...[
+            const SizedBox(height: 8),
+            const Text('请在安全验证窗口中完成网易验证码，完成后会自动继续登录。'),
+            TextButton(onPressed: _cancelCaptcha, child: const Text('取消验证')),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
@@ -183,7 +214,7 @@ class _LoginPageState extends State<LoginPage> {
                         child: OreLoadingIndicator(size: 16),
                       )
                     : const Icon(Icons.login),
-                label: const Text('登录'),
+                label: Text(_verifyingCaptcha ? '等待验证' : '登录'),
                 width: actionWidth,
               ),
               OutlinedButton.icon(

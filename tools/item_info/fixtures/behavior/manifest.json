@@ -1,0 +1,11 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Item info verification fixture",
+    "description": "Targets with and without Chinese text for isolated integration tests",
+    "uuid": "c0f7d7f5-7c4d-4b0e-9f4a-2c1e5b7a9d11",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 18, 0]
+  },
+  "modules": [{"type": "data", "uuid": "1b6a2c7e-3f58-4d0c-8a21-7e4f90c3b622", "version": [1, 0, 0]}]
+}

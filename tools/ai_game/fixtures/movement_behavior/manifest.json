@@ -1,0 +1,11 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "AI control verification fixture",
+    "description": "Passive movement logger for isolated integration tests",
+    "uuid": "a6a1355e-ec37-44c7-8cfb-2f3a9185e91b",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 18, 0]
+  },
+  "modules": [{"type": "data", "uuid": "585ae1dc-df8c-44f6-9c18-04bddbd5e74b", "version": [1, 0, 0]}]
+}

@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'core.dart';
+import 'services/login_captcha_window.dart';
 export 'core.dart';
 import 'cli/unsupported_entry.dart'
     if (dart.library.io) 'cli/desktop_entry.dart'

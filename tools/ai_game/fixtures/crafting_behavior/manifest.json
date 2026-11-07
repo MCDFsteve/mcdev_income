@@ -1,0 +1,17 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "AI Survival Craft Demo",
+    "description": "Local recipe checked crafting demonstration",
+    "uuid": "773db27c-7025-4078-8249-40b56fdc52b5",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 18, 0]
+  },
+  "modules": [
+    {
+      "type": "data",
+      "uuid": "552c2853-e10c-4770-8f5f-d814c10dc0af",
+      "version": [1, 0, 0]
+    }
+  ]
+}

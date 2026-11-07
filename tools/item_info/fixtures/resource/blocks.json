@@ -1,0 +1,6 @@
+{
+  "format_version": [1, 1, 0],
+  "mcdev_item_fixture:named": {"textures": "mcdev_item_fixture:plain", "sound": "stone"},
+  "mcdev_item_fixture:unnamed": {"textures": "mcdev_item_fixture:plain", "sound": "stone"},
+  "mcdev_item_fixture:english": {"textures": "mcdev_item_fixture:plain", "sound": "stone"}
+}

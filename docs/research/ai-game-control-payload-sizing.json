@@ -1,0 +1,34 @@
+{
+  "evidence": "synthetic compact JSON sizing only; no game throughput, latency or CPU measurement",
+  "samples": [
+    {
+      "name": "idle",
+      "utf8_bytes": 462
+    },
+    {
+      "name": "exploring",
+      "utf8_bytes": 2738
+    },
+    {
+      "name": "intensive",
+      "utf8_bytes": 5026
+    },
+    {
+      "name": "intensive_population_cap",
+      "utf8_bytes": 9602
+    },
+    {
+      "name": "audio_batch_8",
+      "utf8_bytes": 1661
+    },
+    {
+      "name": "action",
+      "utf8_bytes": 155
+    }
+  ],
+  "profile_target_body_bytes_per_second": {
+    "idle": 2048,
+    "exploring": 20480,
+    "intensive": 61440
+  }
+}

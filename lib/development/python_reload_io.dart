@@ -365,6 +365,7 @@ class PythonReloadBridge {
       '_mcdev_py_reload.py': await rootBundle.loadString(
         'tools/python_reload/runtime.py',
       ),
+      'ai_runtime.py': await rootBundle.loadString('tools/ai_game/runtime.py'),
     };
     for (final entry in files.entries) {
       final file = File(p.join(scripts.path, entry.key));
@@ -486,11 +487,47 @@ class ReloadSystem(clientApi.GetClientSystemCls()):
     def __init__(self, namespace, name):
         super(ReloadSystem, self).__init__(namespace, name)
         self.epoch = "%d-%d" % (int(time.time() * 1000000), id(self))
+        self.ai_loaded = False
+        self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "OnLocalPlayerStopLoading", self, self.OnLoaded)
+        self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "DimensionChangeClientEvent", self, self.OnDimension)
+        self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "DimensionChangeFinishClientEvent", self, self.OnLoaded)
         self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "OnScriptTickClient", self, self.OnTick)
+        self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "PlaySoundClientEvent", self, self.OnSound)
+        self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "PlayMusicClientEvent", self, self.OnMusic)
+        self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "PushScreenEvent", self, self.OnScreenPush)
+        self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "PopScreenEvent", self, self.OnScreenPop)
 
     def OnTick(self, *args):
-        _mcdev_py_reload.tick(self.epoch)
+        _mcdev_py_reload.tick(self.epoch, self)
+
+    def OnSound(self, args):
+        _mcdev_py_reload.game_event('sound_request', args)
+
+    def OnLoaded(self, args):
+        if args.get('playerId') == clientApi.GetLocalPlayerId():
+            self.ai_loaded = True
+
+    def OnDimension(self, args):
+        if args.get('playerId') == clientApi.GetLocalPlayerId():
+            self.ai_loaded = False
+            self.epoch = "%d-%d" % (int(time.time() * 1000000), id(self))
+
+    def OnMusic(self, args):
+        _mcdev_py_reload.game_event('music_request', args)
+
+    def OnScreenPush(self, args):
+        _mcdev_py_reload.game_event('screen_push', args)
+
+    def OnScreenPop(self, args):
+        _mcdev_py_reload.game_event('screen_pop', args)
 
     def Destroy(self):
+        self.ai_destroyed = True
+        _mcdev_py_reload.tick(self.epoch, self)
         self.UnListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "OnScriptTickClient", self, self.OnTick)
+        self.UnListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "OnLocalPlayerStopLoading", self, self.OnLoaded)
+        self.UnListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "DimensionChangeClientEvent", self, self.OnDimension)
+        self.UnListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), "DimensionChangeFinishClientEvent", self, self.OnLoaded)
+        for event, callback in [('PlaySoundClientEvent', self.OnSound), ('PlayMusicClientEvent', self.OnMusic), ('PushScreenEvent', self.OnScreenPush), ('PopScreenEvent', self.OnScreenPop)]:
+            self.UnListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), event, self, callback)
 ''';

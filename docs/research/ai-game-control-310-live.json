@@ -1,0 +1,1116 @@
+{
+  "status": "functional_passed_shutdown_failed",
+  "functional_passed": true,
+  "clean_shutdown": false,
+  "game_version": "3.10.0.420447",
+  "game_sha256": "9be281dbe08bc591336680d5a50f94d87f3c57ee75b3afcb3cabdf03347e0269",
+  "environment": "macOS, isolated Wine 11.0 mcs-v1 + DXMT 0.80 / Metal, creative mode, new world",
+  "last_functional_observation_utc": "2026-10-05T13:03:18.198000+00:00",
+  "source_sha256": {
+    "tools/ai_game/runtime.py": "87a7ff46e62e6b7cab71f759bb63cd117849479a1c7058f5420d5a0ec98e3afe",
+    "tools/ai_game/client.py": "696950a5cb029ce6dfa528f6caae389c292ddffe423891bd6c113da6f1477cba",
+    "lib/development/ai_game_io.dart": "767b267897d4ff0e3f241bf9c19c0a3037b2f2913724e7bee18d36b3500b1867",
+    "lib/development/python_reload_io.dart": "e47f1d34ac2bc8daa545f3774565bcc3226d42973a45c8355de9ceee36667bac",
+    "tools/python_reload/runtime.py": "f1def6ab49b764468209297f1e98d1a77969f8c24a0cb4162d8ad9e97a390961",
+    "lib/development/launcher_io.dart": "37965cbfc05b6e22d8a8d416bf45d2ceb09e4a44bd707b8e00551e7e790046a3"
+  },
+  "mounted_game_runtime_sha256": "87a7ff46e62e6b7cab71f759bb63cd117849479a1c7058f5420d5a0ec98e3afe",
+  "source_note": "Game adapter matches the mounted bytes used by the final Metal run. Test harness exit-report persistence was improved afterwards; exit evidence below comes from that actual game log.",
+  "verified": [
+    "player_rotation",
+    "player_displacement",
+    "select_slot_call",
+    "dig_to_air",
+    "sound_request_events",
+    "mod_server_movement_log",
+    "external_python_test_runner",
+    "shutdown_quiesce_acknowledgement"
+  ],
+  "not_verified": [
+    "survival_dig_timing",
+    "jump",
+    "place",
+    "attack",
+    "use_specific_items",
+    "UI_controls",
+    "pixel_appearance",
+    "actual_audio_output",
+    "Windows_native",
+    "cloud_model_inference",
+    "clean_process_exit"
+  ],
+  "shutdown": {
+    "native_crash": true,
+    "exit_code": 3,
+    "quiesce_acknowledged": true,
+    "scope": "Also reproduces with AI disabled, no user mods selected, and no Python reload DLL injected; root cause is not established."
+  },
+  "baseline_controls": [
+    {
+      "case": "AI_disabled_with_fixture",
+      "renderer": "OpenGL",
+      "native_crash": true,
+      "exit_code": 5,
+      "reload_DLL_present": true,
+      "log_sha256": "db4d10accf4861b5ecc457b79ebfd7acaf0d282f2fe9198ca693fe152a9eaaf5",
+      "log_file": "test-ai-game-1791204844608717.log"
+    },
+    {
+      "case": "AI_disabled_no_user_mods_no_reload_DLL",
+      "renderer": "OpenGL",
+      "native_crash": true,
+      "exit_code": 3,
+      "reload_DLL_present": false,
+      "log_sha256": "79e9810d2bb326f0ddb71a0c7ecbb63747cf9148c98be9e95ccd507d6cbd66f2",
+      "log_file": "test-ai-game-1791205053009412.log"
+    }
+  ],
+  "horizontal_displacement": 2.2000006437301636,
+  "frames": [
+    {
+      "stage": "before",
+      "seq": 110,
+      "tick": 1821,
+      "hz": 2,
+      "utf8_bytes": 2497,
+      "metrics": {
+        "bridge_ms_p95": 0.933,
+        "output_bytes": 982,
+        "pending": 0,
+        "samples": 58,
+        "sample_ms_max": 2.644
+      }
+    },
+    {
+      "stage": "moved",
+      "seq": 114,
+      "tick": 1884,
+      "hz": 2,
+      "utf8_bytes": 2653,
+      "metrics": {
+        "bridge_ms_p95": 1.305,
+        "output_bytes": 0,
+        "pending": 0,
+        "samples": 66,
+        "sample_ms_max": 9.754
+      }
+    },
+    {
+      "stage": "dug",
+      "seq": 116,
+      "tick": 1916,
+      "hz": 2,
+      "utf8_bytes": 2719,
+      "metrics": {
+        "bridge_ms_p95": 3.147,
+        "output_bytes": 222,
+        "pending": 0,
+        "samples": 60,
+        "sample_ms_max": 4.788
+      }
+    }
+  ],
+  "snapshots": {
+    "before": {
+      "hz": 2,
+      "world_ready": true,
+      "errors": {},
+      "seq": 110,
+      "last_interaction": null,
+      "generation": 1,
+      "time_ms": 1791205395054,
+      "scene": {
+        "origin": "camera_position",
+        "range": 16,
+        "rays": [
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  0,
+                  96,
+                  7
+                ],
+                "hitPos": [
+                  0.5006235241889954,
+                  96.62001037597656,
+                  7.0
+                ]
+              }
+            ],
+            "offset": [
+              0,
+              0
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:grass_block",
+                "type": "Block",
+                "pos": [
+                  4,
+                  98,
+                  7
+                ],
+                "hitPos": [
+                  4.253332138061523,
+                  98.63067626953125,
+                  7.0
+                ]
+              }
+            ],
+            "offset": [
+              -15,
+              -30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  0,
+                  98,
+                  8
+                ],
+                "hitPos": [
+                  0.5007194876670837,
+                  98.62911224365234,
+                  8.0
+                ]
+              }
+            ],
+            "offset": [
+              -15,
+              0
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:stone",
+                "type": "Block",
+                "pos": [
+                  -3,
+                  98,
+                  5
+                ],
+                "hitPos": [
+                  -2.097883701324463,
+                  98.01193237304688,
+                  5.0
+                ]
+              }
+            ],
+            "offset": [
+              -15,
+              30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:grass_block",
+                "type": "Block",
+                "pos": [
+                  3,
+                  96,
+                  5
+                ],
+                "hitPos": [
+                  3.0984609127044678,
+                  96.62001037597656,
+                  5.0
+                ]
+              }
+            ],
+            "offset": [
+              0,
+              -30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:stone",
+                "type": "Block",
+                "pos": [
+                  -3,
+                  96,
+                  4
+                ],
+                "hitPos": [
+                  -2.0,
+                  96.62001037597656,
+                  4.830448150634766
+                ]
+              }
+            ],
+            "offset": [
+              0,
+              30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow_layer",
+                "type": "Block",
+                "pos": [
+                  1,
+                  96,
+                  2
+                ],
+                "hitPos": [
+                  1.4240179061889648,
+                  96.125,
+                  2.1002087593078613
+                ]
+              }
+            ],
+            "offset": [
+              15,
+              -30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:powder_snow",
+                "type": "Block",
+                "pos": [
+                  0,
+                  95,
+                  4
+                ],
+                "hitPos": [
+                  0.5003357529640198,
+                  95.68240356445312,
+                  4.0
+                ]
+              }
+            ],
+            "offset": [
+              15,
+              0
+            ]
+          }
+        ],
+        "crosshair": {
+          "hitPosZ": 7.0,
+          "hitPosX": 0.5000019669532776,
+          "hitPosY": 96.62513732910156,
+          "face": 2,
+          "y": 96,
+          "x": 0,
+          "z": 7,
+          "type": "Block",
+          "block": [
+            "minecraft:snow",
+            0
+          ]
+        },
+        "visibility": "sparse_geometry_estimate"
+      },
+      "capabilities": [
+        "move",
+        "look",
+        "jump",
+        "wait",
+        "select_slot",
+        "use",
+        "dig",
+        "place",
+        "attack"
+      ],
+      "metrics": {
+        "bridge_ms_p95": 0.933,
+        "output_bytes": 982,
+        "pending": 0,
+        "samples": 58,
+        "sample_ms_max": 2.644
+      },
+      "player": {
+        "position": [
+          0.5,
+          96.62001037597656,
+          0.5
+        ],
+        "rotation": [
+          0.0,
+          -3.0517578125e-05
+        ],
+        "health": 20.0,
+        "id": "-4294967295",
+        "inventory": []
+      },
+      "epoch": "1791205337391000-1929985160",
+      "camera": {
+        "forward": [
+          3.01991519791045e-07,
+          0.0,
+          0.9999995231628418
+        ],
+        "position": [
+          0.5,
+          96.62001037597656,
+          0.5
+        ],
+        "rotation": [
+          -0.0,
+          179.99996948242188,
+          0.0
+        ],
+        "fov": 60.0,
+        "perspective": 0
+      },
+      "ui": {
+        "top": "hud_screen",
+        "screen_events": [
+          {
+            "screenDef": "",
+            "namespace": "",
+            "screenName": "in_game_play_screen"
+          },
+          {
+            "screenDef": "hud.hud_screen",
+            "namespace": "hud.hud_screen",
+            "screenName": "hud_screen"
+          }
+        ],
+        "coverage": "top_name_and_push_pop"
+      },
+      "coverage": {
+        "ui_controls": false,
+        "unverified_actions": [
+          "jump",
+          "use",
+          "place",
+          "attack"
+        ],
+        "audio": "play_requests_not_audibility",
+        "pixels": false,
+        "complete_scene": false
+      },
+      "tick": 1821,
+      "type": "observation"
+    },
+    "moved": {
+      "hz": 2,
+      "world_ready": true,
+      "errors": {},
+      "seq": 114,
+      "last_interaction": null,
+      "generation": 2,
+      "time_ms": 1791205397142,
+      "scene": {
+        "origin": "camera_position",
+        "range": 16,
+        "rays": [
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow_layer",
+                "type": "Block",
+                "pos": [
+                  -4,
+                  96,
+                  0
+                ],
+                "hitPos": [
+                  -3.039668560028076,
+                  96.125,
+                  0.4973587989807129
+                ]
+              }
+            ],
+            "offset": [
+              0,
+              0
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -5,
+                  96,
+                  1
+                ],
+                "hitPos": [
+                  -4.0,
+                  96.38018035888672,
+                  1.8254622220993042
+                ]
+              }
+            ],
+            "offset": [
+              -15,
+              -30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -6,
+                  96,
+                  0
+                ],
+                "hitPos": [
+                  -5.0,
+                  96.32384490966797,
+                  0.4973589777946472
+                ]
+              }
+            ],
+            "offset": [
+              -15,
+              0
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -5,
+                  96,
+                  -1
+                ],
+                "hitPos": [
+                  -4.0,
+                  96.38019561767578,
+                  -0.830450177192688
+                ]
+              }
+            ],
+            "offset": [
+              -15,
+              30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow_layer",
+                "type": "Block",
+                "pos": [
+                  -3,
+                  96,
+                  1
+                ],
+                "hitPos": [
+                  -2.8601436614990234,
+                  96.125,
+                  1.1672685146331787
+                ]
+              }
+            ],
+            "offset": [
+              0,
+              -30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow_layer",
+                "type": "Block",
+                "pos": [
+                  -3,
+                  96,
+                  -1
+                ],
+                "hitPos": [
+                  -2.860208034515381,
+                  96.125,
+                  -0.17243963479995728
+                ]
+              }
+            ],
+            "offset": [
+              0,
+              30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow_layer",
+                "type": "Block",
+                "pos": [
+                  -3,
+                  96,
+                  0
+                ],
+                "hitPos": [
+                  -2.302933692932129,
+                  96.125,
+                  0.8455156683921814
+                ]
+              }
+            ],
+            "offset": [
+              15,
+              -30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow_layer",
+                "type": "Block",
+                "pos": [
+                  -3,
+                  96,
+                  0
+                ],
+                "hitPos": [
+                  -2.3962340354919434,
+                  96.125,
+                  0.4973587393760681
+                ]
+              }
+            ],
+            "offset": [
+              15,
+              0
+            ]
+          }
+        ],
+        "crosshair": {
+          "hitPosZ": 0.4973584711551666,
+          "hitPosX": -3.0426549911499023,
+          "hitPosY": 96.125,
+          "face": 1,
+          "y": 96,
+          "x": -4,
+          "z": 0,
+          "type": "Block",
+          "block": [
+            "minecraft:snow_layer",
+            0
+          ]
+        },
+        "visibility": "sparse_geometry_estimate"
+      },
+      "capabilities": [
+        "move",
+        "look",
+        "jump",
+        "wait",
+        "select_slot",
+        "use",
+        "dig",
+        "place",
+        "attack"
+      ],
+      "metrics": {
+        "bridge_ms_p95": 1.305,
+        "output_bytes": 0,
+        "pending": 0,
+        "samples": 66,
+        "sample_ms_max": 9.754
+      },
+      "player": {
+        "position": [
+          -1.6999999284744263,
+          96.62001037597656,
+          0.4999992847442627
+        ],
+        "rotation": [
+          20.0,
+          90.00003051757812
+        ],
+        "health": 20.0,
+        "id": "-4294967295",
+        "inventory": []
+      },
+      "epoch": "1791205337391000-1929985160",
+      "camera": {
+        "forward": [
+          -0.9396923780441284,
+          -0.3420199751853943,
+          -4.172249532530259e-07
+        ],
+        "position": [
+          -1.6999973058700562,
+          96.61248779296875,
+          0.49735867977142334
+        ],
+        "rotation": [
+          19.999988555908203,
+          -89.99999237060547,
+          0.02031283639371395
+        ],
+        "fov": 60.0,
+        "perspective": 0
+      },
+      "ui": {
+        "top": "hud_screen",
+        "screen_events": [
+          {
+            "screenDef": "",
+            "namespace": "",
+            "screenName": "in_game_play_screen"
+          },
+          {
+            "screenDef": "hud.hud_screen",
+            "namespace": "hud.hud_screen",
+            "screenName": "hud_screen"
+          }
+        ],
+        "coverage": "top_name_and_push_pop"
+      },
+      "coverage": {
+        "ui_controls": false,
+        "unverified_actions": [
+          "jump",
+          "use",
+          "place",
+          "attack"
+        ],
+        "audio": "play_requests_not_audibility",
+        "pixels": false,
+        "complete_scene": false
+      },
+      "tick": 1884,
+      "type": "observation"
+    },
+    "dug": {
+      "hz": 2,
+      "world_ready": true,
+      "errors": {},
+      "seq": 116,
+      "last_interaction": {
+        "source": "client_loaded_block",
+        "sample_tick": 1916,
+        "position": [
+          -2,
+          95,
+          0
+        ],
+        "tick": 1904,
+        "block": [
+          "minecraft:air",
+          0
+        ]
+      },
+      "generation": 2,
+      "time_ms": 1791205398198,
+      "scene": {
+        "origin": "camera_position",
+        "range": 16,
+        "rays": [
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -2,
+                  94,
+                  0
+                ],
+                "hitPos": [
+                  -1.6995551586151123,
+                  95.0,
+                  0.5282477140426636
+                ]
+              }
+            ],
+            "offset": [
+              0,
+              0
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -2,
+                  94,
+                  0
+                ],
+                "hitPos": [
+                  -1.467499017715454,
+                  95.0,
+                  0.9018727540969849
+                ]
+              }
+            ],
+            "offset": [
+              -15,
+              -30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -2,
+                  94,
+                  0
+                ],
+                "hitPos": [
+                  -1.6995551586151123,
+                  95.0,
+                  0.9640600085258484
+                ]
+              }
+            ],
+            "offset": [
+              -15,
+              0
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -2,
+                  94,
+                  0
+                ],
+                "hitPos": [
+                  -1.931572675704956,
+                  95.0,
+                  0.9018951058387756
+                ]
+              }
+            ],
+            "offset": [
+              -15,
+              30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -2,
+                  94,
+                  0
+                ],
+                "hitPos": [
+                  -1.685429334640503,
+                  95.0,
+                  0.5244622230529785
+                ]
+              }
+            ],
+            "offset": [
+              0,
+              -30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -2,
+                  94,
+                  0
+                ],
+                "hitPos": [
+                  -1.7136785984039307,
+                  95.0,
+                  0.5244635939598083
+                ]
+              }
+            ],
+            "offset": [
+              0,
+              30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -2,
+                  94,
+                  0
+                ],
+                "hitPos": [
+                  -1.6995551586151123,
+                  95.0,
+                  0.4999992847442627
+                ]
+              }
+            ],
+            "offset": [
+              15,
+              -30
+            ]
+          },
+          {
+            "hits": [
+              {
+                "identifier": "minecraft:snow",
+                "type": "Block",
+                "pos": [
+                  -2,
+                  94,
+                  0
+                ],
+                "hitPos": [
+                  -1.6995551586151123,
+                  95.0,
+                  0.4999992847442627
+                ]
+              }
+            ],
+            "offset": [
+              15,
+              0
+            ]
+          }
+        ],
+        "crosshair": {
+          "hitPosZ": 0.5295416116714478,
+          "hitPosX": -1.6995551586151123,
+          "hitPosY": 95.0,
+          "face": 1,
+          "y": 94,
+          "x": -2,
+          "z": 0,
+          "type": "Block",
+          "block": [
+            "minecraft:snow",
+            0
+          ]
+        },
+        "visibility": "sparse_geometry_estimate"
+      },
+      "capabilities": [
+        "move",
+        "look",
+        "jump",
+        "wait",
+        "select_slot",
+        "use",
+        "dig",
+        "place",
+        "attack"
+      ],
+      "metrics": {
+        "bridge_ms_p95": 3.147,
+        "output_bytes": 222,
+        "pending": 0,
+        "samples": 60,
+        "sample_ms_max": 4.788
+      },
+      "player": {
+        "position": [
+          -1.6999999284744263,
+          96.62001037597656,
+          0.4999992847442627
+        ],
+        "rotation": [
+          88.99966430664062,
+          0.0
+        ],
+        "health": 20.0,
+        "id": "-4294967295",
+        "inventory": []
+      },
+      "epoch": "1791205337391000-1929985160",
+      "camera": {
+        "forward": [
+          -5.2732453958981296e-09,
+          -0.9998473525047302,
+          0.017458198592066765
+        ],
+        "position": [
+          -1.6995551586151123,
+          96.61874389648438,
+          0.4999992847442627
+        ],
+        "rotation": [
+          88.99906921386719,
+          -179.99996948242188,
+          0.0034199468791484833
+        ],
+        "fov": 60.0,
+        "perspective": 0
+      },
+      "ui": {
+        "top": "hud_screen",
+        "screen_events": [
+          {
+            "screenDef": "",
+            "namespace": "",
+            "screenName": "in_game_play_screen"
+          },
+          {
+            "screenDef": "hud.hud_screen",
+            "namespace": "hud.hud_screen",
+            "screenName": "hud_screen"
+          }
+        ],
+        "coverage": "top_name_and_push_pop"
+      },
+      "coverage": {
+        "ui_controls": false,
+        "unverified_actions": [
+          "jump",
+          "use",
+          "place",
+          "attack"
+        ],
+        "audio": "play_requests_not_audibility",
+        "pixels": false,
+        "complete_scene": false
+      },
+      "tick": 1916,
+      "type": "observation"
+    }
+  },
+  "events": [
+    {
+      "kind": "sound_request",
+      "tick": 1854,
+      "data": {
+        "cancel": false,
+        "volume": 0.30000001192092896,
+        "pitch": 1.0,
+        "pos": [
+          -0.9693214893341064,
+          95.0,
+          0.49999964237213135
+        ],
+        "name": "step.snow"
+      },
+      "event_seq": 1,
+      "game_event_seq": 6
+    },
+    {
+      "kind": "sound_request",
+      "tick": 1905,
+      "data": {
+        "volume": 1.0,
+        "cancel": false,
+        "pos": [
+          -1.0,
+          96.0,
+          1.0
+        ],
+        "name": "dig.snow",
+        "pitch": 0.8269012570381165
+      },
+      "event_seq": 10,
+      "game_event_seq": 7
+    }
+  ],
+  "test_runner": {
+    "name": "当前玩家视角与状态",
+    "passed": true,
+    "steps": [
+      {
+        "step": {
+          "action": {
+            "op": "look",
+            "pitch": 20,
+            "yaw": 90
+          },
+          "assert": {
+            "path": "player.rotation.0",
+            "near": 20,
+            "tolerance": 1
+          }
+        },
+        "start_tick": 1916,
+        "receipt": {
+          "status": "completed",
+          "generation": 5,
+          "detail": null,
+          "epoch": "1791205337391000-1929985160",
+          "tick": 1928,
+          "type": "receipt",
+          "id": "action_1"
+        },
+        "evidence": {
+          "tick": 1931,
+          "path": "player.rotation.0",
+          "value": 20.000335693359375
+        },
+        "passed": true
+      },
+      {
+        "step": {
+          "assert": {
+            "path": "player.rotation.1",
+            "near": 90,
+            "tolerance": 1
+          }
+        },
+        "start_tick": 1931,
+        "evidence": {
+          "tick": 1947,
+          "path": "player.rotation.1",
+          "value": 90.00006103515625
+        },
+        "passed": true
+      },
+      {
+        "step": {
+          "assert": {
+            "path": "world_ready",
+            "equals": true
+          }
+        },
+        "start_tick": 1947,
+        "evidence": {
+          "tick": 1962,
+          "path": "world_ready",
+          "value": true
+        },
+        "passed": true
+      }
+    ],
+    "coverage": "state_events_only; visual_and_audible_quality_unverified",
+    "epoch": "1791205337391000-1929985160"
+  },
+  "mod_fixture_responded": true,
+  "log_sha256": "10f34cc75b14e736ea46bcc190acc9a0c57c556f3bf545197c79289005b93033",
+  "log_file": "test-ai-game-1791205227019999.log",
+  "offline_validation": {
+    "flutter_tests_passed": 38,
+    "ai_python_tests_passed": 13,
+    "reload_python_tests_passed": 7,
+    "flutter_analyze": "passed",
+    "release_macos_build": "passed"
+  },
+  "additional_exit_diagnostic": {
+    "method": "Post WM_CLOSE once to the only visible OGLES game window; no taskkill before exit",
+    "native_crash": true,
+    "exit_code": 3,
+    "functional_passed": true,
+    "log_file": "test-ai-game-1791206051890343.log",
+    "log_sha256": "3c712328e5730cd6592cae2f8d8e876717dc279e05a0ab381bb98ee8586fc83b",
+    "production_change": "none; temporary helper was not included"
+  }
+}

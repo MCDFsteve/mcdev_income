@@ -1,0 +1,26 @@
+[
+  {
+    "name": "axon",
+    "commit": "78f508dd4563dbcede50b6d4079b786de8adddc6",
+    "date": "2026-04-23T07:42:54-07:00",
+    "url": "https://github.com/jeremy46231/axon.git"
+  },
+  {
+    "name": "baritone",
+    "commit": "622977066159bd47ac9708fb4842dc3a87f2b63c",
+    "date": "2026-09-29T11:45:52-07:00",
+    "url": "https://github.com/cabaletta/baritone.git"
+  },
+  {
+    "name": "voyager",
+    "commit": "55e45a880755d0c8c66ca7fb5fe7962ac8974f89",
+    "date": "2023-07-27T03:35:42-04:00",
+    "url": "https://github.com/MineDojo/Voyager.git"
+  },
+  {
+    "name": "mindcraft",
+    "commit": "dd253cbe4354cd15fd5e4df88e57af3c88f2a4b3",
+    "date": "2026-02-14T13:02:56Z",
+    "url": "https://github.com/arclen-dev/mindcraft-ai.git"
+  }
+]

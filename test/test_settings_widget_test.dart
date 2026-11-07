@@ -10,6 +10,45 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets(
+    'item info sits in launch options and is disabled for menu-only launches',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final launcher = FakeLauncher()..selectedVersion = '3.9.0.401155';
+      await tester.pumpWidget(
+        host(
+          DevelopmentEnvironmentPanel(
+            storage: FakeStorage(),
+            launcherFactory: () async => launcher,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final info = find.byKey(const ValueKey('development-item-info'));
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('development-test-options')),
+          matching: info,
+        ),
+        findsOneWidget,
+      );
+      expect(tester.widget<OreCheckboxListTile>(info).value, isFalse);
+      await tester.ensureVisible(info);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('物品信息显示'));
+      await tester.pumpAndSettle();
+      expect(launcher.itemInfoDisplay, isTrue);
+      await tester.ensureVisible(find.text('仅打开游戏主菜单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('仅打开游戏主菜单'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<OreCheckboxListTile>(info).onChanged, isNull);
+    },
+  );
+
+  testWidgets(
     'mute sits in launch options, works in menu mode, and is disabled while running',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 1000);

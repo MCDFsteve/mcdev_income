@@ -472,6 +472,59 @@ void main() {
     },
   );
 
+  test(
+    'launch adopts UUIDs reset in sources after import and keeps selections',
+    () async {
+      final root = await fixture();
+      final host = launcher();
+      await host.importMods(root);
+      final other = launcher('other');
+      await other.refresh();
+      await other.togglePack(bpId, true);
+      // A packaging tool resets every UUID in the source project.
+      const newBp = '77777777-7777-4777-8777-777777777777';
+      const newRp = '88888888-8888-4888-8888-888888888888';
+      for (final name in ['BP', 'RP']) {
+        final file = File(p.join(root, name, 'manifest.json'));
+        await file.writeAsString(
+          (await file.readAsString())
+              .replaceAll(bpId, newBp)
+              .replaceAll(rpId, newRp),
+        );
+      }
+      await host.launchTest(worldName: 'test', creative: true, menuOnly: false);
+      // No game is installed, so launch stops after resolving the sources.
+      expect(host.error, '请先下载或导入游戏。');
+      expect(host.packs.map((pack) => pack.uuid).toSet(), {newBp, newRp});
+      expect(host.selectedPacks, {newBp, newRp});
+      final reopened = launcher();
+      await reopened.refresh();
+      expect(reopened.packs.map((pack) => pack.uuid).toSet(), {newBp, newRp});
+      expect(reopened.selectedPacks, {newBp, newRp});
+      await other.refresh();
+      expect(other.selectedPacks, {newBp});
+    },
+  );
+
+  test(
+    'launch keeps a registration whose source now reuses another pack UUID',
+    () async {
+      final root = await fixture();
+      final host = launcher();
+      await host.importMods(p.join(root, 'BP'));
+      await host.importMods(p.join(root, 'RP'));
+      final bp = await manifest(p.join(root, 'BP'));
+      bp['header']['uuid'] = rpId;
+      await File(
+        p.join(root, 'BP', 'manifest.json'),
+      ).writeAsString(jsonEncode(bp));
+      await host.launchTest(worldName: 'test', creative: true, menuOnly: false);
+      expect(host.error, '请先下载或导入游戏。');
+      expect(host.packs.map((pack) => pack.uuid).toSet(), {bpId, rpId});
+      expect(host.selectedPacks, {bpId, rpId});
+    },
+  );
+
   test('invalid companion and running game prevent any source edits', () async {
     final root = await fixture();
     final host = launcher();

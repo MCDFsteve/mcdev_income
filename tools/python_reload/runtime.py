@@ -174,6 +174,29 @@ _result = None
 _last_poll = 0
 _sequence = 0
 _poisoned = False
+_game_system = None
+_game_bridge = None
+_game_bridge_failed = False
+_game_bridge_error = None
+_ai_events = []
+_ai_dropped = 0
+
+
+def game_event(kind, data):
+    global _ai_dropped
+    if not os.environ.get('MCDEV_AI_PORT'):
+        return
+    # Event callbacks stay bounded even when no controller is connected.
+    if len(_ai_events) < 64:
+        if _ai_dropped:
+            _ai_events.append({'kind': 'event_gap', 'data': {'count': _ai_dropped}})
+            _ai_dropped = 0
+            if len(_ai_events) >= 64:
+                _ai_dropped += 1
+                return
+        _ai_events.append({'kind': kind, 'data': dict(data)})
+    else:
+        _ai_dropped += 1
 
 
 def _mcdev_native_reload_tick_310_v1():
@@ -183,6 +206,25 @@ def _mcdev_native_reload_tick_310_v1():
 
 def _mcdev_dispatch():
     global _last_poll, _last_request, _result, _sequence, _poisoned
+    global _game_bridge, _game_bridge_failed, _game_bridge_error
+    if getattr(_game_system, 'ai_destroyed', False):
+        if _game_bridge is not None:
+            _game_bridge.tick(_game_system, _epoch, _ai_events)
+        # Never apply a queued source reload during world destruction.
+        return
+    if os.environ.get('MCDEV_AI_PORT') and not _game_bridge_failed:
+        try:
+            if _game_bridge is None:
+                from mcdevPythonReloadScripts import ai_runtime
+                _game_bridge = ai_runtime.Bridge()
+            _game_bridge.tick(_game_system, _epoch, _ai_events)
+        except BaseException:
+            import traceback
+            _game_bridge_error = traceback.format_exc()[-4000:]
+            print('MCDEV_AI_FATAL ' + _game_bridge_error)
+            if _game_bridge is not None:
+                _game_bridge.close()
+            _game_bridge_failed = True
     now = time.time()
     if not _directory or not _nonce or now - _last_poll < 0.25:
         return
@@ -223,7 +265,8 @@ def _mcdev_dispatch():
                 _poisoned = _poisoned or applying
                 _result['restartRequired'] = _poisoned
     _sequence += 1
-    report = {'nonce': _nonce, 'epoch': _epoch, 'sequence': _sequence, 'result': _result}
+    report = {'nonce': _nonce, 'epoch': _epoch, 'sequence': _sequence, 'result': _result,
+              'ai_error': _game_bridge_error}
     try:
         with open(os.path.join(_directory, 'report.json'), 'wb') as handle:
             handle.write(json.dumps(report, ensure_ascii=True).encode('ascii'))
@@ -231,12 +274,13 @@ def _mcdev_dispatch():
         pass
 
 
-def tick(epoch):
-    global _epoch, _last_request, _result, _poisoned, _last_poll
+def tick(epoch, system=None):
+    global _epoch, _last_request, _result, _poisoned, _last_poll, _game_system
     if epoch != _epoch:
         _last_request = None
         _result = None
         _poisoned = False
         _last_poll = 0
     _epoch = epoch
+    _game_system = system
     _mcdev_native_reload_tick_310_v1()

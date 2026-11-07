@@ -13,6 +13,7 @@ import 'development_storage.dart';
 import 'download_io.dart';
 import 'game_archive_io.dart';
 export 'game_archive_io.dart';
+import 'item_info_io.dart';
 import 'launcher_service.dart';
 import 'mcs_api.dart';
 import 'performance_patch_io.dart';
@@ -38,6 +39,7 @@ import 'platform/game_diagnostics.dart' show classifyNativeDiagnostic;
 import 'mod_manifest_io.dart';
 import 'python_reload_io.dart';
 import 'sound_patch_io.dart';
+import 'ai_game_io.dart';
 
 Future<DevelopmentLauncher> openDevelopmentLauncher(
   DevelopmentStorage storage,
@@ -75,6 +77,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     showDeveloperConsole = this.preferences.getInt(_developerConsoleKey) == 1;
     disableCompanion = this.preferences.getInt(_disableCompanionKey) != 0;
     disableSound = this.preferences.getInt(_disableSoundKey) == 1;
+    itemInfoDisplay = this.preferences.getInt(_itemInfoKey) == 1;
+    aiControlEnabled = this.preferences.getInt(_aiControlKey) == 1;
     fullscreenShortcut = this.preferences.getInt(_fullscreenShortcutKey) == 1;
     useNewWorld = this.preferences.getInt(_newWorldKey) == 1;
     newWorldSeed = this.preferences.getString(_worldSeedKey) ?? '';
@@ -112,6 +116,30 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   static const _developerConsoleKey = 'development_show_developer_console_v1';
   static const _disableCompanionKey = 'development_disable_companion_v1';
   static const _disableSoundKey = 'development_disable_sound_v1';
+  static const _itemInfoKey = 'development_item_info_v1';
+  static const _aiControlKey = 'development_ai_control_v1';
+  AiGameBridge? aiBridge;
+  String? _aiFailure;
+  @override
+  String? get aiControlError =>
+      _aiFailure == null ? null : 'AI 控制已停止，请查看本次测试日志。';
+  @override
+  String? get aiDescriptorPath => aiBridge?.descriptor.path;
+  @override
+  bool get aiControlReady => aiBridge?.ready == true;
+  @override
+  void stopAiControl() => aiBridge?.stop();
+  @override
+  Future<void> chooseAiControl(bool enabled) async {
+    if (running || busy) return;
+    if (enabled && !aiControlSupported) {
+      throw const DevelopmentStorageException('AI 控制当前仅支持 3.10.0.420447。');
+    }
+    await preferences.setInt(_aiControlKey, enabled ? 1 : 0);
+    aiControlEnabled = enabled;
+    _notify();
+  }
+
   static const _fullscreenShortcutKey = 'development_fullscreen_shortcut_v1';
   static const _playerSkinKey = 'development_player_skin_v1';
   static const _newWorldKey = 'development_new_world_v1';
@@ -212,6 +240,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
 
   @override
   Future<void> reloadPython() async {
+    aiBridge?.stop();
     if (!pythonReloadAvailable) {
       throw DevelopmentStorageException(pythonReloadUnavailableReason);
     }
@@ -450,6 +479,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       ..showDeveloperConsole = showDeveloperConsole
       ..disableCompanion = disableCompanion
       ..disableSound = disableSound
+      ..itemInfoDisplay = itemInfoDisplay
       ..fullscreenShortcut = fullscreenShortcut
       ..playerSkin = skin
       ..useNewWorld = false
@@ -702,6 +732,18 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       throw const DevelopmentStorageException('无法保存关闭声音设置。');
     }
     disableSound = disabled;
+    _notify();
+  }
+
+  @override
+  Future<void> chooseItemInfoDisplay(bool enabled) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改物品信息显示设置。');
+    }
+    if (!await preferences.setInt(_itemInfoKey, enabled ? 1 : 0)) {
+      throw const DevelopmentStorageException('无法保存物品信息显示设置。');
+    }
+    itemInfoDisplay = enabled;
     _notify();
   }
 
@@ -1377,37 +1419,22 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     };
     final previousPacks = packs;
     final previousSelection = {...selectedPacks};
-    final store = (preferences as TestSessionPreferences).store;
-    final selectionChanges = <String, Object?>{};
     final mapping = changes.uuidReplacements;
-    if (mapping.entries.any((entry) => entry.key != entry.value)) {
-      for (final key in store.getKeys()) {
-        if (key != _selectionKey &&
-            !(key.startsWith('development_session_') &&
-                key.endsWith('_$_selectionKey'))) {
-          continue;
-        }
-        final raw = store.getString(key);
-        if (raw == null) continue;
-        final ids = (jsonDecode(raw) as List).cast<String>();
-        if (ids.any(mapping.containsKey)) {
-          selectionChanges[key] = jsonEncode([
-            for (final id in ids) mapping[id] ?? id,
-          ]);
-        }
-      }
-      final selected = selectedPacks.map((id) => mapping[id] ?? id).toSet();
-      selectedPacks
-        ..clear()
-        ..addAll(selected);
-    }
+    final selectionChanges =
+        mapping.entries.any((entry) => entry.key != entry.value)
+        ? _remapSelections(mapping)
+        : const <String, Object?>{};
     var savedRegistry = false;
     try {
       await changes.write();
       packs = [for (final pack in packs) replacements[pack.directory] ?? pack];
       await _saveProjects();
       savedRegistry = true;
-      if (selectionChanges.isNotEmpty) await store.apply(selectionChanges);
+      if (selectionChanges.isNotEmpty) {
+        await (preferences as TestSessionPreferences).store.apply(
+          selectionChanges,
+        );
+      }
       notice = refreshUuids
           ? '项目 UUID 已随机刷新，包依赖已同步。'
           : '项目版本号已升级，末位加 1，模块和包依赖已同步。';
@@ -1421,6 +1448,100 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       rethrow;
     }
   });
+
+  /// Remaps this tab's selection and returns the saved selections of every
+  /// tab that refer to a replaced pack UUID.
+  Map<String, Object?> _remapSelections(Map<String, String> mapping) {
+    final store = (preferences as TestSessionPreferences).store;
+    final changes = <String, Object?>{};
+    for (final key in store.getKeys()) {
+      if (key != _selectionKey &&
+          !(key.startsWith('development_session_') &&
+              key.endsWith('_$_selectionKey'))) {
+        continue;
+      }
+      final raw = store.getString(key);
+      if (raw == null) continue;
+      final ids = (jsonDecode(raw) as List).cast<String>();
+      if (ids.any(mapping.containsKey)) {
+        changes[key] = jsonEncode([for (final id in ids) mapping[id] ?? id]);
+      }
+    }
+    final selected = selectedPacks.map((id) => mapping[id] ?? id).toSet();
+    selectedPacks
+      ..clear()
+      ..addAll(selected);
+    return changes;
+  }
+
+  // Packaging tools may reset manifest UUIDs after import. The registered
+  // directory identifies a pack, so adopt its current header and keep every
+  // tab's selection rather than requiring the project to be imported again.
+  // Called while startup owns the shared preparation lock.
+  Future<void> _syncPackUuids() async {
+    await _readProjects();
+    final taken = {for (final pack in packs) pack.uuid};
+    final mapping = <String, String>{};
+    final next = <ModPack>[];
+    for (final pack in packs) {
+      ModPack? current;
+      try {
+        final directory = await Directory(
+          pack.directory,
+        ).resolveSymbolicLinks();
+        current = (await discoverModPacks(
+          pack.directory,
+        )).where((item) => p.equals(item.directory, directory)).singleOrNull;
+      } on Exception {
+        // Launch reports an unavailable or invalid source if it is chosen.
+      }
+      // Never let two registered packs share one UUID or snapshot directory.
+      if (current == null ||
+          current.uuid == pack.uuid ||
+          taken.contains(current.uuid)) {
+        next.add(pack);
+        continue;
+      }
+      taken
+        ..remove(pack.uuid)
+        ..add(current.uuid);
+      mapping[pack.uuid] = current.uuid;
+      next.add(
+        ModPack(
+          name: current.name,
+          uuid: current.uuid,
+          version: current.version,
+          type: current.type,
+          directory: pack.directory,
+          projectRoot: pack.projectRoot,
+          importedAt: pack.importedAt,
+          lastLaunchedAt: pack.lastLaunchedAt,
+        ),
+      );
+    }
+    if (mapping.isEmpty) return;
+    final previousPacks = packs;
+    final previousSelection = {...selectedPacks};
+    final selectionChanges = _remapSelections(mapping);
+    var savedRegistry = false;
+    try {
+      packs = next;
+      await _saveProjects();
+      savedRegistry = true;
+      if (selectionChanges.isNotEmpty) {
+        await (preferences as TestSessionPreferences).store.apply(
+          selectionChanges,
+        );
+      }
+    } catch (_) {
+      packs = previousPacks;
+      selectedPacks
+        ..clear()
+        ..addAll(previousSelection);
+      if (savedRegistry) await _saveProjects();
+      rethrow;
+    }
+  }
 
   @override
   Future<void> removePack(String uuid) => removePacks([uuid]);
@@ -1454,6 +1575,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     required bool creative,
     required bool menuOnly,
     String? seed,
+    int difficulty = 2,
   }) {
     if (busy || running) {
       return Future.error(const DevelopmentStorageException('此测试页已经在运行。'));
@@ -1471,6 +1593,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           creative: creative,
           menuOnly: menuOnly,
           seed: seed,
+          difficulty: difficulty,
           releasePreparation: releasePreparation,
         ),
       ),
@@ -1486,9 +1609,19 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     required bool menuOnly,
     required void Function() releasePreparation,
     String? seed,
+    int difficulty = 2,
   }) async {
+    if (difficulty < 0 || difficulty > 3) {
+      throw ArgumentError.value(difficulty, 'difficulty');
+    }
     final generation = _launchGeneration;
     _pythonReloadSession = null;
+    _aiFailure = null;
+    if (aiControlEnabled && !aiControlSupported && !menuOnly) {
+      throw const DevelopmentStorageException(
+        'AI 控制仅适配已校验的 3.10.0.420447，请切换版本或关闭 AI 控制。',
+      );
+    }
     _pythonReloadBridge = null;
     _pythonReloadFailure = null;
     _pythonReloadNeedsRestart = false;
@@ -1512,6 +1645,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       _rosterSequence = -1;
       _rosterEpoch = null;
       _hostPackRoot = null;
+      await _syncPackUuids();
     }
     final game = games
         .where((game) => game.version == selectedVersion)
@@ -1685,10 +1819,15 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           pythonPacks.add(PythonReloadPack(source, target.path));
         }
       }
+      if (itemInfoDisplay && !menuOnly) {
+        await installItemInfoPacks(dataRoot);
+        behavior.add(itemInfoPackName);
+        resources.add(itemInfoPackName);
+      }
       if (!menuOnly && game.version == pythonReloadVersion) {
         try {
           _pythonReloadSession = await PythonReloadSession.capture(pythonPacks);
-          if (_pythonReloadSession!.hasScripts) {
+          if (_pythonReloadSession!.hasScripts || aiControlEnabled) {
             pythonFiles = await preparePythonReloadDll(
               storage.paths.runtimes,
               File(executable),
@@ -1700,11 +1839,17 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
               roots: _pythonReloadSession!.roots,
             );
             behavior.add(PythonReloadBridge.packName);
+            if (aiControlEnabled) {
+              aiBridge = await AiGameBridge.start(_runtime.testDirectory);
+            }
           }
         } catch (e) {
           _pythonReloadFailure = 'Python 热重载暂不可用：$e';
           pythonFiles = null;
           _pythonReloadBridge = null;
+          await aiBridge?.close();
+          aiBridge = null;
+          if (aiControlEnabled) rethrow;
         }
       }
       final modCapture = await prepareModLogCapture(modSnapshots);
@@ -1779,7 +1924,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
                   'name': worldName.trim().isEmpty ? '模组测试' : worldName.trim(),
                   'seed': world.seed,
                   'game_type': creative ? 1 : 0,
-                  'difficulty': 2,
+                  'difficulty': difficulty,
                   'permission_level': 1,
                   'cheat': true,
                   'cheat_info': {
@@ -1883,7 +2028,10 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         marker: modCapture.marker,
         sources: modCapture.sources,
         onText: (text) {
-          if (generation == _launchGeneration) output?.write(text);
+          if (generation == _launchGeneration) {
+            output?.write(text);
+            aiBridge?.addModLog(text);
+          }
         },
         onNativeLine: (line) {
           if (generation != _launchGeneration) return;
@@ -1930,6 +2078,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         overrides: {
           if (soundFiles != null) 'MCDEV_SOUND_LOG': _winPath(soundLog.path),
           if (_pythonReloadBridge != null) ..._pythonReloadBridge!.environment,
+          if (aiBridge != null) ...aiBridge!.environment,
           if (lanFiles != null) ...{
             'MCDEV_LAN_PATCH_LOG': _winPath(lanLog),
             'MCDEV_LAN_ROLE': _joinTarget == null ? 'host' : 'guest',
@@ -2055,7 +2204,14 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
           }
           polling = true;
           try {
-            await bridge.poll();
+            final report = await bridge.poll();
+            if (report?['ai_error'] != null &&
+                aiBridge != null &&
+                _aiFailure == null) {
+              aiBridge?.stop();
+              _aiFailure = 'AI 游戏桥接失败：${report!['ai_error']}';
+              await _pythonReloadLog('[ERROR] $_aiFailure');
+            }
             _notify();
           } finally {
             polling = false;
@@ -2147,6 +2303,8 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       _pythonReloadTimer?.cancel();
       _pythonReloadTimer = null;
       final reloadBridge = _pythonReloadBridge;
+      await aiBridge?.close();
+      aiBridge = null;
       _pythonReloadBridge = null;
       await reloadBridge?.close();
       // A cancelled staging operation must restore its files before another
@@ -2441,6 +2599,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
 
   @override
   Future<void> stopGame() async {
+    aiBridge?.stop();
     final completion = _launchCompletion;
     final generation = _launchGeneration;
     if (_game == null && !busy) return;
@@ -2460,6 +2619,14 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         // Still close the host if a guest could not finish shutting down.
       }
       final child = _game;
+      if (aiBridge != null) {
+        final acknowledged = await aiBridge!.suspend();
+        _pythonReloadLog(
+          acknowledged
+              ? '[INFO] AI 桥接器已确认停止采样与输入。'
+              : '[WARN] AI 桥接器停止确认超时或已断开。',
+        );
+      }
       if (child != null) await _requestProcessExit(child);
       await completion?.timeout(const Duration(seconds: 90));
     } catch (_) {
@@ -2476,6 +2643,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
 
   @override
   void dispose() {
+    aiBridge?.stop();
     _disposed = true;
     _control?.cancelled = true;
     for (final guest in _lanGuests.values) {

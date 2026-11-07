@@ -1,0 +1,42 @@
+{
+  "namespace": "mcdevItemInfo",
+  "main": {
+    "type": "screen",
+    "absorbs_input": false,
+    "always_accepts_input": false,
+    "force_render_below": false,
+    "is_showing_menu": false,
+    "render_game_behind": true,
+    "render_only_when_topmost": false,
+    "should_steal_mouse": false,
+    "controls": [
+      { "info@mcdevItemInfo.info": {} }
+    ]
+  },
+  "info": {
+    "type": "image",
+    "texture": "textures/ui/Black",
+    "alpha": 0.6,
+    "anchor_from": "top_right",
+    "anchor_to": "top_right",
+    "offset": [-4, 4],
+    "size": ["100%c + 8px", "100%c + 6px"],
+    "layer": 1,
+    "visible": false,
+    "controls": [
+      { "text@mcdevItemInfo.text": {} }
+    ]
+  },
+  "text": {
+    "type": "label",
+    "anchor_from": "center",
+    "anchor_to": "center",
+    "size": ["default", "default"],
+    "text": "",
+    "text_alignment": "right",
+    "color": [1, 1, 1],
+    "localize": false,
+    "enable_profanity_filter": false,
+    "layer": 2
+  }
+}

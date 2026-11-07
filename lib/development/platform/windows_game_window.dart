@@ -9,7 +9,10 @@ import 'game_diagnostics.dart';
 /// controls that frame; the native host only embeds the exact owned game HWND.
 class WindowsGameWindow extends GameWindowBackend {
   WindowsGameWindow({String? hostExecutable})
-    : hostExecutable = hostExecutable ?? Platform.resolvedExecutable;
+    : hostExecutable =
+          hostExecutable ??
+          Platform.environment['MCDEV_GAME_HOST'] ??
+          Platform.resolvedExecutable;
   final String hostExecutable;
   Process? _host;
   final _diagnostics = StreamController<GameDiagnostic>.broadcast();

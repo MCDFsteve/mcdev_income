@@ -1,5 +1,29 @@
 part of '../core.dart';
 
+/// A challenge issued by the same URS session that is waiting for verification.
+class LoginCaptchaChallenge {
+  const LoginCaptchaChallenge({
+    required this.captchaId,
+    required this.email,
+    required this.ret,
+  });
+
+  final String captchaId;
+  final String email;
+  final String ret;
+}
+
+/// Headless/background callers must surface the challenge without retrying it.
+class LoginChallengeException extends McDevException {
+  LoginChallengeException(this.ret, Uri uri, {this.captchaId = ''})
+    : super('网易要求安全验证，请在登录界面完成验证后继续 (ret=$ret)', uri);
+
+  final String ret;
+  final String captchaId;
+}
+
+typedef LoginCaptchaHandler = Future<String?> Function(LoginCaptchaChallenge);
+
 class LoginService {
   static http.Client Function() clientFactory = () =>
       _LoginHttpClient(http.Client());
@@ -138,6 +162,7 @@ class LoginService {
     required String email,
     required String password,
     required bool rememberPassword,
+    LoginCaptchaHandler? onCaptcha,
   }) async {
     final normalizedEmail = email.trim();
     final preferOversea = _isOverseaEmail(normalizedEmail);
@@ -154,6 +179,7 @@ class LoginService {
               email: normalizedEmail,
               password: password,
               rememberPassword: rememberPassword,
+              onCaptcha: onCaptcha,
             ),
           ]
         : <Future<LoginSession> Function()>[
@@ -161,6 +187,7 @@ class LoginService {
               email: normalizedEmail,
               password: password,
               rememberPassword: rememberPassword,
+              onCaptcha: onCaptcha,
             ),
             () => _loginWithOverseaEmail(
               email: normalizedEmail,
@@ -213,54 +240,108 @@ class LoginService {
     required String email,
     required String password,
     required bool rememberPassword,
+    LoginCaptchaHandler? onCaptcha,
   }) async {
     final client = clientFactory();
     final cookies = <String, String>{};
     try {
-      await _postUrsJson(
+      final initialization = await _postUrsJson(
         client: client,
         cookies: cookies,
         path: 'ini',
         data: {'pd': _ursProduct, 'pkid': _ursPromark, 'pkht': _mcdevHost},
       );
-
-      final powerData = await _prepareUrsPowerData(
-        client: client,
-        cookies: cookies,
-        email: email,
-      );
-      final ticket = await _postUrsJson(
-        client: client,
-        cookies: cookies,
-        path: 'gt',
-        data: {'un': email, 'pkid': _ursPromark, 'pd': _ursProduct},
-      );
-      final tk = ticket['tk']?.toString();
-      if (tk == null || tk.isEmpty) {
-        throw McDevException('登录票据获取失败', _ursUri('gt'));
+      var captchaId = initialization['capId']?.toString() ?? '';
+      var challenges = 0;
+      Future<void> verifyCaptcha(LoginChallengeException challenge) async {
+        if (challenge.captchaId.isNotEmpty) {
+          captchaId = challenge.captchaId;
+        }
+        if (onCaptcha == null || challenges >= 2) {
+          throw LoginChallengeException(
+            challenge.ret,
+            challenge.uri,
+            captchaId: captchaId,
+          );
+        }
+        if (captchaId.isEmpty) {
+          throw McDevException('网易未返回安全验证配置，请稍后重试', challenge.uri);
+        }
+        challenges++;
+        final validate = await onCaptcha(
+          LoginCaptchaChallenge(
+            captchaId: captchaId,
+            email: email,
+            ret: challenge.ret,
+          ),
+        );
+        if (validate == null || validate.trim().isEmpty) {
+          throw McDevException('已取消安全验证', challenge.uri);
+        }
+        // The official SDK's onVerify token is verified in the existing URS
+        // cookie session. No password or URS cookies are given to the browser.
+        await _postUrsJson(
+          client: client,
+          cookies: cookies,
+          path: 'vfscp',
+          data: {
+            'un': email,
+            'pd': _ursProduct,
+            'pkid': _ursPromark,
+            'cap': validate,
+          },
+          acceptedReturns: const {'201'},
+        );
       }
 
-      final loginData = <String, dynamic>{
-        'un': email,
-        'pw': _rsaEncryptPassword(password),
-        'pd': _ursProduct,
-        'l': 0,
-        'd': 10,
-        't': DateTime.now().millisecondsSinceEpoch,
-        'pkid': _ursPromark,
-        'domains': '',
-        'tk': tk,
-        'pwdKeyUp': 0,
-      };
-      if (powerData != null) {
-        loginData['pVParam'] = powerData;
+      if (_intFromDynamic(initialization['capFlag']) == 6) {
+        await verifyCaptcha(LoginChallengeException('447', _ursUri('ini')));
       }
-      final loginResponse = await _postUrsJson(
-        client: client,
-        cookies: cookies,
-        path: 'l',
-        data: loginData,
-      );
+
+      late Map<String, dynamic> loginResponse;
+      while (true) {
+        try {
+          // Proofs and tickets are single-use and can expire while the user
+          // completes a challenge, so obtain fresh ones after verification.
+          final powerData = await _prepareUrsPowerData(
+            client: client,
+            cookies: cookies,
+            email: email,
+          );
+          final ticket = await _postUrsJson(
+            client: client,
+            cookies: cookies,
+            path: 'gt',
+            data: {'un': email, 'pkid': _ursPromark, 'pd': _ursProduct},
+          );
+          final tk = ticket['tk']?.toString();
+          if (tk == null || tk.isEmpty) {
+            throw McDevException('登录票据获取失败', _ursUri('gt'));
+          }
+
+          loginResponse = await _postUrsJson(
+            client: client,
+            cookies: cookies,
+            path: 'l',
+            data: {
+              'un': email,
+              'pw': _rsaEncryptPassword(password),
+              'pd': _ursProduct,
+              'l': 0,
+              'd': 10,
+              't': DateTime.now().millisecondsSinceEpoch,
+              'pkid': _ursPromark,
+              'domains': '',
+              'tk': tk,
+              'pwdKeyUp': 0,
+              'pVParam': ?powerData,
+            },
+          );
+          break;
+        } on LoginChallengeException catch (challenge) {
+          await verifyCaptcha(challenge);
+        }
+      }
       await _completeUrsCookieSet(
         client: client,
         cookies: cookies,
@@ -353,6 +434,7 @@ class LoginService {
     required Map<String, String> cookies,
     required String path,
     required Map<String, dynamic> data,
+    Set<String> acceptedReturns = const {'201', '200', '202', '102', '104'},
   }) async {
     final uri = _ursUri(path);
     final payload = <String, dynamic>{...data};
@@ -375,16 +457,24 @@ class LoginService {
     if (response.statusCode != 200) {
       throw McDevException('网易登录请求失败: ${response.statusCode}', uri);
     }
-    final decoded = jsonDecode(response.body);
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException {
+      throw McDevException('网易登录响应不是 JSON，请稍后重试', uri);
+    }
     if (decoded is! Map<String, dynamic>) {
       throw McDevException('网易登录响应不是 JSON 对象', uri);
     }
-    final ret = decoded['ret']?.toString();
-    if (ret != '201' &&
-        ret != '200' &&
-        ret != '202' &&
-        ret != '102' &&
-        ret != '104') {
+    final ret = decoded['ret']?.toString() ?? '';
+    if (ret == '447') {
+      throw LoginChallengeException(
+        ret,
+        uri,
+        captchaId: decoded['capId']?.toString() ?? '',
+      );
+    }
+    if (!acceptedReturns.contains(ret)) {
       throw McDevException(_ursErrorMessage(decoded), uri);
     }
     return decoded;
@@ -1008,7 +1098,11 @@ class LoginService {
     '423': '当前登录存在风险，请进行安全验证',
     '427': '当前登录存在风险，请进行安全验证',
     '428': '当前登录存在风险，请稍后再试',
+    '441': '网易要求图形验证码，请通过网易官方页面完成验证',
     '442': '请输入正确的验证码',
+    '444': '网易要求滑动验证码，请通过网易官方页面完成验证',
+    '445': '网易要求安全验证码，请通过网易官方页面完成验证',
+    '447': '网易要求安全验证，请在登录界面完成验证后继续',
     '443': '请输入正确的短信验证码',
     '500': '系统繁忙，请稍后再试',
     '503': '服务器繁忙，请稍后再试',

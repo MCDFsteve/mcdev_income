@@ -1,0 +1,8 @@
+{
+  "name": "当前玩家视角与状态",
+  "steps": [
+    {"action": {"op": "look", "pitch": 20, "yaw": 90}, "assert": {"path": "player.rotation.0", "near": 20, "tolerance": 1}},
+    {"assert": {"path": "player.rotation.1", "near": 90, "tolerance": 1}},
+    {"assert": {"path": "world_ready", "equals": true}}
+  ]
+}

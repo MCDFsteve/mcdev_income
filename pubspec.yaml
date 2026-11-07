@@ -49,7 +49,9 @@ dependencies:
   shared_preferences: ^2.2.3
   flutter_widget_from_html_core: ^0.17.4
   url_launcher: ^6.3.2
+  flutter_inappwebview: ^6.1.5
   window_manager: ^0.5.2
+  screen_retriever: ^0.2.2
 
 dev_dependencies:
   flutter_test:
@@ -135,6 +137,9 @@ flutter:
     - assets/development/python-reload.dll
     - assets/development/sound-patch.dll
     - tools/python_reload/runtime.py
+    - tools/ai_game/runtime.py
+    - tools/item_info/runtime.py
+    - tools/item_info/ui.json
     - assets/development/winemac-dxmt.so
     - assets/development/fullscreen-shortcut.dylib
     - assets/development/ipv6-discovery.dylib

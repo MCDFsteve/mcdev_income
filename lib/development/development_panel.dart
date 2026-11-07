@@ -1342,6 +1342,39 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
                 ? '关闭游戏的所有声音，重启游戏后生效。'
                 : '当前仅支持 3.10.0.420447 x64，请选择受支持版本或取消勾选。',
           ),
+          toggle(
+            '物品信息显示',
+            launcher.itemInfoDisplay,
+            blocked || _menuOnly
+                ? null
+                : (value) => _run(
+                    () => launcher.chooseItemInfoDisplay(value ?? false),
+                  ),
+            key: const ValueKey('development-item-info'),
+            hint: '在测试世界右上角显示准星指向的方块或生物名称，未配置中文时标红。',
+          ),
+          toggle(
+            '允许 AI 控制当前玩家',
+            launcher.aiControlEnabled,
+            blocked ||
+                    _menuOnly ||
+                    (!launcher.aiControlSupported && !launcher.aiControlEnabled)
+                ? null
+                : (value) =>
+                      _run(() => launcher.chooseAiControl(value ?? false)),
+            hint: '3.10 测试世界可通过本地 JSON 接口读取状态、操作玩家和验证模组。重启生效。',
+          ),
+          if (launcher.aiDescriptorPath != null) ...[
+            Text(
+              launcher.aiControlError ??
+                  (launcher.aiControlReady ? 'AI 接口已就绪' : '正在等待游戏世界与视角就绪…'),
+            ),
+            OreSelectableText('AI 接口：${launcher.aiDescriptorPath}'),
+            TextButton(
+              onPressed: launcher.stopAiControl,
+              child: const Text('停止 AI 控制'),
+            ),
+          ],
           if (launcher.capabilities.commandShiftFullscreen)
             toggle(
               'Shift + Command 切换全屏',

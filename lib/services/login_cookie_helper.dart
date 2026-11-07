@@ -51,12 +51,14 @@ class LoginCookieHelper {
     required String email,
     required String password,
     required bool rememberPassword,
+    LoginCaptchaHandler? onCaptcha,
   }) {
     _configure();
     return LoginService.loginWithEmail(
       email: email,
       password: password,
       rememberPassword: rememberPassword,
+      onCaptcha: onCaptcha,
     );
   }
 

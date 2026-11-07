@@ -198,6 +198,22 @@ MCS 在“仅打开主菜单”模式下不传测试配置；因此该模式使�
 
 “启动游戏”区域提供 **Python 热重载** 按钮，支持已校验的 3.10.0.420447。启动测试时自动注入独立 DLL，在游戏 Python tick 中应用源项目的脚本修改，保留已有系统实例和回调。语法错误可修正重试；结构性修改或应用失败需要重新启动测试。第一版仅处理 Python，完整使用方法、限制和逆向依据见 [Python 热重载](python-reload.md)。
 
+## 物品信息显示
+
+勾选“物品信息显示”后，测试世界右上角实时显示准星指向的方块或生物，用于在上线前发现漏配的中文文本。第一行是游戏实际解析出的名称，第二行是 identifier，方块还带 aux：
+
+| 显示 | 含义 |
+| --- | --- |
+| 白色名称 | 已有中文 |
+| 黄色名称 | 有文本但不含汉字，例如 `zh_CN.lang` 里填的还是英文；`TNT` 这类名称本来就是英文，也会显示黄色 |
+| 红色“未配置中文”和语言键 | `zh_CN.lang` 没有这条文本，把这一行的键加进去即可。只写在 `en_US.lang` 也算缺失，中文环境不会回退到英文 |
+
+方块名称取自 `GetItemHoverName(identifier, aux)`，因此能区分 aux 变体；方块没有对应物品时回退到 `tile.<identifier>.name`。生物名称取自 `entity.<identifier>.name`。原版内容的键不含 `minecraft:` 前缀。玩家显示玩家名，不做检查。
+
+该功能是启动器内置的模组：[`item_info_io.dart`](../lib/development/item_info_io.dart) 在启动时把 `mcdev_item_info` 写入当前前缀的行为包和资源包目录，脚本和 HUD 定义位于 [`tools/item_info`](../tools/item_info)。它只读取客户端状态，不修改世界、不写入用户项目。“仅打开游戏主菜单”时不挂载。局域网访客沿用房主的设置。
+
+纯逻辑测试运行 `python3 -m unittest discover -s tools/item_info -p 'test_*.py'`。真实游戏验证使用 `test/live_item_info_smoke.dart`，需显式设置 `MCDEV_LIVE_ITEM_INFO=1`、`MCDEV_LIVE_ITEM_INFO_ROOT`（隔离目录）、`MCDEV_LIVE_AI_GAME_SOURCE`（已安装游戏的根目录）和 `MCDEV_LIVE_RELEASE_ASSETS`（Release 的 flutter_assets）。Windows 还要用 `MCDEV_GAME_HOST` 指向 Release 版可执行文件，并在已登录的桌面会话里运行，否则游戏窗口无法显示。可选的 `MCDEV_LIVE_ITEM_INFO_SCREENSHOT` 保存一张游戏画面，`MCDEV_LIVE_ITEM_INFO_VERSION` 指定游戏版本。
+
 ## 兼容补丁与来源
 
 Wine 游戏环境来自 [Gcenx macOS Wine builds 11.0_1](https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.0_1)。原始下载 SHA256 为 `b50dc50ec7f41d58b115a6b685d4d1315ba3c797bd3aa0f49213f2703cb82388`。

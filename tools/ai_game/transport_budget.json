@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "status": "proposed_not_wired_to_runtime",
+  "size_unit": "UTF-8 bytes of compact JSON before compression; framing charged separately",
+  "profiles": {
+    "idle": {"state_hz": 2, "state_target_bytes": 1024, "state_max_bytes": 2048},
+    "exploring": {"state_hz": 5, "state_target_bytes": 4096, "state_max_bytes": 8192},
+    "intensive": {"state_hz": 10, "state_target_bytes": 6144, "state_max_bytes": 16384}
+  },
+  "game_to_host": {
+    "frame_prefix_bytes": 4,
+    "max_frame_body_bytes": 16384,
+    "sustained_bytes_per_second": 98304,
+    "burst_capacity_bytes": 131072,
+    "critical_reserved_bytes_per_second": 8192,
+    "normal_event_reserved_bytes_per_second": 16384,
+    "snapshot_reserved_bytes_per_second": 8192,
+    "state_available_bytes_per_second": 65536,
+    "event_batch_window_ms": 50,
+    "event_batch_max_bytes": 4096,
+    "heartbeat_interval_ms": 1000,
+    "dirty_checkpoint_interval_ms": 10000,
+    "snapshot_total_max_bytes": 65536,
+    "snapshot_max_parts": 8,
+    "snapshot_part_max_bytes": 16384,
+    "queued_total_max_bytes": 262144,
+    "queued_critical_max_bytes": 32768,
+    "queued_normal_events_max_bytes": 65536,
+    "queued_snapshot_max_bytes": 65536,
+    "queued_state_versions": 1,
+    "state_stale_after_ms": 250,
+    "critical_queue_age_fail_stop_ms": 250,
+    "heartbeat_lease_ms": 2000
+  },
+  "host_to_game": {
+    "action_max_bytes": 1024,
+    "batch_max_bytes": 4096,
+    "batch_max_actions": 4,
+    "pending_actions": 8,
+    "active_actions": 1,
+    "accepted_actions_per_second": 16,
+    "sustained_bytes_per_second": 8192,
+    "control_reserved_bytes_per_second": 1024,
+    "burst_capacity_bytes": 16384
+  },
+  "host_to_model": {
+    "refill_interval_min_ms": 2000,
+    "refill_interval_max_ms": 5000,
+    "max_concurrent_requests_per_session": 1,
+    "requests_per_rolling_minute": 30,
+    "all_input_tokens_per_rolling_minute": 60000,
+    "observation_target_bytes": 4096,
+    "observation_max_bytes": 12288,
+    "observation_max_tokens": 2000,
+    "whole_request_max_input_tokens": 8192,
+    "urgent_coalesce_ms": 250,
+    "urgent_cancellations_per_10_seconds": 2
+  },
+  "game_thread": {
+    "sampling_soft_budget_ms_per_tick": 0.35,
+    "bridge_total_target_p95_ms_per_tick": 0.5,
+    "ray_queries_max_per_tick": 8,
+    "block_queries_max_per_tick": 64,
+    "entities_per_observation_max": 32,
+    "block_groups_per_observation_max": 48,
+    "model_precision_position_decimal_places": 2,
+    "model_precision_rotation_decimal_places": 1
+  },
+  "adaptation": {
+    "window_ms": 2000,
+    "overload_windows_to_degrade": 2,
+    "healthy_ms_to_recover": 10000,
+    "tick_queue_p95_overload_ms": 150,
+    "high_load_frame_time_multiplier": 1.1,
+    "critical_priority": "stop/death/damage/lease/world-change/action-terminal",
+    "degrade_order": ["map-scan", "distant-object-count", "occlusion-refresh", "state-hz:10>5>2"]
+  }
+}

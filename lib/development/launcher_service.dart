@@ -313,6 +313,18 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   bool showDeveloperConsole = false;
   bool disableCompanion = true;
   bool disableSound = false;
+  bool itemInfoDisplay = false;
+  bool aiControlEnabled = false;
+  bool get aiControlSupported => selectedVersion == '3.10.0.420447';
+  String? get aiDescriptorPath => null;
+  bool get aiControlReady => false;
+  String? get aiControlError => null;
+  Future<void> chooseAiControl(bool enabled) async {
+    aiControlEnabled = enabled;
+    notifyListeners();
+  }
+
+  void stopAiControl() {}
   bool get disableSoundSupported => supportsSoundPatch(selectedVersion);
   bool fullscreenShortcut = false;
   bool useNewWorld = false;
@@ -421,6 +433,11 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
 
   Future<void> chooseDisableSound(bool disabled) async {
     disableSound = disabled;
+    notifyListeners();
+  }
+
+  Future<void> chooseItemInfoDisplay(bool enabled) async {
+    itemInfoDisplay = enabled;
     notifyListeners();
   }
 

@@ -1,0 +1,893 @@
+{
+  "evidence_level": "static_candidates_not_live_execution",
+  "version": "3.10.0.420447",
+  "exe_sha256": "9be281dbe08bc591336680d5a50f94d87f3c57ee75b3afcb3cabdf03347e0269",
+  "image_base": "0x140000000",
+  "image_size": "0x1d28e000",
+  "dump_provenance": "pre-existing capture; signatures/layout match, original capture not repeated",
+  "sections": [
+    {
+      "name": "headers.bin",
+      "sha256": "5833b82c04f124c527b3d2517f3eb59beaed77e6b28d16c297452fdd5fbd04fa"
+    },
+    {
+      "name": "section-00001000.bin",
+      "sha256": "cc86c8d39558b06841ac4c515e81d315604a1c152a1475f4c604be93885993b6"
+    },
+    {
+      "name": "section-11d8e000.bin",
+      "sha256": "8e754bea3efa0d4a09be149ca460016df642f16f06ce418a04e61ab31d8925e0"
+    },
+    {
+      "name": "section-19a84000.bin",
+      "sha256": "e92927725c5828e739a9a4f3cef53fa51f3bbd6cde842cb614aa4005846b62f4"
+    },
+    {
+      "name": "section-1a81a000.bin",
+      "sha256": "ee1a4d9f7ec05c51e9d96fd2e35d3a1cd071813bdf4142961a69551be2aaaa50"
+    },
+    {
+      "name": "section-1a829000.bin",
+      "sha256": "f9437492415fde6956ee1a0c30b262dd7a3ce43751035bdb5266591954d7673e"
+    },
+    {
+      "name": "section-1a86c000.bin",
+      "sha256": "eef82b0aea575f7f2a965be57006c77baef2b4b20a12fbec731ff51c8aaea200"
+    },
+    {
+      "name": "section-1aa92000.bin",
+      "sha256": "6f37ad25d63fb2251c855b03ca402d453f597902f073ff4cad887c67ecaab157"
+    },
+    {
+      "name": "section-1aa9d000.bin",
+      "sha256": "9e6377f91c9f16c3700bef58d38ddb09877460bf95131fb4e1b8dacdf4ef0758"
+    },
+    {
+      "name": "section-1c3ae000.bin",
+      "sha256": "be04e8581d6620f778987712a178abd6218676b00ccdd087ee79f04ae9ed8904"
+    },
+    {
+      "name": "section-1d28d000.bin",
+      "sha256": "8fec8bba11ff42bc42936aeeb8fb866f271d24ef46b6e1815d4b5746b5755a41"
+    }
+  ],
+  "python_signatures": {
+    "PyEval_EvalFrameEx": {
+      "rva": "0xf7c0090",
+      "matches": true
+    },
+    "PyRun_StringFlags": {
+      "rva": "0xf7dbc90",
+      "matches": true
+    },
+    "PyErr_PrintEx": {
+      "rva": "0xf7da6e0",
+      "matches": true
+    }
+  },
+  "string_xrefs": [
+    {
+      "text": "get_input_vector",
+      "string_rva": "0x13651400",
+      "xrefs": [
+        {
+          "instruction_rva": "0x97cb79b",
+          "unwind_range": [
+            "0x97cadf0",
+            "0x97ccd6b"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x97846b0",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "get_move_input",
+      "string_rva": "0x13651418",
+      "xrefs": [
+        {
+          "instruction_rva": "0x97cb7b1",
+          "unwind_range": [
+            "0x97cadf0",
+            "0x97ccd6b"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x97847a0",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "lock_move_vector",
+      "string_rva": "0x13687b48",
+      "xrefs": [
+        {
+          "instruction_rva": "0x99a5519",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x99a1a10",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "unlock_move_vector",
+      "string_rva": "0x13687b60",
+      "xrefs": [
+        {
+          "instruction_rva": "0x99a552f",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x999ff10",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "change_jump_state",
+      "string_rva": "0x136520e0",
+      "xrefs": [
+        {
+          "instruction_rva": "0x97cc38d",
+          "unwind_range": [
+            "0x97cadf0",
+            "0x97ccd6b"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x978aaa0",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "getLocalPlayerPos",
+      "string_rva": "0x13657870",
+      "xrefs": [
+        {
+          "instruction_rva": "0x98332bd",
+          "unwind_range": [
+            "0x9833270",
+            "0x9833369"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9832990",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x9833a8d",
+          "unwind_range": [
+            "0x9833a40",
+            "0x9833b39"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9832990",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "getLocalPlayerRot",
+      "string_rva": "0x136578a0",
+      "xrefs": [
+        {
+          "instruction_rva": "0x98332e9",
+          "unwind_range": [
+            "0x9833270",
+            "0x9833369"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9832ab0",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x9833ab9",
+          "unwind_range": [
+            "0x9833a40",
+            "0x9833b39"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9832ab0",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "setLocalPlayerRot",
+      "string_rva": "0x136578b8",
+      "xrefs": [
+        {
+          "instruction_rva": "0x98332ff",
+          "unwind_range": [
+            "0x9833270",
+            "0x9833369"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9832e60",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x9833acf",
+          "unwind_range": [
+            "0x9833a40",
+            "0x9833b39"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9832e60",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "_gui::change_jump_state",
+      "string_rva": "0x1364f4e8",
+      "xrefs": [
+        {
+          "instruction_rva": "0x978aafa",
+          "unwind_range": [
+            "0x978aaa0",
+            "0x978ac16"
+          ]
+        },
+        {
+          "instruction_rva": "0x97aab62",
+          "unwind_range": [
+            "0x97aab30",
+            "0x97aac7e"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "_sunshine_interface::setLocalPlayerRot",
+      "string_rva": "0x13657780",
+      "xrefs": [
+        {
+          "instruction_rva": "0x9832ee0",
+          "unwind_range": [
+            "0x9832e60",
+            "0x9832fe3"
+          ]
+        },
+        {
+          "instruction_rva": "0x9832f5f",
+          "unwind_range": [
+            "0x9832e60",
+            "0x9832fe3"
+          ]
+        },
+        {
+          "instruction_rva": "0x9833cd0",
+          "unwind_range": [
+            "0x9833c80",
+            "0x9833dc2"
+          ]
+        },
+        {
+          "instruction_rva": "0x9833d4f",
+          "unwind_range": [
+            "0x9833c80",
+            "0x9833dc2"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "_sunshine_interface::getLocalPlayerRot",
+      "string_rva": "0x13657730",
+      "xrefs": [
+        {
+          "instruction_rva": "0x9832b3b",
+          "unwind_range": [
+            "0x9832ab0",
+            "0x9832bd0"
+          ]
+        },
+        {
+          "instruction_rva": "0x9833753",
+          "unwind_range": [
+            "0x98336f0",
+            "0x98337e8"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "setLocalPlayerJump",
+      "string_rva": "0x136578d0",
+      "xrefs": [
+        {
+          "instruction_rva": "0x9833315",
+          "unwind_range": [
+            "0x9833270",
+            "0x9833369"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9832ca0",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x9833ae5",
+          "unwind_range": [
+            "0x9833a40",
+            "0x9833b39"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9832ca0",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "local_player_attack_entity",
+      "string_rva": "0x13687008",
+      "xrefs": [
+        {
+          "instruction_rva": "0x999de69",
+          "unwind_range": [
+            "0x999de00",
+            "0x999deb9"
+          ]
+        },
+        {
+          "instruction_rva": "0x999dee4",
+          "unwind_range": [
+            "0x999deb9",
+            "0x999e028"
+          ]
+        },
+        {
+          "instruction_rva": "0x999df57",
+          "unwind_range": [
+            "0x999deb9",
+            "0x999e028"
+          ]
+        },
+        {
+          "instruction_rva": "0x999dfb8",
+          "unwind_range": [
+            "0x999deb9",
+            "0x999e028"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a5ac5",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x99a19f0",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x99a7b50",
+          "unwind_range": [
+            "0x99a7b30",
+            "0x99a7ba1"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a7bcc",
+          "unwind_range": [
+            "0x99a7ba1",
+            "0x99a7c1b"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a7c45",
+          "unwind_range": [
+            "0x99a7c1b",
+            "0x99a7c84"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a7cac",
+          "unwind_range": [
+            "0x99a7c84",
+            "0x99a7ceb"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "player_destory_block",
+      "string_rva": "0x1369f768",
+      "xrefs": [
+        {
+          "instruction_rva": "0x9a5d9a3",
+          "unwind_range": [
+            "0x9a5cb80",
+            "0x9a5e733"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9a2a530",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "local_player_start_destroy_block",
+      "string_rva": "0x13687088",
+      "xrefs": [
+        {
+          "instruction_rva": "0x999dc52",
+          "unwind_range": [
+            "0x999dba0",
+            "0x999dca2"
+          ]
+        },
+        {
+          "instruction_rva": "0x999dd83",
+          "unwind_range": [
+            "0x999dca2",
+            "0x999ddc4"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a5adb",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x99a1630",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x99a85ae",
+          "unwind_range": [
+            "0x99a8570",
+            "0x99a85fe"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a86df",
+          "unwind_range": [
+            "0x99a85fe",
+            "0x99a8720"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "local_player_continue_destroy_block",
+      "string_rva": "0x136870e8",
+      "xrefs": [
+        {
+          "instruction_rva": "0x99a5af1",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x99a15a0",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x99a7ff1",
+          "unwind_range": [
+            "0x99a7fb0",
+            "0x99a8041"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a8160",
+          "unwind_range": [
+            "0x99a8041",
+            "0x99a81a1"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "local_player_stop_destroy_block",
+      "string_rva": "0x13687148",
+      "xrefs": [
+        {
+          "instruction_rva": "0x99a125f",
+          "unwind_range": [
+            "0x99a1224",
+            "0x99a137c"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a12d5",
+          "unwind_range": [
+            "0x99a1224",
+            "0x99a137c"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a5b07",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x99a11d0",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x99a877c",
+          "unwind_range": [
+            "0x99a8740",
+            "0x99a87cc"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a87fa",
+          "unwind_range": [
+            "0x99a87cc",
+            "0x99a8891"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "local_player_build_block",
+      "string_rva": "0x13687168",
+      "xrefs": [
+        {
+          "instruction_rva": "0x99a144b",
+          "unwind_range": [
+            "0x99a13a0",
+            "0x99a159d"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a14a3",
+          "unwind_range": [
+            "0x99a13a0",
+            "0x99a159d"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a1528",
+          "unwind_range": [
+            "0x99a13a0",
+            "0x99a159d"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a5b1d",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x99a13a0",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x99a7e6e",
+          "unwind_range": [
+            "0x99a7e30",
+            "0x99a7fae"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a7ec6",
+          "unwind_range": [
+            "0x99a7e30",
+            "0x99a7fae"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a7f4b",
+          "unwind_range": [
+            "0x99a7e30",
+            "0x99a7fae"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "local_player_select_slot",
+      "string_rva": "0x136871b8",
+      "xrefs": [
+        {
+          "instruction_rva": "0x99a0171",
+          "unwind_range": [
+            "0x99a0110",
+            "0x99a028d"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a01c9",
+          "unwind_range": [
+            "0x99a0110",
+            "0x99a028d"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a0236",
+          "unwind_range": [
+            "0x99a0110",
+            "0x99a028d"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a5b33",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x99a0110",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x99a8459",
+          "unwind_range": [
+            "0x99a8440",
+            "0x99a8567"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a84b1",
+          "unwind_range": [
+            "0x99a8440",
+            "0x99a8567"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a8521",
+          "unwind_range": [
+            "0x99a8440",
+            "0x99a8567"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "local_player_use_item",
+      "string_rva": "0x13687208",
+      "xrefs": [
+        {
+          "instruction_rva": "0x999f81a",
+          "unwind_range": [
+            "0x999f7d0",
+            "0x999f9a4"
+          ]
+        },
+        {
+          "instruction_rva": "0x999f889",
+          "unwind_range": [
+            "0x999f7d0",
+            "0x999f9a4"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a5b49",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x999f7d0",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x99a88e0",
+          "unwind_range": [
+            "0x99a88b0",
+            "0x99a8a8c"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a894f",
+          "unwind_range": [
+            "0x99a88b0",
+            "0x99a8a8c"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "local_player_release_using_item",
+      "string_rva": "0x13687220",
+      "xrefs": [
+        {
+          "instruction_rva": "0x999f665",
+          "unwind_range": [
+            "0x999f630",
+            "0x999f6b5"
+          ]
+        },
+        {
+          "instruction_rva": "0x999f6e0",
+          "unwind_range": [
+            "0x999f6b5",
+            "0x999f72e"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a5b5f",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x999f630",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x99a82db",
+          "unwind_range": [
+            "0x99a82c0",
+            "0x99a832b"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a8356",
+          "unwind_range": [
+            "0x99a832b",
+            "0x99a83a4"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "local_player_is_using_item",
+      "string_rva": "0x13687240",
+      "xrefs": [
+        {
+          "instruction_rva": "0x999f555",
+          "unwind_range": [
+            "0x999f520",
+            "0x999f629"
+          ]
+        },
+        {
+          "instruction_rva": "0x999f5cb",
+          "unwind_range": [
+            "0x999f520",
+            "0x999f629"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a5b75",
+          "unwind_range": [
+            "0x99a54a0",
+            "0x99a5def"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x999f520",
+            "helper_rva": "0x9a9ac80"
+          }
+        },
+        {
+          "instruction_rva": "0x99a81eb",
+          "unwind_range": [
+            "0x99a81d0",
+            "0x99a82bf"
+          ]
+        },
+        {
+          "instruction_rva": "0x99a8261",
+          "unwind_range": [
+            "0x99a81d0",
+            "0x99a82bf"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "player_use_item_to_pos",
+      "string_rva": "0x1369f780",
+      "xrefs": [
+        {
+          "instruction_rva": "0x9a5d9b9",
+          "unwind_range": [
+            "0x9a5cb80",
+            "0x9a5e733"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9a2a3b0",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "player_attack_entity",
+      "string_rva": "0x1369f930",
+      "xrefs": [
+        {
+          "instruction_rva": "0x9a5db5b",
+          "unwind_range": [
+            "0x9a5cb80",
+            "0x9a5e733"
+          ],
+          "binding_candidate": {
+            "function_rva": "0x9a29690",
+            "helper_rva": "0x9a9ac80"
+          }
+        }
+      ]
+    },
+    {
+      "text": "_camera::Pick",
+      "string_rva": "0x136579e8",
+      "xrefs": [
+        {
+          "instruction_rva": "0x983b70e",
+          "unwind_range": [
+            "0x983b6c0",
+            "0x983b93b"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "_entitymodule::get_player_destroy_total_time",
+      "string_rva": "0x13663840",
+      "xrefs": [
+        {
+          "instruction_rva": "0x989ddb5",
+          "unwind_range": [
+            "0x989dd60",
+            "0x989e110"
+          ]
+        },
+        {
+          "instruction_rva": "0x989df62",
+          "unwind_range": [
+            "0x989dd60",
+            "0x989e110"
+          ]
+        }
+      ]
+    },
+    {
+      "text": "_camera::SetRot",
+      "string_rva": "0x13657bf8",
+      "xrefs": [
+        {
+          "instruction_rva": "0x98367d6",
+          "unwind_range": [
+            "0x983679e",
+            "0x9836825"
+          ]
+        },
+        {
+          "instruction_rva": "0x983cc63",
+          "unwind_range": [
+            "0x983cc20",
+            "0x983cd53"
+          ]
+        }
+      ]
+    }
+  ],
+  "capture_boundary": "writable sections omitted; signatures and runtime module accessibility need live verification"
+}

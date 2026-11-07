@@ -1,0 +1,11 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Item info verification resources",
+    "description": "Language entries for the item info fixture",
+    "uuid": "5d3e8a14-9b27-4c6f-b1d0-6a2f7c8e4d33",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 18, 0]
+  },
+  "modules": [{"type": "resources", "uuid": "8e1c4f92-6a3d-4b75-9c08-3d5b1a7f6e44", "version": [1, 0, 0]}]
+}
