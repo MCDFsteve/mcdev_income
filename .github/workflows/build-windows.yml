@@ -42,9 +42,25 @@ jobs:
           $dest = "${env:RELEASE_BASENAME}-windows-x86_64.zip"
           Compress-Archive -Path $source -DestinationPath $dest
 
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.metadata.outputs.version }}
+          RELEASE_BASENAME: ${{ steps.metadata.outputs.basename }}
+        run: |
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe", "$env:ProgramFiles\Inno Setup *\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw 'ISCC.exe not found' }
+          & $iscc.FullName "/DAppVersion=$env:APP_VERSION" "/DSourceDir=$PWD\build\windows\x64\runner\Release" "/DOutputName=$env:RELEASE_BASENAME-windows-x86_64-setup" "/O$PWD" windows\installer\setup.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed: $LASTEXITCODE" }
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.metadata.outputs.basename }}-windows-x86_64
-          path: ${{ steps.metadata.outputs.basename }}-windows-x86_64.zip
+          path: |
+            ${{ steps.metadata.outputs.basename }}-windows-x86_64.zip
+            ${{ steps.metadata.outputs.basename }}-windows-x86_64-setup.exe
           if-no-files-found: error
