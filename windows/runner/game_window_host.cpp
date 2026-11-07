@@ -92,47 +92,73 @@ void GameWindowHost::Poll() {
     // The handle remains bound to the owned process even if its PID is reused.
     TerminateProcess(process_, 1); return;
   }
+  // A game may replace its window; embed the new one rather than keep a stale handle.
+  if (game_ && !IsWindow(game_)) game_ = nullptr;
   if (!game_) {
     EnumWindows(FindWindow, reinterpret_cast<LPARAM>(this));
     if (!game_) {
-      if (GetTickCount64() - started_ > 120000) CloseGame();
+      if (!ready_ && GetTickCount64() - started_ > 120000) CloseGame();
       return;
     }
     original_style_ = GetWindowLongPtr(game_, GWL_STYLE);
     original_ex_style_ = GetWindowLongPtr(game_, GWL_EXSTYLE);
+    requested_ = {};
     ShowWindowAsync(game_, SW_RESTORE);
-    SetWindowLongPtr(game_, GWL_STYLE,
-        (original_style_ & ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU |
-          WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_MINIMIZE | WS_MAXIMIZE)) |
-          WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS);
-    SetWindowLongPtr(game_, GWL_EXSTYLE,
-        original_ex_style_ & ~(WS_EX_APPWINDOW | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE));
-    SetLastError(0);
-    SetParent(game_, frame_);
-    if (GetLastError() != 0 && GetParent(game_) != frame_) {
-      SetWindowLongPtr(game_, GWL_STYLE, original_style_);
-      SetWindowLongPtr(game_, GWL_EXSTYLE, original_ex_style_);
-      game_ = nullptr; CloseGame(); return;
-    }
+  }
+  if (!Embed()) {
+    // A running game is retried on the next poll rather than closed.
+    if (ready_) return;
+    SetWindowLongPtr(game_, GWL_STYLE, original_style_);
+    SetWindowLongPtr(game_, GWL_EXSTYLE, original_ex_style_);
+    game_ = nullptr; CloseGame(); return;
+  }
+  Layout();
+  if (!ready_) {
+    ready_ = true;
     SendMessageTimeout(game_, WM_CHANGEUISTATE, MAKEWPARAM(UIS_INITIALIZE, 0),
                         0, SMTO_ABORTIFHUNG, 100, nullptr);
-    Layout();
     SetForegroundWindow(frame_);
     Focus();
     Status("MCDEV_WINDOW_READY\n");
   }
-  Layout();
+}
+
+// Checked on every poll. The game is still loading when its window is first
+// embedded and can change its own style, parent or position afterwards.
+bool GameWindowHost::Embed() {
+  const LONG_PTR style = GetWindowLongPtr(game_, GWL_STYLE);
+  const LONG_PTR child = (style & ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME |
+      WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_MINIMIZE | WS_MAXIMIZE)) |
+      WS_CHILD | WS_CLIPSIBLINGS;
+  if (style != child) SetWindowLongPtr(game_, GWL_STYLE, child);
+  const LONG_PTR ex_style = GetWindowLongPtr(game_, GWL_EXSTYLE);
+  const LONG_PTR child_ex = ex_style & ~(WS_EX_APPWINDOW | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE);
+  if (ex_style != child_ex) SetWindowLongPtr(game_, GWL_EXSTYLE, child_ex);
+  if (GetParent(game_) == frame_) return true;
+  SetLastError(0);
+  SetParent(game_, frame_);
+  if (GetLastError() != 0 && GetParent(game_) != frame_) return false;
+  requested_ = {};
+  return true;
 }
 
 void GameWindowHost::Layout() {
-  if (!game_ || !IsWindow(game_)) return;
+  if (!game_ || !IsWindow(game_) || IsIconic(frame_)) return;
   RECT area{}; GetClientRect(frame_, &area);
-  const int top = MulDiv(48, GetDpiForWindow(frame_), 96);
-  area.top = top;
-  if (EqualRect(&area, &bounds_)) return;
-  bounds_ = area;
-  SetWindowPos(game_, HWND_TOP, 0, top, std::max(1L, area.right),
-      std::max(1L, area.bottom - top), SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_ASYNCWINDOWPOS);
+  area.top = MulDiv(48, GetDpiForWindow(frame_), 96);
+  area.bottom = std::max(area.bottom, area.top + 1);
+  area.right = std::max(area.right, 1L);
+  // Compare with where the window really is, not with the last request: the
+  // game may move or resize itself after an earlier position was applied.
+  RECT actual{}; GetWindowRect(game_, &actual);
+  MapWindowPoints(nullptr, frame_, reinterpret_cast<POINT*>(&actual), 2);
+  if (EqualRect(&area, &actual)) return;
+  // The async request waits for a game thread that may be busy loading.
+  if (EqualRect(&area, &requested_) && GetTickCount64() - requested_at_ < 1000) return;
+  requested_ = area;
+  requested_at_ = GetTickCount64();
+  SetWindowPos(game_, HWND_TOP, 0, area.top, area.right, area.bottom - area.top,
+      SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_ASYNCWINDOWPOS);
 }
 
 void GameWindowHost::Focus() {

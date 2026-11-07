@@ -19,6 +19,7 @@ class GameWindowHost {
  private:
   static BOOL CALLBACK FindWindow(HWND window, LPARAM context);
   void Poll();
+  bool Embed();
   void Layout();
   void Focus();
   void CloseGame();
@@ -28,8 +29,10 @@ class GameWindowHost {
   HWND game_ = nullptr;
   LONG_PTR original_style_ = 0;
   LONG_PTR original_ex_style_ = 0;
-  RECT bounds_{};
+  RECT requested_{};
+  ULONGLONG requested_at_ = 0;
   ULONGLONG started_ = 0;
+  bool ready_ = false;
   ULONGLONG closing_ = 0;
   bool ending_ = false;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
