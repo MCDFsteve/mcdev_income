@@ -38,6 +38,15 @@ class LocalGame {
   final GameClientType clientType;
 }
 
+enum TestWorldType {
+  infinite('无限', 1),
+  flat('超平坦', 2);
+
+  const TestWorldType(this.label, this.configValue);
+  final String label;
+  final int configValue;
+}
+
 enum TestPlayerSkin {
   steve('steve.png'),
   alex('alex.png');
@@ -325,6 +334,7 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
   void stopAiControl() {}
   bool fullscreenShortcut = false;
   bool useNewWorld = false;
+  TestWorldType newWorldType = TestWorldType.infinite;
   String newWorldSeed = '';
   TestPlayerSkin playerSkin = TestPlayerSkin.steve;
   GameRenderer renderer = GameRenderer.openGL;
@@ -404,6 +414,11 @@ abstract class DevelopmentLauncher extends ChangeNotifier {
 
   Future<void> chooseNewWorld(bool enabled) async {
     useNewWorld = enabled;
+    notifyListeners();
+  }
+
+  Future<void> chooseWorldType(TestWorldType value) async {
+    newWorldType = value;
     notifyListeners();
   }
 

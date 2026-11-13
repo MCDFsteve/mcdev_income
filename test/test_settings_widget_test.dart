@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oreui_flutter/oreui_flutter.dart';
@@ -5,6 +7,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mcdev_income/development/development_panel.dart';
 import 'package:mcdev_income/development/launcher_service.dart';
 import 'development_widget_test.dart' show FakeLauncher, FakeStorage, host;
+
+class _DelayedWorldTypeLauncher extends FakeLauncher {
+  final save = Completer<void>();
+
+  @override
+  Future<void> chooseWorldType(TestWorldType value) async {
+    await save.future;
+    await super.chooseWorldType(value);
+  }
+}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -100,7 +112,7 @@ void main() {
 
   for (final dark in [false, true]) {
     testWidgets(
-      'new world and seed are first-level controls, responsive and disabled while running ($dark)',
+      'new world type and seed are first-level controls, responsive and disabled while running ($dark)',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 800);
         tester.view.devicePixelRatio = 1;
@@ -119,18 +131,41 @@ void main() {
         await tester.pumpAndSettle();
         final toggle = find.byKey(const ValueKey('development-new-world'));
         final seed = find.byKey(const ValueKey('development-world-seed'));
+        final worldType = find.byKey(const ValueKey('development-world-type'));
+        OreDropdownButton<TestWorldType> dropdown() =>
+            tester.widget<OreDropdownButton<TestWorldType>>(worldType);
         expect(tester.widget<OreCheckboxListTile>(toggle).value, isFalse);
         expect(seed, findsNothing);
+        expect(worldType, findsNothing);
         await tester.tap(find.text('使用新存档'));
         await tester.pumpAndSettle();
         expect(find.byType(OreAlertDialog), findsNothing);
+        expect(dropdown().value, TestWorldType.infinite);
+        expect(
+          dropdown().items.map((item) => item.value),
+          TestWorldType.values,
+        );
+        await tester.ensureVisible(worldType);
+        await tester.pumpAndSettle();
+        await tester.tap(worldType);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('超平坦'));
+        await tester.pumpAndSettle();
+        expect(launcher.newWorldType, TestWorldType.flat);
+        expect(dropdown().value, TestWorldType.flat);
+        await tester.ensureVisible(seed);
+        await tester.pumpAndSettle();
         expect(seed.hitTestable(), findsOneWidget);
         await tester.enterText(seed, '-12345');
+        await tester.ensureVisible(toggle);
+        await tester.pumpAndSettle();
         await tester.tap(find.text('使用新存档'));
         await tester.pumpAndSettle();
         expect(seed, findsNothing);
+        expect(worldType, findsNothing);
         await tester.tap(find.text('使用新存档'));
         await tester.pumpAndSettle();
+        expect(dropdown().value, TestWorldType.flat);
         expect(tester.widget<OreTextField>(seed).controller!.text, '-12345');
         for (final size in [
           const Size(720, 400),
@@ -142,21 +177,104 @@ void main() {
           await tester.ensureVisible(seed);
           await tester.pumpAndSettle();
           expect(seed.hitTestable(), findsOneWidget);
+          await tester.ensureVisible(worldType);
+          await tester.pumpAndSettle();
+          expect(worldType.hitTestable(), findsOneWidget);
+          await tester.tap(worldType);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('无限'));
+          await tester.pumpAndSettle();
+          expect(dropdown().value, TestWorldType.infinite);
+          await tester.tap(worldType);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('超平坦'));
+          await tester.pumpAndSettle();
+          expect(dropdown().value, TestWorldType.flat);
           expect(tester.takeException(), isNull);
         }
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('development-launch')),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('development-launch')));
         await tester.pumpAndSettle();
         expect(launcher.lastNewWorld, isTrue);
         expect(launcher.lastSeed, '-12345');
+        expect(launcher.lastWorldType, TestWorldType.flat);
         expect(tester.widget<OreCheckboxListTile>(toggle).onChanged, isNull);
         expect(tester.widget<OreTextField>(seed).enabled, isFalse);
+        expect(dropdown().onChanged, isNull);
         await launcher.stopGame();
         await tester.pumpAndSettle();
+        await tester.pumpAndSettle();
+        launcher.busy = true;
+        launcher.notifyListeners();
+        await tester.pump();
+        expect(dropdown().onChanged, isNull);
+        launcher.busy = false;
+        launcher.notifyListeners();
+        await tester.pumpAndSettle();
+        expect(dropdown().onChanged, isNotNull);
+        await tester.ensureVisible(find.text('仅打开游戏主菜单'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('仅打开游戏主菜单'));
         await tester.pumpAndSettle();
         expect(tester.widget<OreCheckboxListTile>(toggle).onChanged, isNull);
         expect(tester.widget<OreTextField>(seed).enabled, isFalse);
+        expect(dropdown().onChanged, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final fail in [false, true]) {
+    testWidgets(
+      'world type save blocks launching and recovers (failure: $fail)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final launcher = _DelayedWorldTypeLauncher()..useNewWorld = true;
+        await tester.pumpWidget(
+          host(
+            DevelopmentEnvironmentPanel(
+              storage: FakeStorage(),
+              launcherFactory: () async => launcher,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final worldType = find.byKey(const ValueKey('development-world-type'));
+        final launch = find.byKey(const ValueKey('development-launch'));
+        await tester.ensureVisible(worldType);
+        await tester.pumpAndSettle();
+        await tester.tap(worldType);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('超平坦'));
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<OreDropdownButton<TestWorldType>>(worldType).onChanged,
+          isNull,
+        );
+        expect(tester.widget<OreButton>(launch).onPressed, isNull);
+        expect(launcher.newWorldType, TestWorldType.infinite);
+        if (fail) {
+          launcher.save.completeError(StateError('地图类型保存失败'));
+        } else {
+          launcher.save.complete();
+        }
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<OreDropdownButton<TestWorldType>>(worldType).onChanged,
+          isNotNull,
+        );
+        expect(tester.widget<OreButton>(launch).onPressed, isNotNull);
+        expect(
+          launcher.newWorldType,
+          fail ? TestWorldType.infinite : TestWorldType.flat,
+        );
+        if (fail) expect(find.textContaining('地图类型保存失败'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

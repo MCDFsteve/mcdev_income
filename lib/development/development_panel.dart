@@ -1249,7 +1249,26 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
             key: const ValueKey('development-new-world'),
             hint: '每次启动创建新存档，已有存档保留。',
           ),
-          if (launcher.useNewWorld)
+          if (launcher.useNewWorld) ...[
+            field(
+              '地图类型',
+              140,
+              OreDropdownButton<TestWorldType>(
+                key: const ValueKey('development-world-type'),
+                value: launcher.newWorldType,
+                items: [
+                  for (final type in TestWorldType.values)
+                    OreDropdownItem(value: type, child: Text(type.label)),
+                ],
+                onChanged: blocked || _menuOnly
+                    ? null
+                    : (value) async {
+                        setState(() => _savingWorldMode = true);
+                        await _run(() => launcher.chooseWorldType(value));
+                        if (mounted) setState(() => _savingWorldMode = false);
+                      },
+              ),
+            ),
             field(
               '世界种子',
               210,
@@ -1260,6 +1279,7 @@ class _DevelopmentSessionPanelState extends State<_DevelopmentSessionPanel> {
                 hintText: '世界种子（留空随机）',
               ),
             ),
+          ],
           toggle(
             '仅打开游戏主菜单',
             _menuOnly,

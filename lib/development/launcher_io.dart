@@ -81,6 +81,14 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     aiControlEnabled = this.preferences.getInt(_aiControlKey) == 1;
     fullscreenShortcut = this.preferences.getInt(_fullscreenShortcutKey) == 1;
     useNewWorld = this.preferences.getInt(_newWorldKey) == 1;
+    newWorldType =
+        TestWorldType.values
+            .where(
+              (value) =>
+                  value.name == this.preferences.getString(_worldTypeKey),
+            )
+            .firstOrNull ??
+        TestWorldType.infinite;
     newWorldSeed = this.preferences.getString(_worldSeedKey) ?? '';
     projectSortOrder =
         ProjectSortOrder.values
@@ -143,6 +151,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
   static const _fullscreenShortcutKey = 'development_fullscreen_shortcut_v1';
   static const _playerSkinKey = 'development_player_skin_v1';
   static const _newWorldKey = 'development_new_world_v1';
+  static const _worldTypeKey = 'development_world_type_v1';
   static const _worldSeedKey = 'development_world_seed_v1';
   static const _selectionKey = 'development_selected_packs_v1';
   static const _projectSortKey = 'development_project_sort_v1';
@@ -643,6 +652,18 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       throw const DevelopmentStorageException('无法保存存档设置。');
     }
     useNewWorld = enabled;
+    _notify();
+  }
+
+  @override
+  Future<void> chooseWorldType(TestWorldType value) async {
+    if (busy || running) {
+      throw const DevelopmentStorageException('请在游戏退出后修改地图类型。');
+    }
+    if (!await preferences.setString(_worldTypeKey, value.name)) {
+      throw const DevelopmentStorageException('无法保存地图类型。');
+    }
+    newWorldType = value;
     _notify();
   }
 
@@ -1935,7 +1956,11 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
                   },
                   'resource_packs': resources,
                   'behavior_packs': behavior,
-                  'world_type': 1,
+                  // Existing worlds retain their saved generator; this option
+                  // only selects the generator when creating a fresh world.
+                  'world_type':
+                      (useNewWorld ? newWorldType : TestWorldType.infinite)
+                          .configValue,
                   'start_with_map': false,
                   'bonus_items': false,
                 },

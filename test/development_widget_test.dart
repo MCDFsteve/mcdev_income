@@ -63,6 +63,7 @@ class FakeLauncher extends DevelopmentLauncher {
   int refreshes = 0;
   String? lastSeed;
   bool? lastNewWorld;
+  TestWorldType? lastWorldType;
   @override
   Future<void> refresh() async {
     refreshes++;
@@ -111,6 +112,7 @@ class FakeLauncher extends DevelopmentLauncher {
     launches++;
     lastSeed = seed;
     lastNewWorld = useNewWorld;
+    lastWorldType = newWorldType;
     running = true;
     busy = true;
     notifyListeners();

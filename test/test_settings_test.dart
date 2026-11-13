@@ -20,15 +20,18 @@ void main() {
   );
   tearDown(() async => temp.delete(recursive: true));
 
-  NativeDevelopmentLauncher launcher(MemoryPreferences preferences) =>
-      NativeDevelopmentLauncher(
-        NativeDevelopmentStorage(
-          preferences: preferences,
-          defaultRoot: temp.path,
-          lockPath: p.join(temp.path, 'lock'),
-        ),
-        preferences,
-      );
+  NativeDevelopmentLauncher launcher(
+    MemoryPreferences preferences, {
+    String sessionId = 'default',
+  }) => NativeDevelopmentLauncher(
+    NativeDevelopmentStorage(
+      preferences: preferences,
+      defaultRoot: temp.path,
+      lockPath: p.join(temp.path, 'lock'),
+    ),
+    preferences,
+    sessionId: sessionId,
+  );
 
   test('PNG skins select the MCS identity and matching arm model', () {
     for (final skin in TestPlayerSkin.values) {
@@ -103,6 +106,57 @@ void main() {
     instance.dispose();
   });
 
+  test(
+    'world type defaults to infinite and persists independently per tab',
+    () async {
+      final preferences = MemoryPreferences();
+      final first = launcher(preferences);
+      final other = launcher(preferences, sessionId: 'other');
+      expect(first.newWorldType, TestWorldType.infinite);
+      expect(other.newWorldType, TestWorldType.infinite);
+      var notifications = 0;
+      first.addListener(() => notifications++);
+      await first.chooseWorldType(TestWorldType.flat);
+      expect(first.newWorldType, TestWorldType.flat);
+      expect(other.newWorldType, TestWorldType.infinite);
+      expect(notifications, 1);
+      first.dispose();
+      other.dispose();
+
+      await preferences.setString(
+        'development_game_version_v1',
+        '3.10.0.420447',
+      );
+      final reopened = launcher(preferences);
+      final reopenedOther = launcher(preferences, sessionId: 'other');
+      expect(reopened.newWorldType, TestWorldType.flat);
+      expect(reopenedOther.newWorldType, TestWorldType.infinite);
+      await reopened.chooseNewWorld(true);
+      await reopened.chooseNewWorld(false);
+      expect(reopened.newWorldType, TestWorldType.flat);
+      await reopenedOther.chooseWorldType(TestWorldType.flat);
+      await reopened.chooseWorldType(TestWorldType.infinite);
+      expect(reopenedOther.newWorldType, TestWorldType.flat);
+      reopened.dispose();
+      reopenedOther.dispose();
+
+      final last = launcher(preferences);
+      final lastOther = launcher(preferences, sessionId: 'other');
+      expect(last.newWorldType, TestWorldType.infinite);
+      expect(lastOther.newWorldType, TestWorldType.flat);
+      last.dispose();
+      lastOther.dispose();
+    },
+  );
+
+  test('unknown saved world type falls back to infinite', () async {
+    final preferences = MemoryPreferences();
+    await preferences.setString('development_world_type_v1', 'removed-type');
+    final instance = launcher(preferences);
+    expect(instance.newWorldType, TestWorldType.infinite);
+    instance.dispose();
+  });
+
   for (final state in ['busy', 'running', 'failed write']) {
     test('test settings do not change during $state', () async {
       final instance =
@@ -115,6 +169,10 @@ void main() {
             ..running = state == 'running';
       await expectLater(instance.chooseDeveloperConsole(true), throwsException);
       await expectLater(instance.chooseNewWorld(true), throwsException);
+      await expectLater(
+        instance.chooseWorldType(TestWorldType.flat),
+        throwsException,
+      );
       await expectLater(
         instance.chooseDisableCompanion(false),
         throwsException,
@@ -132,6 +190,7 @@ void main() {
       expect(instance.disableCompanion, isTrue);
       expect(instance.playerSkin, TestPlayerSkin.steve);
       expect(instance.useNewWorld, isFalse);
+      expect(instance.newWorldType, TestWorldType.infinite);
       instance
         ..busy = false
         ..running = false
