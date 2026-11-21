@@ -11,6 +11,7 @@ import 'package:mcdev_income/cli/common.dart';
 import 'package:mcdev_income/cli/media.dart';
 import 'package:mcdev_income/cli/resource_upload.dart';
 import 'package:mcdev_income/core.dart';
+import 'package:mcdev_income/storage/desktop_secret_store_io.dart';
 import 'package:mcdev_income/storage/file_preferences.dart';
 import 'resource_workflow_test.dart' as fixtures;
 
@@ -99,10 +100,12 @@ void main() {
   late Directory temp;
   late Backend backend;
   setUp(() async {
+    resetTestDesktopSecretStores();
     temp = await Directory.systemTemp.createTemp('mcdev-cli-test-');
     backend = Backend();
   });
   tearDown(() async {
+    resetTestDesktopSecretStores();
     await temp.delete(recursive: true);
   });
   Future<({int code, Map<String, dynamic> json})> run(
@@ -427,17 +430,34 @@ void main() {
       final current = await FilePreferences.open(temp.path);
       expect(current.getString('a'), 'first');
       expect(current.getString('b'), 'second');
+      final secretStore = (await openDesktopSecretStore(temp.path))!;
       await current.migrateGui({
         'login_email_v1': 'sample@example.test',
         'login_password_v1': 'secret',
-        'login_cookie_cache_v1': '{}',
+        'login_session_kind_v1': 'domestic',
+        'login_cookie_cache_v1': '{"S_INFO":"s"}',
+        'login_oversea_expires_at_v1': DateTime.now()
+            .add(const Duration(days: 2))
+            .millisecondsSinceEpoch,
         'theme_mode': 'dark',
-      });
+      }, secretStore: secretStore);
+      // Plaintext state.json must never store passwords or session cookies.
+      final rawState = await File('${temp.path}/state.json').readAsString();
+      expect(rawState, isNot(contains('secret')));
+      expect(rawState, isNot(contains('S_INFO')));
+      expect(current.getString('login_password_v1'), isNull);
+      expect(current.getString('login_cookie_cache_v1'), isNull);
       CoreRuntime.preferences = () => FilePreferences.open(temp.path);
+      CoreRuntime.secrets = () async => secretStore;
+      expect((await LoginService.readLoginSession())?.email, 'sample@example.test');
       await LoginService.clearLogin();
       final loggedOut = await FilePreferences.open(temp.path);
-      await loggedOut.migrateGui({'login_password_v1': 'secret'});
+      await loggedOut.migrateGui(
+        {'login_password_v1': 'secret'},
+        secretStore: secretStore,
+      );
       expect(loggedOut.getString('login_password_v1'), isNull);
+      expect(await LoginService.readLoginSession(), isNull);
       expect(loggedOut.getString('theme_mode'), 'dark');
       if (!Platform.isWindows) {
         expect(
@@ -510,6 +530,11 @@ void main() {
         (await run(['draft', 'get'], auth: false)).json['data']['item_name'],
         '本机草稿',
       );
+      // Legacy plaintext session fields in state.json are scrubbed after migration.
+      final scrubbed = await FilePreferences.open(temp.path);
+      for (final key in LoginService.legacySecretKeys) {
+        expect(scrubbed.getString(key), isNull);
+      }
       expect(backend.requests, isEmpty);
     },
   );
@@ -526,33 +551,56 @@ void main() {
     expect(jsonEncode(profile.json), isNot(contains('private')));
   });
   test(
-    'first GUI migration cannot mix an old password into a CLI account or undo logout',
+    'first GUI migration cannot overwrite a CLI account or undo logout',
     () async {
       final state = await FilePreferences.open(temp.path);
+      final secrets = (await openDesktopSecretStore(temp.path))!;
+      CoreRuntime.preferences = () => FilePreferences.open(temp.path);
+      CoreRuntime.secrets = () async => secrets;
       await state.apply({
         'login_email_v1': 'new@example.test',
-        'login_cookie_cache_v1': '{"session":"new"}',
+        'login_session_kind_v1': 'domestic',
+        'login_cookie_cache_v1': '{"S_INFO":"new"}',
+        'login_oversea_expires_at_v1': DateTime.now()
+            .add(const Duration(days: 2))
+            .millisecondsSinceEpoch,
       });
-      await state.migrateGui({
+      expect((await LoginService.readLoginSession())?.email, 'new@example.test');
+      final refreshed = await FilePreferences.open(temp.path);
+      await refreshed.migrateGui({
         'login_email_v1': 'old@example.test',
         'login_password_v1': 'old-password',
+        'login_session_kind_v1': 'domestic',
+        'login_cookie_cache_v1': '{"S_INFO":"old"}',
+        'login_oversea_expires_at_v1': DateTime.now()
+            .add(const Duration(days: 2))
+            .millisecondsSinceEpoch,
         'theme_mode': 'dark',
-      });
-      expect(state.getString('login_email_v1'), 'new@example.test');
-      expect(state.getString('login_password_v1'), isNull);
+      }, secretStore: secrets);
+      expect((await LoginService.readLoginSession())?.email, 'new@example.test');
+      expect(refreshed.getString('login_password_v1'), isNull);
+      expect(refreshed.getString('login_cookie_cache_v1'), isNull);
+
       final cleanHome = '${temp.path}/logged-out';
+      final cleanSecrets = (await openDesktopSecretStore(cleanHome))!;
       CoreRuntime.preferences = () => FilePreferences.open(cleanHome);
+      CoreRuntime.secrets = () async => cleanSecrets;
       await LoginService.clearLogin();
       final loggedOut = await FilePreferences.open(cleanHome);
       await loggedOut.migrateGui({
         'login_email_v1': 'old@example.test',
-        'login_cookie_cache_v1': '{"session":"old"}',
-      });
+        'login_session_kind_v1': 'domestic',
+        'login_cookie_cache_v1': '{"S_INFO":"old"}',
+        'login_oversea_expires_at_v1': DateTime.now()
+            .add(const Duration(days: 2))
+            .millisecondsSinceEpoch,
+      }, secretStore: cleanSecrets);
       expect(loggedOut.getString('login_cookie_cache_v1'), isNull);
+      expect(await LoginService.readLoginSession(), isNull);
     },
   );
   test(
-    'stdin login, password opt-in and explicit refresh use the shared session',
+    'stdin login stores session outside state.json and never persists password',
     () async {
       final previous = LoginService.clientFactory;
       addTearDown(() => LoginService.clientFactory = previous);
@@ -563,36 +611,35 @@ void main() {
         expect(jsonDecode(request.body)['password'], 'stdin-password');
         return fixtures.ok({'token': 'session-token'});
       });
-      Future<int> login(bool remember) async {
-        final output = <String>[];
-        final exit =
-            await McdevCli(
-              output: output.add,
-              environment: {},
-              readPassword: () async => 'stdin-password\n',
-            ).run([
-              '--home',
-              temp.path,
-              'auth',
-              'login',
-              'sample@gmail.com',
-              '--password-stdin',
-              if (remember) '--remember',
-            ]);
-        expect(output.single, isNot(contains('stdin-password')));
-        expect(output.single, isNot(contains('session-token')));
-        return exit;
-      }
+      final output = <String>[];
+      final exit =
+          await McdevCli(
+            output: output.add,
+            environment: {},
+            readPassword: () async => 'stdin-password\n',
+          ).run([
+            '--home',
+            temp.path,
+            'auth',
+            'login',
+            'sample@gmail.com',
+            '--password-stdin',
+          ]);
+      expect(exit, 0);
+      expect(attempts, 1);
+      expect(output.single, isNot(contains('stdin-password')));
+      expect(output.single, isNot(contains('session-token')));
 
-      expect(await login(false), 0);
-      expect(
-        (await FilePreferences.open(temp.path)).getString('login_password_v1'),
-        isNull,
-      );
-      expect((await run(['auth', 'refresh'], auth: false)).code, 3);
-      expect(await login(true), 0);
-      expect((await run(['auth', 'refresh'], auth: false)).code, 0);
-      expect(attempts, 3);
+      final stateText = await File('${temp.path}/state.json').readAsString();
+      expect(stateText, isNot(contains('stdin-password')));
+      expect(stateText, isNot(contains('session-token')));
+      expect(stateText, isNot(contains('sample@gmail.com')));
+
+      final status = await run(['auth', 'status'], auth: false);
+      expect(status.code, 0);
+      expect(status.json['data']['logged_in'], true);
+      expect(status.json['data']['email'], 'sample@gmail.com');
+
       expect((await run(['auth', 'logout'], auth: false)).code, 0);
       expect(
         (await run(['auth', 'status'], auth: false)).json['data']['logged_in'],

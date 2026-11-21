@@ -41,14 +41,23 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    LoginCookieHelper.sessionRevision.addListener(_onSessionChanged);
     _loadOverview();
     _loadRanking();
   }
 
   @override
   void dispose() {
+    LoginCookieHelper.sessionRevision.removeListener(_onSessionChanged);
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (!mounted) return;
+    _canAdvancedRanks = null;
+    _loadOverview();
+    _loadRanking();
   }
 
   Future<McDevApi> _openApi() async {

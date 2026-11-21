@@ -27,14 +27,24 @@ typedef LoginCaptchaHandler = Future<String?> Function(LoginCaptchaChallenge);
 class LoginService {
   static http.Client Function() clientFactory = () =>
       _LoginHttpClient(http.Client());
-  static const _cookieStorageKey = 'login_cookie_cache_v1';
-  static const _emailKey = 'login_email_v1';
-  static const _passwordKey = 'login_password_v1';
-  static const _tokenKey = 'login_oversea_token_v1';
-  static const _sessionKindKey = 'login_session_kind_v1';
-  static const _tokenExpiresAtKey = 'login_oversea_expires_at_v1';
-  static const _refreshWindow = Duration(hours: 12);
+  static const _sessionSecretKey = 'login_session_v1';
+  static const _managedKey = 'login_state_managed_v1';
+  static const _legacyCookieStorageKey = 'login_cookie_cache_v1';
+  static const _legacyEmailKey = 'login_email_v1';
+  static const _legacyPasswordKey = 'login_password_v1';
+  static const _legacyTokenKey = 'login_oversea_token_v1';
+  static const _legacySessionKindKey = 'login_session_kind_v1';
+  static const _legacyTokenExpiresAtKey = 'login_oversea_expires_at_v1';
   static const _tokenLifetime = Duration(days: 7);
+
+  static const Set<String> legacySecretKeys = {
+    _legacyCookieStorageKey,
+    _legacyEmailKey,
+    _legacyPasswordKey,
+    _legacyTokenKey,
+    _legacySessionKindKey,
+    _legacyTokenExpiresAtKey,
+  };
 
   static const _mcdevHost = 'mcdev.webapp.163.com';
   static const _launcherHost = 'mc-launcher.webapp.163.com';
@@ -50,55 +60,34 @@ class LoginService {
   static const _ursPublicExponent = '010001';
   static final _random = Random.secure();
 
-  static Future<Map<String, String>> readCookies({
-    bool allowCache = true,
-    bool refreshIfNeeded = true,
-  }) async {
+  static Future<Map<String, String>> readCookies() async {
     CoreRuntime.log('LoginService.readCookies start');
-    if (refreshIfNeeded) {
-      await ensureFreshLogin();
-    }
-
     final session = await readLoginSession();
-    if (session != null) {
-      if (!session.expiresAt.isAfter(DateTime.now())) {
-        CoreRuntime.log('LoginService.readCookies expired session');
-        return {};
-      }
-
-      final cookieMap = <String, String>{};
-      if (session.kind == LoginSessionKind.oversea) {
-        if (session.token.isNotEmpty) {
-          cookieMap['oversea_authcode'] = session.token;
-        }
-      } else {
-        cookieMap.addAll(session.cookies);
-      }
-
-      if (cookieMap.isNotEmpty) {
-        CoreRuntime.log('LoginService.readCookies fresh=${cookieMap.length}');
-        return cookieMap;
-      }
-    }
-
-    if (!allowCache) {
-      CoreRuntime.log('LoginService.readCookies empty no-cache');
+    if (session == null) {
+      CoreRuntime.log('LoginService.readCookies empty');
       return {};
     }
-    final cached = await _readCachedCookies();
-    CoreRuntime.log('LoginService.readCookies cache=${cached.length}');
-    return cached;
+    if (session.isExpired) {
+      CoreRuntime.log('LoginService.readCookies expired session');
+      return {};
+    }
+
+    final cookieMap = <String, String>{};
+    if (session.kind == LoginSessionKind.oversea) {
+      if (session.token.isNotEmpty) {
+        cookieMap['oversea_authcode'] = session.token;
+      }
+    } else {
+      cookieMap.addAll(session.cookies);
+    }
+
+    CoreRuntime.log('LoginService.readCookies fresh=${cookieMap.length}');
+    return cookieMap;
   }
 
-  static Future<String> buildCookieHeader({
-    bool allowCache = true,
-    bool refreshIfNeeded = true,
-  }) async {
+  static Future<String> buildCookieHeader() async {
     CoreRuntime.log('LoginService.buildCookieHeader start');
-    final cookies = await readCookies(
-      allowCache: allowCache,
-      refreshIfNeeded: refreshIfNeeded,
-    );
+    final cookies = await readCookies();
     if (cookies.isEmpty) {
       CoreRuntime.log('LoginService.buildCookieHeader empty');
       return '';
@@ -110,58 +99,80 @@ class LoginService {
   static Future<LoginSession?> readLoginSession() async {
     try {
       final prefs = await CoreRuntime.preferences();
-      final email = prefs.getString(_emailKey);
-      final expiresAtMs = prefs.getInt(_tokenExpiresAtKey);
-      if (email == null || email.isEmpty || expiresAtMs == null) {
+      final secrets = await CoreRuntime.secrets();
+      await _migrateLegacyPreferencesIfNeeded(prefs, secrets);
+      final raw = await secrets.read(_sessionSecretKey);
+      if (raw == null || raw.isEmpty) {
         return null;
       }
-      final kind = _parseSessionKind(prefs.getString(_sessionKindKey));
-      final cookies = await _readCachedCookies(prefs: prefs);
-      final token = prefs.getString(_tokenKey) ?? '';
-      if (kind == LoginSessionKind.oversea && token.isEmpty) {
+      final parsed = _parseSessionPayload(raw);
+      if (parsed == null) {
         return null;
       }
-      if (kind == LoginSessionKind.domestic && cookies.isEmpty) {
-        return null;
+      if (parsed.session.isExpired && parsed.hadCredentials) {
+        await secrets.write(
+          _sessionSecretKey,
+          _encodeSessionPayload(
+            LoginSession(
+              email: parsed.session.email,
+              kind: parsed.session.kind,
+              expiresAt: parsed.session.expiresAt,
+            ),
+          ),
+        );
       }
-      return LoginSession(
-        email: email,
-        kind: kind,
-        token: token,
-        cookies: cookies,
-        expiresAt: DateTime.fromMillisecondsSinceEpoch(expiresAtMs),
-        savedPassword: prefs.getString(_passwordKey),
-      );
+      return parsed.session;
     } catch (_) {
       return null;
     }
   }
 
-  static Future<LoginSession?> ensureFreshLogin() async {
-    final session = await readLoginSession();
-    if (session == null || !session.canRefresh) {
-      return session;
-    }
-    final now = DateTime.now();
-    if (session.expiresAt.isAfter(now.add(_refreshWindow))) {
-      return session;
-    }
+  /// Marks the active session as expired and scrubs stored cookies/tokens while
+  /// keeping the email metadata so the app can prompt the user to re-login.
+  static Future<void> markSessionExpired() async {
     try {
-      return await loginWithEmail(
-        email: session.email,
-        password: session.savedPassword!,
-        rememberPassword: true,
+      final secrets = await CoreRuntime.secrets();
+      final raw = await secrets.read(_sessionSecretKey);
+      if (raw == null || raw.isEmpty) return;
+      final parsed = _parseSessionPayload(raw);
+      if (parsed == null) return;
+      final expiredAt = parsed.session.isExpired
+          ? parsed.session.expiresAt
+          : DateTime.now().subtract(const Duration(seconds: 1));
+      await secrets.write(
+        _sessionSecretKey,
+        _encodeSessionPayload(
+          LoginSession(
+            email: parsed.session.email,
+            kind: parsed.session.kind,
+            expiresAt: expiredAt,
+          ),
+        ),
       );
     } catch (_) {
-      CoreRuntime.log('LoginService.ensureFreshLogin refresh failed');
-      return session;
+      // Best-effort scrub when handling an authentication expiry signal.
     }
+  }
+
+  /// Migrates legacy plaintext login keys from a one-time GUI seed into
+  /// [secretStore] (always discarding any saved password).
+  static Future<bool> migrateLegacySeed(
+    Map<String, Object> seed, {
+    required SecretStore secretStore,
+    required bool hasManagedLogin,
+  }) async {
+    if (hasManagedLogin) return false;
+    final existing = await secretStore.read(_sessionSecretKey);
+    if (existing != null && existing.isNotEmpty) return false;
+    final session = _sessionFromLegacyMap(seed);
+    if (session == null) return false;
+    await secretStore.write(_sessionSecretKey, _encodeSessionPayload(session));
+    return true;
   }
 
   static Future<LoginSession> loginWithEmail({
     required String email,
     required String password,
-    required bool rememberPassword,
     LoginCaptchaHandler? onCaptcha,
   }) async {
     final normalizedEmail = email.trim();
@@ -173,12 +184,10 @@ class LoginService {
             () => _loginWithOverseaEmail(
               email: normalizedEmail,
               password: password,
-              rememberPassword: rememberPassword,
             ),
             () => _loginWithDomesticUrs(
               email: normalizedEmail,
               password: password,
-              rememberPassword: rememberPassword,
               onCaptcha: onCaptcha,
             ),
           ]
@@ -186,13 +195,11 @@ class LoginService {
             () => _loginWithDomesticUrs(
               email: normalizedEmail,
               password: password,
-              rememberPassword: rememberPassword,
               onCaptcha: onCaptcha,
             ),
             () => _loginWithOverseaEmail(
               email: normalizedEmail,
               password: password,
-              rememberPassword: rememberPassword,
             ),
           ];
 
@@ -223,23 +230,19 @@ class LoginService {
     return null;
   }
 
-  static Future<void> clearLogin({bool clearSavedPassword = true}) async {
+  static Future<void> clearLogin() async {
     final prefs = await CoreRuntime.preferences();
+    final secrets = await CoreRuntime.secrets();
+    await secrets.delete(_sessionSecretKey);
     await prefs.apply({
-      'login_state_managed_v1': 'true',
-      _cookieStorageKey: null,
-      _sessionKindKey: null,
-      _tokenKey: null,
-      _tokenExpiresAtKey: null,
-      if (clearSavedPassword) _emailKey: null,
-      if (clearSavedPassword) _passwordKey: null,
+      _managedKey: 'true',
+      for (final key in legacySecretKeys) key: null,
     });
   }
 
   static Future<LoginSession> _loginWithDomesticUrs({
     required String email,
     required String password,
-    required bool rememberPassword,
     LoginCaptchaHandler? onCaptcha,
   }) async {
     final client = clientFactory();
@@ -363,7 +366,6 @@ class LoginService {
         kind: LoginSessionKind.domestic,
         cookies: cookies,
         expiresAt: DateTime.now().add(_tokenLifetime),
-        savedPassword: rememberPassword ? password : null,
       );
       await _persistLoginSession(session);
       return session;
@@ -375,7 +377,6 @@ class LoginService {
   static Future<LoginSession> _loginWithOverseaEmail({
     required String email,
     required String password,
-    required bool rememberPassword,
   }) async {
     final client = clientFactory();
     final uri = Uri.https(_launcherHost, '/users/oversea/login_check');
@@ -391,7 +392,7 @@ class LoginService {
         body: jsonEncode({
           'urs': email,
           'password': password,
-          'remember': rememberPassword,
+          'remember': false,
         }),
       );
       if (response.statusCode != 200) {
@@ -418,7 +419,6 @@ class LoginService {
         token: token,
         cookies: {'oversea_authcode': token},
         expiresAt: DateTime.now().add(_tokenLifetime),
-        savedPassword: rememberPassword ? password : null,
       );
       await _persistLoginSession(session);
       return session;
@@ -644,47 +644,148 @@ class LoginService {
 
   static Future<void> _persistLoginSession(LoginSession session) async {
     final prefs = await CoreRuntime.preferences();
+    final secrets = await CoreRuntime.secrets();
+    await secrets.write(_sessionSecretKey, _encodeSessionPayload(session));
     await prefs.apply({
-      'login_state_managed_v1': 'true',
-      _emailKey: session.email,
-      _sessionKindKey: session.kind.name,
-      _tokenExpiresAtKey: session.expiresAt.millisecondsSinceEpoch,
-      _tokenKey: session.token.isEmpty ? null : session.token,
-      _passwordKey: session.savedPassword?.isEmpty == true
-          ? null
-          : session.savedPassword,
-      _cookieStorageKey: jsonEncode(session.cookies),
+      _managedKey: 'true',
+      for (final key in legacySecretKeys) key: null,
     });
   }
 
-  static Future<Map<String, String>> _readCachedCookies({
-    PreferenceStore? prefs,
-  }) async {
+  static Future<void> _migrateLegacyPreferencesIfNeeded(
+    PreferenceStore prefs,
+    SecretStore secrets,
+  ) async {
+    final keys = prefs.getKeys();
+    if (!keys.any(legacySecretKeys.contains)) return;
+
+    final legacyMap = <String, Object?>{
+      _legacyEmailKey: prefs.getString(_legacyEmailKey),
+      _legacySessionKindKey: prefs.getString(_legacySessionKindKey),
+      _legacyTokenKey: prefs.getString(_legacyTokenKey),
+      _legacyCookieStorageKey: prefs.getString(_legacyCookieStorageKey),
+      _legacyTokenExpiresAtKey: prefs.getInt(_legacyTokenExpiresAtKey),
+    };
+    final migratedSession = _sessionFromLegacyMap(legacyMap);
+    if (migratedSession != null) {
+      try {
+        final existing = await secrets.read(_sessionSecretKey);
+        if (existing == null || existing.isEmpty) {
+          await secrets.write(
+            _sessionSecretKey,
+            _encodeSessionPayload(migratedSession),
+          );
+        }
+      } catch (_) {
+        // Always purge any plaintext password even if secure storage is
+        // currently unavailable.
+        if (keys.contains(_legacyPasswordKey)) {
+          await prefs.apply({_legacyPasswordKey: null});
+        }
+        rethrow;
+      }
+    }
+
+    await prefs.apply({
+      _managedKey: 'true',
+      for (final key in legacySecretKeys) key: null,
+    });
+  }
+
+  static String _encodeSessionPayload(LoginSession session) {
+    final expired = session.isExpired;
+    return jsonEncode({
+      'version': 1,
+      'email': session.email,
+      'kind': session.kind.name,
+      'expires_at': session.expiresAt.millisecondsSinceEpoch,
+      if (!expired && session.token.isNotEmpty) 'token': session.token,
+      if (!expired && session.cookies.isNotEmpty) 'cookies': session.cookies,
+    });
+  }
+
+  static ({LoginSession session, bool hadCredentials})? _parseSessionPayload(
+    String raw,
+  ) {
     try {
-      prefs ??= await CoreRuntime.preferences();
-      final raw = prefs.getString(_cookieStorageKey);
-      if (raw == null || raw.isEmpty) {
-        return {};
-      }
       final decoded = jsonDecode(raw);
-      if (decoded is! Map) {
-        return {};
+      if (decoded is! Map) return null;
+      final email = decoded['email']?.toString().trim() ?? '';
+      final expiresAtMs = _intFromDynamic(decoded['expires_at']);
+      if (email.isEmpty || expiresAtMs == null) return null;
+      final kind = _parseSessionKind(decoded['kind']?.toString());
+      final expiresAt = DateTime.fromMillisecondsSinceEpoch(expiresAtMs);
+      final token = decoded['token']?.toString() ?? '';
+      final cookies = _parseCookieMap(decoded['cookies']);
+      final hadCredentials = token.isNotEmpty || cookies.isNotEmpty;
+      if (!expiresAt.isAfter(DateTime.now())) {
+        return (
+          session: LoginSession(email: email, kind: kind, expiresAt: expiresAt),
+          hadCredentials: hadCredentials,
+        );
       }
-      final result = <String, String>{};
-      decoded.forEach((key, value) {
-        if (key == null || value == null) {
-          return;
-        }
-        final name = key.toString().trim();
-        if (name.isEmpty) {
-          return;
-        }
-        result[name] = value.toString();
-      });
-      return result;
+      if (kind == LoginSessionKind.oversea && token.isEmpty) return null;
+      if (kind == LoginSessionKind.domestic && cookies.isEmpty) return null;
+      return (
+        session: LoginSession(
+          email: email,
+          kind: kind,
+          token: token,
+          cookies: cookies,
+          expiresAt: expiresAt,
+        ),
+        hadCredentials: hadCredentials,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static LoginSession? _sessionFromLegacyMap(Map<String, Object?> map) {
+    final email = map[_legacyEmailKey]?.toString().trim() ?? '';
+    final expiresAtMs = _intFromDynamic(map[_legacyTokenExpiresAtKey]);
+    if (email.isEmpty || expiresAtMs == null) return null;
+    final kind = _parseSessionKind(map[_legacySessionKindKey]?.toString());
+    final expiresAt = DateTime.fromMillisecondsSinceEpoch(expiresAtMs);
+    if (!expiresAt.isAfter(DateTime.now())) {
+      // Do not migrate expired cookies/tokens, only retain expiry metadata so
+      // the user gets prompted to sign in again.
+      return LoginSession(email: email, kind: kind, expiresAt: expiresAt);
+    }
+    final token = map[_legacyTokenKey]?.toString() ?? '';
+    final rawCookies = map[_legacyCookieStorageKey];
+    final cookies = rawCookies is String && rawCookies.isNotEmpty
+        ? _parseCookieJson(rawCookies)
+        : _parseCookieMap(rawCookies);
+    if (kind == LoginSessionKind.oversea && token.isEmpty) return null;
+    if (kind == LoginSessionKind.domestic && cookies.isEmpty) return null;
+    return LoginSession(
+      email: email,
+      kind: kind,
+      token: token,
+      cookies: cookies,
+      expiresAt: expiresAt,
+    );
+  }
+
+  static Map<String, String> _parseCookieJson(String raw) {
+    try {
+      return _parseCookieMap(jsonDecode(raw));
     } catch (_) {
       return {};
     }
+  }
+
+  static Map<String, String> _parseCookieMap(Object? raw) {
+    if (raw is! Map) return {};
+    final result = <String, String>{};
+    raw.forEach((key, value) {
+      if (key == null || value == null) return;
+      final name = key.toString().trim();
+      if (name.isEmpty) return;
+      result[name] = value.toString();
+    });
+    return result;
   }
 
   static LoginSessionKind _parseSessionKind(String? raw) {

@@ -5,6 +5,7 @@ import 'package:args/args.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import '../core.dart';
+import '../storage/desktop_secret_store_io.dart';
 import '../storage/file_preferences.dart';
 import 'commands.dart';
 import 'common.dart';
@@ -140,6 +141,12 @@ class McdevCli {
       store = await FilePreferences.open(home);
       home = store.directory;
       CoreRuntime.preferences = () => FilePreferences.open(home);
+      CoreRuntime.secrets = () async {
+        final s = await openDesktopSecretStore(home);
+        if (s == null) throw StateError('当前平台不支持桌面安全存储');
+        return s;
+      };
+      CoreRuntime.onAuthExpired = null;
       CoreRuntime.system = Platform.isMacOS
           ? 'Mac'
           : Platform.isWindows
@@ -218,15 +225,15 @@ class McdevCli {
     var cookie = environment['MCDEV_COOKIE'];
     if (allowOffline) cookie = '';
     if (!allowOffline && (cookie == null || cookie.isEmpty)) {
-      final session = await LoginService.ensureFreshLogin();
-      if (session != null && session.expiresAt.isBefore(DateTime.now())) {
+      final session = await LoginService.readLoginSession();
+      if (session != null && session.isExpired) {
         throw CliFailure(
           'auth_expired',
           '登录已过期，请运行 mcdev auth login',
           exitCode: 3,
         );
       }
-      cookie = await LoginService.buildCookieHeader(refreshIfNeeded: false);
+      cookie = await LoginService.buildCookieHeader();
     }
     cookie ??= '';
     if (cookie.isEmpty && !allowOffline) {
@@ -339,39 +346,27 @@ class McdevCli {
       await LoginService.clearLogin();
       return {'logged_in': false};
     }
-    if (action == 'login' || action == 'refresh') {
-      final old = action == 'refresh'
-          ? await LoginService.readLoginSession()
-          : null;
-      final email = action == 'refresh' ? old?.email : args.rest.single;
-      final password = action == 'refresh'
-          ? old?.savedPassword
-          : flag('password-stdin')
+    if (action == 'login') {
+      final email = args.rest.single;
+      final password = flag('password-stdin')
           ? (await readPassword()).replaceFirst(RegExp(r'[\r\n]+$'), '')
           : environment['MCDEV_PASSWORD'];
-      if (email == null || password == null || password.isEmpty) {
+      if (password == null || password.isEmpty) {
         throw CliFailure(
           'credentials_required',
-          action == 'refresh'
-              ? '没有可刷新凭据，请重新登录'
-              : '密码请通过 --password-stdin 或 MCDEV_PASSWORD 提供',
+          '密码请通过 --password-stdin 或 MCDEV_PASSWORD 提供',
           exitCode: 3,
         );
       }
       try {
-        await LoginService.loginWithEmail(
-          email: email,
-          password: password,
-          rememberPassword: action == 'refresh' || flag('remember'),
-        );
+        await LoginService.loginWithEmail(email: email, password: password);
       } on McDevException catch (e) {
         throw CliFailure('login_failed', e.message, exitCode: 3);
       }
     }
     final session = await LoginService.readLoginSession();
     final env = environment['MCDEV_COOKIE']?.isNotEmpty == true;
-    var valid =
-        env || (session != null && session.expiresAt.isAfter(DateTime.now()));
+    var valid = env || (session != null && !session.isExpired);
     if (flag('check')) {
       await (await api()).fetchDeveloperProfile();
       valid = true;
@@ -382,7 +377,7 @@ class McdevCli {
       if (!env && session != null) ...{
         'email': session.email,
         'expires_at': session.expiresAt.toIso8601String(),
-        'can_refresh': session.canRefresh,
+        'expired': session.isExpired,
       },
       'home': home,
       'checked': flag('check'),

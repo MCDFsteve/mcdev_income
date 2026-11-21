@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import '../core/preferences.dart';
+
+import '../core.dart';
 import 'file_lock.dart';
 
 String mcdevHome() {
@@ -21,8 +22,9 @@ String mcdevHome() {
 }
 
 Future<PreferenceStore?> openDesktopPreferences(
-  Map<String, Object> seed,
-) async {
+  Map<String, Object> seed, {
+  SecretStore? secretStore,
+}) async {
   // Flutter tests use platform mocks and must never read a user's real session.
   if (Platform.environment.containsKey('FLUTTER_TEST') ||
       !(Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
@@ -33,19 +35,24 @@ Future<PreferenceStore?> openDesktopPreferences(
     // The macOS desktop bundle is no longer sandboxed so --headless can access
     // command paths. Recover preferences from the old container once.
     final legacy = await _legacyMacPreferences();
-    await store.migrateGui({...legacy, ...seed});
+    await store.migrateGui({...legacy, ...seed}, secretStore: secretStore);
   }
+  await _purgeLegacyMacPlistSecrets();
   return store;
 }
 
-Future<Map<String, Object>> _legacyMacPreferences() async {
-  if (!Platform.isMacOS) return {};
+File? _legacyMacPlistFile() {
+  if (!Platform.isMacOS) return null;
   final home = Platform.environment['HOME'];
-  if (home == null) return {};
+  if (home == null) return null;
   const container = '/Library/Containers/com.aimessoft.consmelt/Data';
   final base = home.endsWith(container) ? home : '$home$container';
-  final file = File('$base/Library/Preferences/com.aimessoft.consmelt.plist');
-  if (!await file.exists()) return {};
+  return File('$base/Library/Preferences/com.aimessoft.consmelt.plist');
+}
+
+Future<Map<String, Object>> _legacyMacPreferences() async {
+  final file = _legacyMacPlistFile();
+  if (file == null || !await file.exists()) return {};
   final result = await Process.run('/usr/bin/plutil', [
     '-convert',
     'json',
@@ -74,12 +81,44 @@ Future<Map<String, Object>> _legacyMacPreferences() async {
   }
 }
 
+/// Removes any legacy plaintext login keys left in the old macOS container plist.
+Future<void> _purgeLegacyMacPlistSecrets() async {
+  final file = _legacyMacPlistFile();
+  if (file == null || !await file.exists()) return;
+  try {
+    final result = await Process.run('/usr/bin/plutil', [
+      '-convert',
+      'json',
+      '-o',
+      '-',
+      file.path,
+    ]);
+    if (result.exitCode != 0) return;
+    final values = jsonDecode(result.stdout as String);
+    if (values is! Map<String, dynamic>) return;
+    for (final key in LoginService.legacySecretKeys) {
+      final plistKey = 'flutter.$key';
+      if (values.containsKey(plistKey)) {
+        await Process.run('/usr/bin/plutil', [
+          '-remove',
+          plistKey,
+          file.path,
+        ]);
+      }
+    }
+  } catch (_) {
+    // Best-effort cleanup of legacy macOS container preferences.
+  }
+}
+
 /// Atomic, permission-restricted state with a cross-process writer lock.
+/// Stores non-sensitive preferences only; login secrets live in [SecretStore].
 class FilePreferences implements PreferenceStore {
   FilePreferences._(this.directory, this._values);
   final String directory;
   Map<String, dynamic> _values;
   File get _file => File('$directory/state.json');
+
   static Future<FilePreferences> open(String directory) async {
     final dir = Directory(directory);
     await dir.create(recursive: true);
@@ -123,19 +162,41 @@ class FilePreferences implements PreferenceStore {
         }
       });
 
-  Future<void> migrateGui(Map<String, Object> seed) async {
+  Future<void> migrateGui(
+    Map<String, Object> seed, {
+    SecretStore? secretStore,
+  }) async {
     if (_values['gui_migrated_v1'] == true) return;
+    var migratedLogin = false;
     await _update((values) {
       if (values['gui_migrated_v1'] == true) return;
-      // A CLI login/logout before the first GUI launch owns the entire session.
-      // Never mix an old GUI password/token with a newer CLI account.
-      final hasManagedLogin = values.keys.any((k) => k.startsWith('login_'));
       for (final entry in seed.entries) {
-        if (hasManagedLogin && entry.key.startsWith('login_')) continue;
+        // Never write legacy login credentials or passwords into plaintext JSON.
+        if (entry.key.startsWith('login_')) continue;
         values.putIfAbsent(entry.key, () => entry.value);
+      }
+      // Track whether a CLI login/logout already owns the session before this
+      // first GUI launch.
+      final hasManagedLogin = values.keys.any((k) => k.startsWith('login_'));
+      if (!hasManagedLogin) {
+        migratedLogin = true;
       }
       values['gui_migrated_v1'] = true;
     });
+    if (migratedLogin && secretStore != null) {
+      try {
+        final migrated = await LoginService.migrateLegacySeed(
+          seed,
+          secretStore: secretStore,
+          hasManagedLogin: false,
+        );
+        if (migrated) {
+          await setString('login_state_managed_v1', 'true');
+        }
+      } catch (_) {
+        // Leave state clean without falling back to plaintext storage.
+      }
+    }
   }
 
   @override
@@ -144,6 +205,7 @@ class FilePreferences implements PreferenceStore {
   int? getInt(String key) => _values[key] as int?;
   @override
   Set<String> getKeys() => _values.keys.toSet();
+
   @override
   Future<bool> setString(String key, String value) async {
     await _update((m) => m[key] = value);

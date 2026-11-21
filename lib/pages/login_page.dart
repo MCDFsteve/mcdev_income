@@ -11,7 +11,6 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _agree = true;
-  bool _rememberPassword = true;
   bool _loading = false;
   bool _verifyingCaptcha = false;
   Completer<void>? _captchaCancelled;
@@ -72,7 +71,6 @@ class _LoginPageState extends State<LoginPage> {
       final session = await LoginCookieHelper.loginWithEmail(
         email: email,
         password: password,
-        rememberPassword: _rememberPassword,
         onCaptcha: _verifyCaptcha,
       );
       if (!mounted) {
@@ -131,10 +129,13 @@ class _LoginPageState extends State<LoginPage> {
   String _sessionLabel() {
     final session = _session;
     if (session == null) {
-      return '未保存';
+      return '未登录';
+    }
+    final kind = session.kind == LoginSessionKind.domestic ? '国内网易账号' : '海外账号';
+    if (session.isExpired) {
+      return '${session.email} · $kind · 已过期';
     }
     final expires = DateFormat('yyyy-MM-dd HH:mm').format(session.expiresAt);
-    final kind = session.kind == LoginSessionKind.domestic ? '国内网易账号' : '海外账号';
     return '${session.email} · $kind · 有效至 $expires';
   }
 
@@ -181,15 +182,6 @@ class _LoginPageState extends State<LoginPage> {
             dense: true,
             contentPadding: EdgeInsets.zero,
             title: const Text('我已经同意《隐私协议》和《用户协议》'),
-          ),
-          OreCheckboxListTile(
-            value: _rememberPassword,
-            onChanged: _loading
-                ? null
-                : (value) => setState(() => _rememberPassword = value ?? false),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: const Text('保存密码用于自动刷新凭证'),
           ),
           if (_verifyingCaptcha) ...[
             const SizedBox(height: 8),

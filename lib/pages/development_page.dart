@@ -315,8 +315,7 @@ class _DevelopmentPageState extends State<DevelopmentPage> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: messages,
                           ),
-                    cookieProvider: () =>
-                        LoginCookieHelper.buildCookieHeader(allowCache: false),
+                    cookieProvider: LoginCookieHelper.buildCookieHeader,
                     onLogin: () async {
                       await Navigator.of(context).push<bool>(
                         MaterialPageRoute(builder: (_) => const LoginPage()),

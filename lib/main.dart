@@ -10,6 +10,7 @@ import 'cli/unsupported_entry.dart'
     if (dart.library.io) 'cli/desktop_entry.dart'
     as desktop_cli;
 import 'storage/app_preferences.dart';
+import 'storage/app_secret_store.dart';
 import 'development/development_storage.dart';
 import 'development/development_panel.dart';
 import 'desktop/window_title_bar.dart';

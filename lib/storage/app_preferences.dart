@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
-import '../core/preferences.dart';
+
+import '../core.dart';
+import 'app_secret_store.dart';
 import 'desktop_preferences_stub.dart'
     if (dart.library.io) 'file_preferences.dart'
     as desktop;
@@ -8,6 +10,7 @@ import 'desktop_preferences_stub.dart'
 class AppPreferences implements PreferenceStore {
   AppPreferences(this.prefs);
   final SharedPreferences prefs;
+
   static Future<PreferenceStore> getInstance() async {
     final prefs = await SharedPreferences.getInstance();
     final seed = <String, Object>{
@@ -20,7 +23,21 @@ class AppPreferences implements PreferenceStore {
             key == 'income_date_range_v1')
           key: prefs.get(key)!,
     };
-    return await desktop.openDesktopPreferences(seed) ?? AppPreferences(prefs);
+    final secretStore = await AppSecretStore.getInstance();
+    final desktopStore = await desktop.openDesktopPreferences(
+      seed,
+      secretStore: secretStore,
+    );
+    if (desktopStore != null) {
+      // Scrub any legacy plaintext login keys left in SharedPreferences.
+      for (final key in LoginService.legacySecretKeys) {
+        if (prefs.containsKey(key)) {
+          await prefs.remove(key);
+        }
+      }
+      return desktopStore;
+    }
+    return AppPreferences(prefs);
   }
 
   @override

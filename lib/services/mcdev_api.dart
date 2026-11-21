@@ -823,6 +823,9 @@ class McDevApi {
     bool mutation = false,
   }) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401 && cookie.isNotEmpty) {
+        CoreRuntime.onAuthExpired?.call();
+      }
       throw McDevException(
         response.statusCode == 401 || response.statusCode == 403
             ? '登录已过期或没有此操作权限，请重新登录后重试'

@@ -12,19 +12,25 @@ const _captchaId = 'test-captcha-id';
 
 void main() {
   late _Preferences preferences;
+  late MemorySecretStore secrets;
   late http.Client Function() previousClientFactory;
   late Future<PreferenceStore> Function() previousPreferences;
+  late Future<SecretStore> Function() previousSecrets;
 
   setUp(() {
     previousClientFactory = LoginService.clientFactory;
     previousPreferences = CoreRuntime.preferences;
+    previousSecrets = CoreRuntime.secrets;
     preferences = _Preferences();
+    secrets = MemorySecretStore();
     CoreRuntime.preferences = () async => preferences;
+    CoreRuntime.secrets = () async => secrets;
   });
 
   tearDown(() {
     LoginService.clientFactory = previousClientFactory;
     CoreRuntime.preferences = previousPreferences;
+    CoreRuntime.secrets = previousSecrets;
   });
 
   Future<LoginSession> login({
@@ -33,7 +39,6 @@ void main() {
   }) => LoginService.loginWithEmail(
     email: email,
     password: _password,
-    rememberPassword: false,
     onCaptcha: onCaptcha,
   );
 
@@ -49,9 +54,10 @@ void main() {
   });
 
   test(
-    'domestic login completes cookies before persisting, without password',
+    'domestic login stores session in secret store and purges plaintext keys',
     () async {
       preferences.values['login_password_v1'] = 'previous-saved-password';
+      preferences.values['login_cookie_cache_v1'] = '{"S_INFO":"old"}';
       final protocol = _Protocol([
         _initialization(),
         _power(),
@@ -66,12 +72,15 @@ void main() {
       expect(session.email, _email);
       expect(session.cookies, containsPair('S_INFO', 'test-s-info'));
       expect(session.cookies, containsPair('P_INFO', 'test-p-info'));
-      expect(session.savedPassword, isNull);
-      expect(preferences.values['login_password_v1'], isNull);
+      for (final key in LoginService.legacySecretKeys) {
+        expect(preferences.values[key], isNull);
+      }
+      expect(secrets.values['login_session_v1'], isNotNull);
+      expect(secrets.values['login_session_v1'], isNot(contains(_password)));
       expect(preferences.applies, 1);
       expect((await LoginService.readLoginSession())?.cookies, session.cookies);
       expect(
-        await LoginService.buildCookieHeader(refreshIfNeeded: false),
+        await LoginService.buildCookieHeader(),
         contains('P_INFO=test-p-info'),
       );
     },
@@ -336,7 +345,7 @@ void main() {
   );
 
   test(
-    'overseas login still accepts its token and does not store the password',
+    'overseas login stores token in secret store and never stores password',
     () async {
       final protocol = _Protocol([_overseaSuccess('regression@gmail.com')]);
       final session = await login(
@@ -346,8 +355,10 @@ void main() {
       protocol.expectComplete();
       expect(session.kind, LoginSessionKind.oversea);
       expect(session.token, 'test-oversea-token');
-      expect(session.savedPassword, isNull);
-      expect(preferences.values['login_password_v1'], isNull);
+      for (final key in LoginService.legacySecretKeys) {
+        expect(preferences.values[key], isNull);
+      }
+      expect(secrets.values['login_session_v1'], isNot(contains(_password)));
       expect(preferences.applies, 1);
     },
   );
@@ -365,6 +376,96 @@ void main() {
       protocol.expectComplete();
       expect(session.kind, LoginSessionKind.oversea);
       expect(preferences.applies, 1);
+    },
+  );
+
+  test(
+    'legacy plaintext session migrates to secret store and deletes password',
+    () async {
+      final expiresAt = DateTime.now().add(const Duration(days: 3));
+      preferences.values.addAll({
+        'theme_mode': 'dark',
+        'login_email_v1': _email,
+        'login_password_v1': 'leaked-plaintext-password',
+        'login_session_kind_v1': 'domestic',
+        'login_cookie_cache_v1': jsonEncode({
+          'S_INFO': 'migrated-s',
+          'P_INFO': 'migrated-p',
+        }),
+        'login_oversea_expires_at_v1': expiresAt.millisecondsSinceEpoch,
+      });
+
+      final session = await LoginService.readLoginSession();
+      expect(session, isNotNull);
+      expect(session!.email, _email);
+      expect(session.isExpired, isFalse);
+      expect(session.cookies, containsPair('S_INFO', 'migrated-s'));
+      expect(preferences.values['theme_mode'], 'dark');
+      for (final key in LoginService.legacySecretKeys) {
+        expect(preferences.values[key], isNull);
+      }
+      expect(
+        secrets.values['login_session_v1'],
+        isNot(contains('leaked-plaintext-password')),
+      );
+      expect(await LoginService.buildCookieHeader(), contains('S_INFO=migrated-s'));
+    },
+  );
+
+  test(
+    'expired legacy session scrubs password and cookies while keeping expiry prompt metadata',
+    () async {
+      final expiredAt = DateTime.now().subtract(const Duration(hours: 2));
+      preferences.values.addAll({
+        'login_email_v1': _email,
+        'login_password_v1': 'old-plaintext-password',
+        'login_session_kind_v1': 'domestic',
+        'login_cookie_cache_v1': jsonEncode({'S_INFO': 'stale-cookie'}),
+        'login_oversea_expires_at_v1': expiredAt.millisecondsSinceEpoch,
+      });
+
+      final session = await LoginService.readLoginSession();
+      expect(session, isNotNull);
+      expect(session!.email, _email);
+      expect(session.isExpired, isTrue);
+      expect(session.cookies, isEmpty);
+      expect(await LoginService.readCookies(), isEmpty);
+      for (final key in LoginService.legacySecretKeys) {
+        expect(preferences.values[key], isNull);
+      }
+      expect(secrets.values['login_session_v1'], isNot(contains('stale-cookie')));
+      expect(
+        secrets.values['login_session_v1'],
+        isNot(contains('old-plaintext-password')),
+      );
+    },
+  );
+
+  test(
+    'markSessionExpired scrubs cookies/tokens and clearLogin removes session',
+    () async {
+      final protocol = _Protocol([
+        _initialization(),
+        _power(),
+        _ticket('first-ticket'),
+        _loginSuccess(ticket: 'first-ticket'),
+        ..._completeLogin(),
+      ]);
+      await login();
+      protocol.expectComplete();
+
+      await LoginService.markSessionExpired();
+      final expired = await LoginService.readLoginSession();
+      expect(expired, isNotNull);
+      expect(expired!.email, _email);
+      expect(expired.isExpired, isTrue);
+      expect(expired.cookies, isEmpty);
+      expect(await LoginService.readCookies(), isEmpty);
+      expect(secrets.values['login_session_v1'], isNot(contains('test-s-info')));
+
+      await LoginService.clearLogin();
+      expect(await LoginService.readLoginSession(), isNull);
+      expect(secrets.values['login_session_v1'], isNull);
     },
   );
 }

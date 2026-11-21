@@ -20,12 +20,83 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
   bool _developmentSupported = false;
   bool _developmentVisited = false;
+  StreamSubscription<String?>? _expiredSubscription;
+  bool _expiredPromptVisible = false;
+  bool _expiredPromptDismissed = false;
 
   @override
   void initState() {
     super.initState();
     _developmentSupported = widget.developmentSupported ?? false;
     if (widget.developmentSupported == null) _detectDevelopment();
+    _expiredSubscription = LoginCookieHelper.onSessionExpired.listen(
+      _showSessionExpiredPrompt,
+    );
+    LoginCookieHelper.sessionRevision.addListener(_onSessionRevisionChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkExpiredSessionOnLaunch();
+    });
+  }
+
+  @override
+  void dispose() {
+    _expiredSubscription?.cancel();
+    LoginCookieHelper.sessionRevision.removeListener(_onSessionRevisionChanged);
+    super.dispose();
+  }
+
+  void _onSessionRevisionChanged() {
+    _expiredPromptDismissed = false;
+  }
+
+  Future<void> _checkExpiredSessionOnLaunch() async {
+    final session = await LoginCookieHelper.readLoginSession();
+    if (!mounted) return;
+    if (session != null && session.isExpired) {
+      await _showSessionExpiredPrompt(session.email);
+    }
+  }
+
+  Future<void> _showSessionExpiredPrompt(String? email) async {
+    if (!mounted || _expiredPromptVisible || _expiredPromptDismissed) return;
+    _expiredPromptVisible = true;
+    bool? goLogin;
+    try {
+      goLogin = await showOreDialog<bool>(
+        context: context,
+        builder: (dialogContext) => OreAlertDialog(
+          title: const Text('登录已过期'),
+          content: Text(
+            email != null && email.isNotEmpty
+                ? '账号 $email 的登录凭证已过期，请重新登录。'
+                : '登录凭证已过期，请重新登录。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('稍后'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('去登录'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _expiredPromptVisible = false;
+    }
+    if (!mounted) return;
+    if (goLogin == true) {
+      final result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+      if (result != true) {
+        _expiredPromptDismissed = true;
+      }
+    } else {
+      _expiredPromptDismissed = true;
+    }
   }
 
   Future<void> _detectDevelopment() async {

@@ -63,14 +63,15 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(host(const LoginPage()));
     await tester.pumpAndSettle();
-    expect(find.byType(OreCheckboxListTile), findsNWidgets(2));
+    expect(find.byType(OreCheckboxListTile), findsOneWidget);
     expect(find.byType(OreTextField), findsNWidgets(2));
     expect(find.byType(CheckboxListTile), findsNothing);
-    await tester.tap(find.text('保存密码用于自动刷新凭证'));
+    expect(find.text('保存密码用于自动刷新凭证'), findsNothing);
+    await tester.tap(find.text('我已经同意《隐私协议》和《用户协议》'));
     await tester.pump();
     expect(
       tester
-          .widget<OreCheckboxListTile>(find.byType(OreCheckboxListTile).last)
+          .widget<OreCheckboxListTile>(find.byType(OreCheckboxListTile).first)
           .value,
       false,
     );

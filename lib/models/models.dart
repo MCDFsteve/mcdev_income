@@ -228,7 +228,6 @@ class LoginSession {
     required this.expiresAt,
     this.token = '',
     this.cookies = const {},
-    this.savedPassword,
   });
 
   final String email;
@@ -236,9 +235,9 @@ class LoginSession {
   final String token;
   final Map<String, String> cookies;
   final DateTime expiresAt;
-  final String? savedPassword;
 
-  bool get canRefresh => savedPassword != null && savedPassword!.isNotEmpty;
+  bool isExpiredAt(DateTime now) => !expiresAt.isAfter(now);
+  bool get isExpired => isExpiredAt(DateTime.now());
 }
 
 class ResourceCategory {

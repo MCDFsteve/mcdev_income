@@ -34,6 +34,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    LoginCookieHelper.sessionRevision.addListener(_onSessionChanged);
     _refreshStatus().then((loggedIn) {
       if (loggedIn) {
         _loadDeveloperProfile();
@@ -41,17 +42,43 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  @override
+  void dispose() {
+    LoginCookieHelper.sessionRevision.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (!mounted) return;
+    _refreshStatus().then((loggedIn) {
+      if (loggedIn) {
+        _loadDeveloperProfile();
+      } else if (mounted) {
+        setState(() {
+          _developerProfile = null;
+          _devError = null;
+        });
+      }
+    });
+  }
+
   Future<bool> _refreshStatus() async {
     setState(() => _loading = true);
+    final session = await LoginCookieHelper.readLoginSession();
     final cookies = await LoginCookieHelper.readCookies();
     if (!mounted) {
       return false;
     }
     final count = cookies.length;
     final loggedIn = count > 0;
+    final expired = session != null && session.isExpired;
     setState(() {
       _cookieCount = count;
-      _statusText = loggedIn ? '已登录' : '未登录';
+      _statusText = loggedIn
+          ? '已登录'
+          : expired
+          ? '登录已过期'
+          : '未登录';
       _checkedAt = DateTime.now();
       _loading = false;
     });

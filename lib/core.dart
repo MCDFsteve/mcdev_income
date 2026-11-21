@@ -9,7 +9,9 @@ import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 import 'package:intl/intl.dart';
 import 'core/preferences.dart';
+import 'core/secret_store.dart';
 export 'core/preferences.dart';
+export 'core/secret_store.dart';
 
 part 'models/models.dart';
 part 'models/dashboard.dart';
@@ -31,6 +33,9 @@ class IncomeDateRange {
 class CoreRuntime {
   static Future<PreferenceStore> Function() preferences = () async =>
       throw StateError('Storage not configured');
+  static Future<SecretStore> Function() secrets = () async =>
+      throw StateError('Secret storage not configured');
+  static void Function()? onAuthExpired;
   static void Function(String) log = (_) {};
   static String system = 'Unknown';
 }

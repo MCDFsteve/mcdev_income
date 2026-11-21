@@ -48,11 +48,10 @@ flutter build macos --release   # 或 flutter build windows/linux --release
 ```sh
 mcdev auth login name@example.com --password-stdin < /secure/password.txt
 mcdev auth status --check
-mcdev auth refresh
 mcdev auth logout
 ```
 
-也可通过 `MCDEV_PASSWORD` 环境变量传入密码。密码没有命令行参数，不会出现在输出中。默认只保存会话；加 `--remember` 才保存密码并在会话临近过期时自动刷新。`auth refresh` 需要保存过密码。验证码等平台额外挑战会返回登录错误，不会卡在交互提示中。遇到网易 `ret=447` 时，先在桌面端登录并完成内置 WebView 小窗口中的官方安全验证，之后 CLI 可共用该会话；后台自动刷新也不会弹出验证窗口。
+也可通过 `MCDEV_PASSWORD` 环境变量传入密码。密码没有命令行参数，不会出现在输出中，也**绝不持久化到本地**；登录成功后仅保存会话凭证，过期后重新登录即可。验证码等平台额外挑战会返回登录错误，不会卡在交互提示中。遇到网易 `ret=447` 时，先在桌面端登录并完成内置 WebView 小窗口中的官方安全验证，之后 CLI 可共用该会话。
 
 `--home /path` 或 `MCDEV_HOME` 可以指定隔离的状态目录。默认位置：
 
@@ -62,7 +61,7 @@ mcdev auth logout
 | Linux | `${XDG_CONFIG_HOME:-~/.config}/mcdev` |
 | Windows | `%APPDATA%/mcdev` |
 
-状态采用加锁、原子替换；POSIX 系统目录权限为 `0700`、会话及任务文件为 `0600`。会话和选择保存的密码存储在本机 JSON 中。Windows 使用用户目录继承的 ACL。
+非敏感状态（主题、收益预设、本机草稿等）采用加锁、原子替换写入 `state.json`；POSIX 系统目录权限为 `0700`、状态及任务文件为 `0600`。登录会话凭证按状态目录隔离，存储在操作系统安全凭据库中（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service），不写入明文 JSON。Linux 无桌面环境若无运行中的密钥环服务，请通过 `MCDEV_COOKIE` 环境变量提供会话。
 
 高级用法：`MCDEV_COOKIE` 可提供当前进程的会话，不写入本地登录状态。使用这种方式创建的上传任务绑定该凭据的摘要，恢复时需使用同一份 Cookie。`auth logout` 清理本机保存的会话；不会移除父进程提供的环境变量。
 

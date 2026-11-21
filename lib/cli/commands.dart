@@ -94,13 +94,12 @@ final cliCommands = <CliCommand>[
   CliCommand('schema', '输出全部命令和上传清单结构，供 Agent 自发现', '', 0, 0),
   CliCommand(
     'auth login',
-    '邮箱登录（密码从标准输入或 MCDEV_PASSWORD 读取）',
+    '邮箱登录（密码从标准输入或 MCDEV_PASSWORD 读取，仅保存会话不保存密码）',
     '<email>',
     1,
     1,
     (p) {
       p.addFlag('password-stdin', negatable: false, help: '从标准输入读取密码');
-      p.addFlag('remember', negatable: false, help: '保存密码用于自动刷新会话');
     },
   ),
   CliCommand(
@@ -111,8 +110,7 @@ final cliCommands = <CliCommand>[
     0,
     (p) => p.addFlag('check', negatable: false, help: '请求平台验证会话'),
   ),
-  CliCommand('auth refresh', '使用已保存的凭据刷新会话', '', 0, 0),
-  CliCommand('auth logout', '清除本地账号会话和保存密码', '', 0, 0),
+  CliCommand('auth logout', '清除本地账号会话', '', 0, 0),
   CliCommand('overview', '数据概览', '', 0, 0),
   CliCommand('profile', '开发者信息与账号权限', '', 0, 0),
   CliCommand('mods list', '获取 Mod 列表', '', 0, 0, (p) {
