@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'mod_log_filter.dart';
+import 'platform/host_files_io.dart';
 
 class ModLogCapture {
   const ModLogCapture(this.marker, this.sources);
@@ -54,9 +55,12 @@ Future<ModLogCapture> prepareModLogCapture(List<Directory> snapshots) async {
   for (final pack in snapshots) {
     paths.add(pack.path);
     paths.add(p.basename(pack.path));
-    await for (final entity in pack.list(recursive: true, followLinks: false)) {
+    final nativeRoot = nativeFileSystemPath(pack.path);
+    await for (final entity in Directory(
+      nativeRoot,
+    ).list(recursive: true, followLinks: false)) {
       if (entity is! File) continue;
-      final relative = p.relative(entity.path, from: pack.path);
+      final relative = p.relative(entity.path, from: nativeRoot);
       final parts = p.split(relative);
       if (parts.length >= 2 &&
           (p.basename(entity.path) == 'modMain.py' ||
@@ -112,8 +116,10 @@ Future<ModLogCapture> prepareModLogCapture(List<Directory> snapshots) async {
       .replaceAll('__MODULES__', jsonEncode(modules.toList()))
       .replaceAll('__STATE__', jsonEncode('__mcdev_modlog_$nonce'));
   for (final directory in scriptRoots) {
-    final init = File(p.join(directory.path, '__init__.py'));
-    final compiled = File(p.join(directory.path, '__init__.pyc'));
+    final init = File(nativeFileSystemPath(p.join(directory.path, '__init__.py')));
+    final compiled = File(
+      nativeFileSystemPath(p.join(directory.path, '__init__.pyc')),
+    );
     var source = await init.exists() ? await init.readAsBytes() : <int>[];
     var bytecode =
         source.isEmpty && !await init.exists() && await compiled.exists()

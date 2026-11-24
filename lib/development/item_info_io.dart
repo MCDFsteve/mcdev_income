@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import 'development_storage.dart';
 import 'game_archive_io.dart' show rejectTreeLinks;
+import 'platform/host_files_io.dart';
 
 const itemInfoPackName = 'mcdev_item_info';
 const _behaviorUuid = '073796e4-37ff-4776-91c6-14dcd7aa5711';
@@ -102,7 +103,7 @@ Future<Directory> _resetPack(String parent, String uuid) async {
     } on Object {
       throw const DevelopmentStorageException('物品信息辅助包目录已被其他项目占用。');
     }
-    await pack.delete(recursive: true);
+    await deleteTreeIfExists(pack.path);
   }
-  return pack.create(recursive: true);
+  return Directory(nativeFileSystemPath(pack.path)).create(recursive: true);
 }

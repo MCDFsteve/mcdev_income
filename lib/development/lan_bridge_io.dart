@@ -4,6 +4,8 @@ import 'dart:math';
 
 import 'package:path/path.dart' as p;
 
+import 'platform/host_files_io.dart';
+
 class LanRosterPlayer {
   const LanRosterPlayer({required this.id, required this.name});
 
@@ -90,7 +92,7 @@ class LanRosterBridge {
       } on Object {
         throw const FileSystemException('局域网测试辅助包路径已被其他项目占用');
       }
-      await pack.delete(recursive: true);
+      await deleteTreeIfExists(pack.path);
     }
     final scripts = Directory(p.join(pack.path, 'mcdevLanBridgeScripts'));
     await scripts.create(recursive: true);
@@ -159,12 +161,13 @@ class LanRosterBridge {
       }
       // Never remove unrelated content merely because its manifest reused the
       // reserved UUID. Python's own compiled copies are safe to replace.
-      await for (final item in target.list(
+      final nativeTarget = nativeFileSystemPath(target.path);
+      await for (final item in Directory(nativeTarget).list(
         recursive: true,
         followLinks: false,
       )) {
         final relative = p
-            .relative(item.path, from: target.path)
+            .relative(item.path, from: nativeTarget)
             .replaceAll('\\', '/');
         final knownFile =
             _packFiles.contains(relative) ||
@@ -201,9 +204,9 @@ class LanRosterBridge {
         rethrow;
       }
     } finally {
-      if (await staging.exists()) await staging.delete(recursive: true);
-      if (installed && backup != null && await backup.exists()) {
-        await backup.delete(recursive: true);
+      await deleteTreeIfExists(staging.path);
+      if (installed && backup != null) {
+        await deleteTreeIfExists(backup.path);
       }
     }
   }

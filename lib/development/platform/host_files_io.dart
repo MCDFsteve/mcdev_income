@@ -15,6 +15,22 @@ String nativeFileSystemPath(String path) {
   return r'\\?\' + absolute;
 }
 
+/// Remove a directory tree safely even when nested Windows paths exceed 260
+/// characters (MAX_PATH).
+Future<void> deleteTreeIfExists(String path) async {
+  final directory = Directory(nativeFileSystemPath(path));
+  if (await directory.exists()) {
+    await directory.delete(recursive: true);
+  }
+}
+
+/// Rename a directory using extended Windows paths when needed.
+Future<void> renameDirectoryNative(String from, String to) async {
+  await Directory(
+    nativeFileSystemPath(from),
+  ).rename(nativeFileSystemPath(to));
+}
+
 /// Copy without following links. Windows/Linux never invoke macOS utilities.
 /// Preserve links for storage migration; callers validating game/mod trees
 /// reject them before this operation.

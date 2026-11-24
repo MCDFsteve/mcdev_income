@@ -50,10 +50,15 @@ Future<String> prepareSessionGame({
   if (!RegExp(r'^\d+(\.\d+){1,5}$').hasMatch(version)) {
     throw const DevelopmentStorageException('游戏版本号无效。');
   }
-  final parent = Directory(p.join(prefix, 'mcdev-games'));
-  final target = Directory(p.join(parent.path, version));
-  final marker = File(p.join(target.path, '.mcdev-session-game.json'));
-  final sourceStat = await File(p.join(source, 'Minecraft.Windows.exe')).stat();
+  final parentPath = p.join(prefix, 'mcdev-games');
+  final targetPath = p.join(parentPath, version);
+  final parent = Directory(nativeFileSystemPath(parentPath));
+  final marker = File(
+    nativeFileSystemPath(p.join(targetPath, '.mcdev-session-game.json')),
+  );
+  final sourceStat = await File(
+    nativeFileSystemPath(p.join(source, 'Minecraft.Windows.exe')),
+  ).stat();
   final identity = jsonEncode({
     'schema': 1,
     'version': version,
@@ -62,11 +67,14 @@ Future<String> prepareSessionGame({
   });
   if (await marker.exists() &&
       await marker.readAsString() == identity &&
-      await File(p.join(target.path, 'Minecraft.Windows.exe')).exists()) {
-    return target.path;
+      await File(
+        nativeFileSystemPath(p.join(targetPath, 'Minecraft.Windows.exe')),
+      ).exists()) {
+    return targetPath;
   }
   await parent.create(recursive: true);
-  final stage = await parent.createTemp('.game-');
+  final stage = await Directory(parentPath).createTemp('.game-');
+  final stagePath = stage.path;
   try {
     var copied = false;
     if (Platform.isMacOS) {
@@ -74,24 +82,24 @@ Future<String> prepareSessionGame({
           (await Process.run('/bin/cp', [
             '-cR',
             '$source/.',
-            stage.path,
+            stagePath,
           ])).exitCode ==
           0;
     }
     if (!copied) {
       // Other volumes may not support clonefile; keep the same isolation using
       // a full copy. Never hardlink files the game might modify.
-      await stage.delete(recursive: true);
-      await stage.create();
-      await copyDevelopmentTree(source, stage.path);
+      await deleteTreeIfExists(stagePath);
+      await Directory(nativeFileSystemPath(stagePath)).create();
+      await copyDevelopmentTree(source, stagePath);
     }
     await File(
-      p.join(stage.path, '.mcdev-session-game.json'),
+      nativeFileSystemPath(p.join(stagePath, '.mcdev-session-game.json')),
     ).writeAsString(identity, flush: true);
-    if (await target.exists()) await target.delete(recursive: true);
-    await stage.rename(target.path);
-    return target.path;
+    await deleteTreeIfExists(targetPath);
+    await renameDirectoryNative(stagePath, targetPath);
+    return targetPath;
   } finally {
-    if (await stage.exists()) await stage.delete(recursive: true);
+    await deleteTreeIfExists(stagePath);
   }
 }

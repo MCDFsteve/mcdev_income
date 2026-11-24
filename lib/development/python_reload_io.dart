@@ -11,6 +11,7 @@ import 'development_storage.dart';
 import 'lan_patch_io.dart' show lanGameHash, lanInjectorFile, lanInjectorHash;
 import 'mod_log_capture_io.dart';
 import 'game_archive_io.dart' show rejectTreeLinks;
+import 'platform/host_files_io.dart';
 
 const pythonReloadVersion = '3.10.0.420447';
 const pythonReloadDllHash =
@@ -110,12 +111,13 @@ class PythonReloadSession {
   }
 
   static Future<String> _manifest(String root) async {
-    if (await FileSystemEntity.type(root, followLinks: false) !=
+    final nativeRoot = nativeFileSystemPath(root);
+    if (await FileSystemEntity.type(nativeRoot, followLinks: false) !=
         FileSystemEntityType.directory) {
       throw const DevelopmentStorageException('模组目录已移动或不是实际目录，请重新启动测试。');
     }
     await rejectTreeLinks(root);
-    final file = File(p.join(root, 'manifest.json'));
+    final file = File(nativeFileSystemPath(p.join(root, 'manifest.json')));
     if (await file.length() > 1024 * 1024) {
       throw const DevelopmentStorageException('包清单过大，无法验证热重载目标。');
     }
@@ -132,13 +134,14 @@ class PythonReloadSession {
     String root,
   ) async {
     await rejectTreeLinks(root);
+    final nativeRoot = nativeFileSystemPath(root);
     final files = <_PythonFile>[];
     var size = 0;
     await for (final item in Directory(
-      root,
+      nativeRoot,
     ).list(recursive: true, followLinks: false)) {
       if (item is! File || p.extension(item.path) != '.py') continue;
-      final relative = p.relative(item.path, from: root);
+      final relative = p.relative(item.path, from: nativeRoot);
       final parts = p.split(relative);
       // Top-level files are not mounted as an importable ModSDK package.
       if (parts.length < 2) continue;
@@ -191,20 +194,21 @@ class PythonReloadChanges {
       for (final file in _changed) {
         checkCurrent();
         await rejectTreeLinks(file.pack.mounted);
-        final target = file.target;
+        final target = File(nativeFileSystemPath(file.target.path));
         final previous = await target.exists()
             ? await target.readAsBytes()
             : null;
-        _backups[target.path] = previous;
+        _backups[file.target.path] = previous;
         final bytes = previous == null
             ? file.bytes
             : replaceModLogOriginalSource(previous, file.bytes);
         await target.parent.create(recursive: true);
         await _atomicBytes(target, bytes);
         for (final suffix in ['c', 'o']) {
-          final compiled = File('${target.path}$suffix');
+          final compiledPath = '${file.target.path}$suffix';
+          final compiled = File(nativeFileSystemPath(compiledPath));
           if (await compiled.exists()) {
-            _backups[compiled.path] = await compiled.readAsBytes();
+            _backups[compiledPath] = await compiled.readAsBytes();
             await compiled.delete();
           }
         }
@@ -218,7 +222,7 @@ class PythonReloadChanges {
 
   Future<void> rollback() async {
     for (final entry in _backups.entries.toList().reversed) {
-      final file = File(entry.key);
+      final file = File(nativeFileSystemPath(entry.key));
       if (entry.value == null) {
         if (await file.exists()) await file.delete();
       } else {

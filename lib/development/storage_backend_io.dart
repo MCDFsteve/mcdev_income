@@ -347,10 +347,11 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
 
   Future<Map<String, _Entry>> _inventory(String root) async {
     final result = <String, _Entry>{};
+    final nativeRoot = nativeFileSystemPath(root);
     await for (final entity in Directory(
-      root,
+      nativeRoot,
     ).list(recursive: true, followLinks: false)) {
-      final relative = p.relative(entity.path, from: root);
+      final relative = p.relative(entity.path, from: nativeRoot);
       // Windows leases are mandatory locks, not user data to copy or hash.
       if (Platform.isWindows && _isSessionLease(relative)) continue;
       final type = await FileSystemEntity.type(entity.path, followLinks: false);
@@ -445,7 +446,7 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
           source,
           destination,
         );
-        final link = Link(p.join(stage.path, entry.key));
+        final link = Link(nativeFileSystemPath(p.join(stage.path, entry.key)));
         if (await link.target() != expected) {
           await link.delete();
           await link.create(expected);
@@ -476,7 +477,7 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
             throw const DevelopmentStorageException('迁移校验失败：链接目标不一致。');
           }
         } else if (item.value.type == FileSystemEntityType.file) {
-          final sourceFile = File(p.join(source, item.key));
+          final sourceFile = File(nativeFileSystemPath(p.join(source, item.key)));
           final stat = await sourceFile.stat();
           if (stat.size != item.value.size ||
               stat.modified != item.value.modified ||
@@ -485,7 +486,9 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
           }
           final before = await sha256.bind(sourceFile.openRead()).first;
           final after = await sha256
-              .bind(File(p.join(stage.path, item.key)).openRead())
+              .bind(
+                File(nativeFileSystemPath(p.join(stage.path, item.key))).openRead(),
+              )
               .first;
           if (before != after) {
             throw const DevelopmentStorageException('迁移校验失败：文件内容不一致。');
@@ -514,10 +517,10 @@ class NativeDevelopmentStorage implements DevelopmentStorage {
       }
       onProgress?.call(const StorageMigrationProgress('切换数据位置'));
       // Renaming over a nonempty target fails atomically: never delete it.
-      await stage.rename(destination);
+      await renameDirectoryNative(stage.path, destination);
       await _saveRoot(destination, copiedTabsFrom: source);
     } finally {
-      if (await stage.exists()) await stage.delete(recursive: true);
+      await deleteTreeIfExists(stage.path);
     }
   });
 

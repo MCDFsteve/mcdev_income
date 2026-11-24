@@ -1222,8 +1222,7 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       await refresh();
       notice = '游戏 ${package.version} 已安装。';
     } finally {
-      final cleanup = Directory(nativeFileSystemPath(stage.path));
-      if (await cleanup.exists()) await cleanup.delete(recursive: true);
+      await deleteTreeIfExists(stage.path);
     }
   }
 
@@ -1262,11 +1261,11 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
         'version': version,
         'imported': true,
       });
-      await stage.rename(target.path);
+      await renameDirectoryNative(stage.path, target.path);
       await refresh();
       notice = '已有游戏已导入。';
     } finally {
-      if (await stage.exists()) await stage.delete(recursive: true);
+      await deleteTreeIfExists(stage.path);
     }
   });
 
@@ -1391,14 +1390,13 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
     } finally {
       if (!registered) {
         if (committed != null) {
-          final directory = Directory(committed);
-          if (await directory.exists()) await directory.delete(recursive: true);
+          await deleteTreeIfExists(committed);
         } else {
           await changes?.rollback();
         }
       }
-      if (stage != null && await stage.exists()) {
-        await stage.delete(recursive: true);
+      if (stage != null) {
+        await deleteTreeIfExists(stage.path);
       }
     }
   });
@@ -1778,6 +1776,9 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
       final behavior = <String>[], resources = <String>[];
       final modSnapshots = <Directory>[];
       final pythonPacks = <PythonReloadPack>[];
+      if (chosen.isNotEmpty) {
+        _update(const StorageMigrationProgress('同步测试模组'));
+      }
       for (final pack in chosen) {
         _control?.check();
         final name = 'mcdev_${pack.uuid}';
@@ -1805,24 +1806,32 @@ class NativeDevelopmentLauncher extends DevelopmentLauncher {
             name,
           ),
         );
-        await target.parent.create(recursive: true);
+        await Directory(
+          nativeFileSystemPath(target.parent.path),
+        ).create(recursive: true);
         final staging = await target.parent.createTemp('.pack-');
-        final backup = Directory('${target.path}.previous');
+        final backupPath = '${target.path}.previous';
+        final nativeTarget = Directory(nativeFileSystemPath(target.path));
+        final nativeBackup = Directory(nativeFileSystemPath(backupPath));
         try {
           await rejectTreeLinks(source);
           await copyDevelopmentTree(source, staging.path);
           await rejectTreeLinks(staging.path);
-          if (await backup.exists()) await backup.delete(recursive: true);
-          if (await target.exists()) await target.rename(backup.path);
+          await deleteTreeIfExists(backupPath);
+          if (await nativeTarget.exists()) {
+            await renameDirectoryNative(target.path, backupPath);
+          }
           try {
-            await staging.rename(target.path);
+            await renameDirectoryNative(staging.path, target.path);
           } catch (_) {
-            if (await backup.exists()) await backup.rename(target.path);
+            if (await nativeBackup.exists()) {
+              await renameDirectoryNative(backupPath, target.path);
+            }
             rethrow;
           }
-          if (await backup.exists()) await backup.delete(recursive: true);
+          await deleteTreeIfExists(backupPath);
         } finally {
-          if (await staging.exists()) await staging.delete(recursive: true);
+          await deleteTreeIfExists(staging.path);
         }
         (pack.type == 'resources' ? resources : behavior).add(name);
         modSnapshots.add(target);
@@ -2703,7 +2712,7 @@ Future<List<ModPack>> discoverModPacks(
   final uuids = <String>{};
   var duplicateUuids = false;
   Future<bool> readPack(String directory) async {
-    final file = File(p.join(directory, 'manifest.json'));
+    final file = File(nativeFileSystemPath(p.join(directory, 'manifest.json')));
     if (await file.exists()) {
       final manifest = jsonDecode(await file.readAsString());
       final header = manifest is Map ? manifest['header'] : null;
@@ -2765,11 +2774,15 @@ Future<List<ModPack>> discoverModPacks(
     }
     return result;
   }
-  await for (final entry in Directory(directory).list(followLinks: false)) {
+  final nativeDirectory = nativeFileSystemPath(directory);
+  await for (final entry in Directory(
+    nativeDirectory,
+  ).list(followLinks: false)) {
+    final childName = p.basename(entry.path);
     if (entry is Directory &&
-        !p.basename(entry.path).startsWith('.') &&
-        !['build', 'node_modules'].contains(p.basename(entry.path))) {
-      await readPack(entry.path);
+        !childName.startsWith('.') &&
+        !['build', 'node_modules'].contains(childName)) {
+      await readPack(p.join(directory, childName));
     }
   }
   if (result.where((pack) => pack.type == 'data').length > 1 ||

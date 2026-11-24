@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:mcdev_income/development/mod_log_capture_io.dart';
 import 'package:mcdev_income/development/mod_log_filter.dart';
 import 'package:mcdev_income/development/mod_log_io.dart';
+import 'package:mcdev_income/development/platform/host_files_io.dart';
 
 final sources = ModLogSources(
   modules: ['MyModScripts'],
@@ -265,6 +266,46 @@ void main() {
       expect(await main.readAsString(), 'import missing_dependency\n');
       // The former wrapper must not be embedded as this guest's original source.
       expect(rewritten, isNot(contains(first.marker)));
+    },
+  );
+
+  test(
+    'staged capture enumerates and cleans packs beyond Windows MAX_PATH (260)',
+    () async {
+      final temp = await Directory.systemTemp.createTemp('mod-log-long-');
+      addTearDown(() => deleteTreeIfExists(temp.path));
+      final deepPrefix = p.joinAll([
+        temp.path,
+        'prefixes',
+        'game-15c21251e4bf399b0f28ae5b0e0f990a',
+        'users',
+        'Developer',
+        'AppData',
+        'Roaming',
+        'MinecraftPE_Netease',
+        'games',
+        'com.netease',
+        'resource_packs',
+        'mcdev_bd686c69-ac05-4504-8811-a98eb0104de6',
+      ]);
+      final deepFile = p.join(
+        deepPrefix,
+        'textures',
+        'entity',
+        'restaurant',
+        'fish',
+        'restaurant_fish_silver_carp_entity.json',
+      );
+      expect(deepFile.length, greaterThan(260));
+      final jsonFile = File(nativeFileSystemPath(deepFile));
+      await jsonFile.parent.create(recursive: true);
+      await jsonFile.writeAsString(
+        jsonEncode({'identifier': 'restaurant:silver_carp'}),
+      );
+      final capture = await prepareModLogCapture([Directory(deepPrefix)]);
+      expect(capture.sources.mentionsSource('restaurant:silver_carp'), isTrue);
+      await deleteTreeIfExists(deepPrefix);
+      expect(await Directory(nativeFileSystemPath(deepPrefix)).exists(), isFalse);
     },
   );
 }

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:mcdev_income/development/launcher_io.dart';
 import 'package:mcdev_income/development/launcher_service.dart';
+import 'package:mcdev_income/development/platform/host_files_io.dart';
 import 'package:mcdev_income/development/storage_backend_io.dart';
 import 'package:mcdev_income/development/test_session_io.dart';
 import 'package:mcdev_income/storage/file_lock.dart';
@@ -33,7 +34,7 @@ void main() {
       launcher.dispose();
     }
     launchers.clear();
-    await temporary.delete(recursive: true);
+    await deleteTreeIfExists(temporary.path);
   });
 
   NativeDevelopmentLauncher launcher([String id = 'default']) {
@@ -373,4 +374,74 @@ void main() {
       );
     },
   );
+
+  test(
+    'session game preparation replaces deep trees beyond Windows MAX_PATH (260)',
+    () async {
+      await installFixture('3.10.0.448891');
+      final source = p.join(storage.paths.games, '3.10.0.448891');
+      final nestedRelative = p.joinAll([
+        'data',
+        'resource_packs',
+        'vanilla_netease',
+        'textures',
+        'entity',
+        'restaurant_long_segment_alpha',
+        'restaurant_long_segment_beta',
+        'deep_asset_definition.json',
+      ]);
+      final srcDeep = File(
+        nativeFileSystemPath(p.join(source, nestedRelative)),
+      );
+      await srcDeep.parent.create(recursive: true);
+      await srcDeep.writeAsString('{"v":1}');
+      final longPrefix = p.join(
+        storage.paths.prefixes,
+        'game-15c21251e4bf399b0f28ae5b0e0f990a',
+      );
+      final expectedDeep = p.join(
+        longPrefix,
+        'mcdev-games',
+        '3.10.0.448891',
+        nestedRelative,
+      );
+      expect(expectedDeep.length, greaterThan(260));
+      final first = await prepareSessionGame(
+        source: source,
+        prefix: longPrefix,
+        version: '3.10.0.448891',
+      );
+      expect(
+        await File(
+          nativeFileSystemPath(p.join(first, nestedRelative)),
+        ).readAsString(),
+        '{"v":1}',
+      );
+      // Force refresh to exercise deleting & replacing an existing >260 tree.
+      await File(
+        nativeFileSystemPath(p.join(source, 'Minecraft.Windows.exe')),
+      ).writeAsString('updated-fixture');
+      await srcDeep.writeAsString('{"v":2}');
+      final refreshed = await prepareSessionGame(
+        source: source,
+        prefix: longPrefix,
+        version: '3.10.0.448891',
+      );
+      expect(refreshed, first);
+      expect(
+        await File(
+          nativeFileSystemPath(p.join(refreshed, nestedRelative)),
+        ).readAsString(),
+        '{"v":2}',
+      );
+      await deleteTreeIfExists(longPrefix);
+    },
+  );
+
+  test('windows runner manifest opts into longPathAware', () async {
+    final manifest = await File(
+      p.join('windows', 'runner', 'runner.exe.manifest'),
+    ).readAsString();
+    expect(manifest, contains('<longPathAware'));
+  });
 }
